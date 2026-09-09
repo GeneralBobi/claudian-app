@@ -55,6 +55,7 @@ async function start() {
     });
   }
   handle('app:snapshot', () => core.snapshot());
+  require('./companion.cjs').attach(win,handle);
   handle('app:preferences', language => core.preferences(language));
   handle('memory:connections', () => core.connections());
   handle('memory:check-files', () => core.checkFiles());

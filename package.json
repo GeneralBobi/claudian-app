@@ -1,7 +1,7 @@
 {
   "name": "claudian-desktop",
   "productName": "Claudian",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "description": "Claudian ortak hafıza uygulaması",
   "author": "Claudian",
@@ -29,6 +29,7 @@
       "core.cjs",
       "protocol.cjs",
       "management.cjs",
+      "companion.cjs",
       "assets/icon.ico",
       "smoke.cjs",
       "ui/**/*",

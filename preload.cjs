@@ -7,6 +7,8 @@ const invoke = async (channel, ...args) => {
 };
 contextBridge.exposeInMainWorld('claudian', {
   snapshot: () => invoke('app:snapshot'),
+  companion: (action, bounds) => invoke('companion:' + action, bounds),
+  onCompanion: callback => { const listener=(_event,value)=>callback(value); ipcRenderer.on('companion:state',listener); return ()=>ipcRenderer.removeListener('companion:state',listener); },
   preferences: language => invoke('app:preferences', language),
   connections: () => invoke('memory:connections'),
   checkFiles: () => invoke('memory:check-files'),

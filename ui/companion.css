@@ -1,0 +1,5 @@
+/* Desktop adaptation of the existing authenticated web panel. No content is hidden. */
+html{scrollbar-color:#655e57 #111113;scrollbar-width:thin}body{min-width:0!important}main>div{max-width:none!important;padding-left:20px!important;padding-right:20px!important}header>div{max-width:none!important;padding-left:18px!important;padding-right:18px!important}main{padding-bottom:32px!important}button,a,input,textarea{scroll-margin:16px}p,article,section{overflow-wrap:anywhere}
+@media(min-width:768px){header>div{height:auto!important;min-height:56px;flex-wrap:wrap;padding-top:10px;padding-bottom:10px}header nav{flex-wrap:wrap}.grid.grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))!important}.space-y-8>:not([hidden])~:not([hidden]){margin-top:24px!important}}
+@media(min-width:1150px){.grid.grid-cols-2{grid-template-columns:repeat(4,minmax(0,1fr))!important}}
+@media(max-width:767px){main{padding-bottom:86px!important}main>div{padding-left:14px!important;padding-right:14px!important}}

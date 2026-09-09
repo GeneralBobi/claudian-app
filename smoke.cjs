@@ -1,7 +1,7 @@
 'use strict';
 const fs=require('node:fs/promises'),path=require('node:path'),assert=require('node:assert/strict');
-exports.run=async({win,core,app,home})=>{const output=process.env.CLAUDIAN_SMOKE_OUTPUT||path.join(core.dataDir,'smoke-output');await fs.mkdir(output,{recursive:true});const js=s=>win.webContents.executeJavaScript(s);const wait=async s=>{const end=Date.now()+15000;while(Date.now()<end){if(await js(s))return;await new Promise(r=>setTimeout(r,80));}throw Error('UI timeout: '+s);};const click=s=>js(`document.querySelector(${JSON.stringify(s)}).click()`);try{
- await wait('!!document.querySelector("#language")');assert.equal(await js('document.documentElement.lang'),'en');
+exports.run=async({win,core,app,home})=>{const output=process.env.CLAUDIAN_SMOKE_OUTPUT||path.join(core.dataDir,'smoke-output');await fs.mkdir(output,{recursive:true});const js=s=>win.webContents.executeJavaScript(s).catch(e=>{throw Error(s+' :: '+e.message)});const wait=async s=>{const end=Date.now()+15000;while(Date.now()<end){if(await js(s))return;await new Promise(r=>setTimeout(r,80));}throw Error('UI timeout: '+s);};const click=async s=>{await wait(`!!document.querySelector(${JSON.stringify(s)})`);return js(`document.querySelector(${JSON.stringify(s)}).click()`);};try{
+ await wait('!!document.querySelector("#name")');assert.equal(await js('document.documentElement.lang'),'en');
  await js('document.querySelector("#language").value="tr";document.querySelector("#language").dispatchEvent(new Event("change",{bubbles:true}))');await wait('document.documentElement.lang==="tr"');
  await js('document.querySelector("#language").value="en";document.querySelector("#language").dispatchEvent(new Event("change",{bubbles:true}))');await wait('document.documentElement.lang==="en"');
  await js(`document.querySelector('#name').value='Deniz';document.querySelector('#vault').value=${JSON.stringify(path.join(home,'Notes'))};document.querySelectorAll('[name=host]').forEach(x=>x.checked=true)`);
@@ -11,5 +11,13 @@ exports.run=async({win,core,app,home})=>{const output=process.env.CLAUDIAN_SMOKE
  await click('[data-action=remove][data-host=cursor]');await click('[data-action=dismiss-remove]');assert.equal((await core.snapshot()).profile.hosts.length,6);await click('[data-action=remove][data-host=cursor]');await click('[data-action=confirm-remove]');await wait('!document.querySelector("[data-action=remove][data-host=cursor]")');
  await click('[data-action=add-hosts]');await wait('!!document.querySelector("#name")');await js('document.querySelector("[name=host][value=cursor]").checked=true');await click('[data-action=preview]');await wait('!!document.querySelector("[data-action=install]")');await click('[data-action=install]');await wait('!!document.querySelector("[data-action=enter]")');await click('[data-action=enter]');await wait('!!document.querySelector("[data-action=remove][data-host=cursor]")');
  await win.loadURL('claudian://app/index.html');await wait('!!document.querySelector("[data-action=remove]")');assert.equal(await js('typeof require'),'undefined');assert.equal(await js('document.querySelector("#error").hidden'),true);
+ await click('[data-view=companion]');
+ await wait('!!document.querySelector("#companion-slot")');
+ const remote=win.contentView.children.find(v=>v.webContents&&v.webContents!==win.webContents);
+ assert.ok(remote);let ready=false;for(let i=0;i<100;i++){if(remote.webContents.getURL().startsWith('https://claudian.app/')&&!remote.webContents.isLoading()){ready=true;break;}await new Promise(r=>setTimeout(r,100));}assert.ok(ready,'remote sign-in loaded');
+ assert.equal(await remote.webContents.executeJavaScript('typeof require'),'undefined');
+ assert.equal(await remote.webContents.executeJavaScript('typeof window.claudian'),'undefined');
+ assert.equal(await remote.webContents.executeJavaScript('!!document.querySelector("#code")'),true);
+ await click('[data-view=home]');assert.equal(remote.getVisible(),false);
  await fs.writeFile(path.join(output,'panel.png'),(await win.webContents.capturePage()).toPNG());await fs.writeFile(path.join(output,'result.json'),JSON.stringify({passed:true,checks:['language switch','preview back','six-host installation','local check','Obsidian URI','configuration target','removal cancellation','remove and reconnect','restart persistence','renderer isolation']}));console.log('SMOKE PASS '+output);app.exit(0);
  }catch(e){console.error(e);await fs.writeFile(path.join(output,'failure.png'),(await win.webContents.capturePage()).toPNG());app.exit(1);}};
