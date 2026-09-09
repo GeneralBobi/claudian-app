@@ -1,0 +1,35 @@
+{
+  "name": "claudian-desktop",
+  "productName": "Claudian",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Claudian ortak hafıza uygulaması",
+  "author": "Claudian",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.cjs",
+    "pack": "electron-builder --dir --win --x64",
+    "dist": "electron-builder --win nsis --x64",
+    "smoke": "electron . --smoke"
+  },
+  "devDependencies": {
+    "electron": "44.3.0",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "app.claudian.desktop",
+    "asar": true,
+    "directories": { "output": "release" },
+    "files": ["main.cjs", "preload.cjs", "core.cjs", "smoke.cjs", "ui/**/*", "licenses/**/*", "package.json"],
+    "win": { "target": "nsis", "signExecutable": false, "icon": "assets/icon.ico" },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "Claudian-Setup-${version}.${ext}"
+    }
+  }
+}
