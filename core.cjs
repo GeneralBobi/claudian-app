@@ -6,6 +6,10 @@ const VERSION = '1.2.0';
 const HOSTS = {
   'claude-code': { label: 'Claude Code', parts: ['.claude', 'skills', 'claudian-memory'] },
   codex: { label: 'Codex', parts: ['.agents', 'skills', 'claudian-memory'] },
+  cursor: { label: 'Cursor', parts: ['.agents', 'skills', 'claudian-memory'], detect: ['.cursor'] },
+  'gemini-cli': { label: 'Gemini CLI', parts: ['.agents', 'skills', 'claudian-memory'], detect: ['.gemini/settings.json'] },
+  antigravity: { label: 'Antigravity', parts: ['.gemini', 'config', 'skills', 'claudian-memory'], detect: ['.gemini/antigravity', '.antigravity'] },
+  'antigravity-cli': { label: 'Antigravity CLI', parts: ['.gemini', 'antigravity-cli', 'skills'], filename: 'claudian-memory.md', detect: ['.gemini/antigravity-cli'] },
 };
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const exists = async file => { try { await fs.lstat(file); return true; } catch (e) { if (e.code === 'ENOENT') return false; throw e; } };
@@ -60,8 +64,8 @@ class MemorySetup {
     const profile = await json(this.configFile);
     return { profile, running: this.running, events: this.events, version: VERSION,
       hosts: await Promise.all(Object.entries(HOSTS).map(async ([id, h]) => ({ id, label: h.label,
-        configurationFound: await exists(path.join(this.home, h.parts[0])),
-        skillExists: await exists(path.join(this.home, ...h.parts, 'SKILL.md')) }))) };
+        configurationFound: (await Promise.all((h.detect || (id === 'codex' ? [this.codexHome] : [h.parts[0]])).map(p => exists(path.resolve(this.home, p))))).some(Boolean),
+        skillExists: await exists(path.join(this.home, ...h.parts, h.filename || 'SKILL.md')) }))) };
   }
   async discover() {
     const candidates = [];
@@ -76,12 +80,16 @@ class MemorySetup {
   }
   async prepare(input) {
     if (this.running) throw new Error('Kurulum zaten çalışıyor.');
-    if (await json(this.configFile)) throw new Error('Bu cihazda bir hafıza zaten kurulu.');
+    const existingProfile = await json(this.configFile);
+    if (existingProfile && input?.action !== 'extend') throw new Error('Bu cihazda bir hafıza zaten kurulu.');
+    if (input?.action === 'extend' && !existingProfile) throw new Error('Genişletilecek hafıza bulunamadı.');
     if (!input || typeof input.name !== 'string' || !input.name.trim() || input.name.length > 100 || /[\r\n\x00-\x1f]/.test(input.name)) throw new Error('Geçerli bir ad girin.');
     if (!['new', 'existing'].includes(input.mode) || !['obsidian', 'markdown'].includes(input.storage)) throw new Error('Not ortamını seçin.');
     if (typeof input.vault !== 'string' || !path.isAbsolute(input.vault) || input.vault.length > 500 || /[\x00-\x1f]/.test(input.vault)) throw new Error('Tam klasör yolu gerekli.');
     if (!Array.isArray(input.hosts) || !input.hosts.length || input.hosts.some(x => typeof x !== 'string' || !Object.hasOwn(HOSTS, x)) || new Set(input.hosts).size !== input.hosts.length) throw new Error('En az bir desteklenen AI seçin.');
     const vault = path.resolve(input.vault);
+    if (existingProfile && (vault !== existingProfile.vault || input.mode !== 'existing' || input.storage !== existingProfile.storage || input.name.trim() !== existingProfile.name)) throw new Error('Bağlantı eklerken mevcut not ortamı değiştirilemez.');
+    if (existingProfile && input.hosts.some(id => existingProfile.hosts.some(h => h.id === id))) throw new Error('Bu AI bağlantısı zaten kurulu.');
     if (vault === path.parse(vault).root || vault === path.resolve(this.home)) throw new Error('Hafıza için ayrı bir klasör seçin.');
     await assertOrdinaryPath(vault);
     const hasVault = await exists(vault);
@@ -97,31 +105,57 @@ class MemorySetup {
     // Existing arbitrary Markdown vaults get a separate entry; no existing note is changed.
     if (input.mode === 'existing' && !await exists(path.join(vault, roles[3]))) {
       const entry = path.join(vault, 'Claudian Memory Protocol.md');
-      if (await exists(entry)) throw new Error('Claudian Memory Protocol.md zaten var; mevcut protokolü düzenlemeden önce bağlantı uyarlaması gerekiyor.');
-      files.push({ path: entry, content: definitions['Vault Protocol.md'], type: 'note' });
+      if (await exists(entry) && !existingProfile) throw new Error('Claudian Memory Protocol.md zaten var; mevcut protokolü düzenlemeden önce bağlantı uyarlaması gerekiyor.');
+      if (!await exists(entry)) files.push({ path: entry, content: definitions['Vault Protocol.md'], type: 'note' });
       roles.splice(0, roles.length, 'Claudian Memory Protocol.md');
     }
     const text = skill(vault, roles);
+    const reused = [];
+    const reusable = async target => {
+      const owned = existingProfile?.files.find(f => f.path === target);
+      if (!owned || !await exists(target) || hash(await fs.readFile(target)) !== owned.hash) return false;
+      if (!reused.some(f => f.path === target)) reused.push({ path: target, hash: owned.hash });
+      return true;
+    };
     for (const host of input.hosts) {
-      const target = path.join(this.home, ...HOSTS[host].parts, 'SKILL.md');
+      const target = path.join(this.home, ...HOSTS[host].parts, HOSTS[host].filename || 'SKILL.md');
       await assertOrdinaryPath(target);
-      if (await exists(target)) throw new Error(`${HOSTS[host].label}: claudian-memory skill'i zaten var. Mevcut skill korunuyor; başka bir AI seçin veya mevcut kurulumu ayrı değerlendirin.`);
-      files.push({ path: target, content: text, type: 'skill', host });
+      const reuseSkill = await reusable(target);
+      if (await exists(target) && !reuseSkill) throw new Error(`${HOSTS[host].label}: claudian-memory skill'i zaten var. Mevcut skill korunuyor; başka bir AI seçin veya mevcut kurulumu ayrı değerlendirin.`);
+      if (!reuseSkill && !files.some(f => f.path === target)) files.push({ path: target, content: text, type: 'skill', host });
       const rule = `\n<!-- claudian:memory:start -->\n## Claudian shared memory\n\nFor conversations involving the user's work, projects, learning, preferences or prior decisions, read the claudian-memory skill at ${JSON.stringify(target)} before substantive work. Use it without waiting for a slash command or a request to remember. Read relevant context and maintain durable decisions proactively in ${JSON.stringify(vault)}. Skip isolated generic facts. Respect host permissions and higher-priority instructions; never claim unavailable access. This is conversation-time memory, not a background agent.\n<!-- claudian:memory:end -->\n`;
       let rulePath = path.join(this.home, '.claude', 'rules', 'claudian-memory.md');
+      let header = '';
+      if (host === 'cursor') {
+        rulePath = path.join(this.home, '.cursor', 'rules', 'claudian-memory.mdc');
+        header = '---\ndescription: Claudian conversation memory\nalwaysApply: true\n---\n';
+      }
+      if (['gemini-cli', 'antigravity', 'antigravity-cli'].includes(host)) {
+        let filename = 'GEMINI.md';
+        if (host === 'gemini-cli') {
+          const settings = await json(path.join(this.home, '.gemini', 'settings.json'), {});
+          const names = settings.context?.fileName;
+          filename = Array.isArray(names) ? names[0] : names || filename;
+          if (typeof filename !== 'string' || !/^[A-Za-z0-9_.-]+\.md$/i.test(filename)) throw new Error('Gemini bağlam dosyası adı desteklenmiyor; ayarlar korundu.');
+        }
+        rulePath = path.join(this.home, '.gemini', filename);
+      }
       if (host === 'codex') {
         const override = path.join(this.codexHome, 'AGENTS.override.md');
         rulePath = await exists(override) && (await fs.readFile(override, 'utf8')).trim() ? override : path.join(this.codexHome, 'AGENTS.md');
       }
       await assertOrdinaryPath(rulePath);
+      // Google hosts share global context; install a single instruction pointing to a valid skill.
+      if (files.some(f => f.path === rulePath) || await reusable(rulePath)) continue;
       const previous = await exists(rulePath) ? await fs.readFile(rulePath, 'utf8') : null;
       if (previous?.includes('<!-- claudian:memory:start -->')) throw new Error('Başlangıç kuralı zaten var; mevcut bağlantı korunuyor.');
-      if (host === 'claude-code' && previous !== null) throw new Error('Claude başlangıç kuralı zaten var; mevcut dosya korunuyor.');
+      if (['claude-code', 'cursor'].includes(host) && previous !== null) throw new Error('Başlangıç kuralı zaten var; mevcut dosya korunuyor.');
+      if (rulePath.startsWith(path.join(this.home, '.gemini') + path.sep) && (previous || '').length + rule.length > 12000) throw new Error('Google başlangıç talimatı 12000 karakter sınırını aşıyor; mevcut dosya korundu.');
       if (previous !== null && Buffer.byteLength(previous + rule) > 24000) throw new Error('Global talimat dosyası çok büyük; otomatik kural eklenmedi.');
-      files.push({ path: rulePath, content: (previous || '') + rule, previous, expectedHash: previous === null ? null : hash(previous), type: 'rule', host });
+      files.push({ path: rulePath, content: header + (previous || '') + rule, previous, expectedHash: previous === null ? null : hash(previous), type: 'rule', host });
     }
     const plan = { id: crypto.randomUUID(), name: input.name.trim(), vault, mode: input.mode, storage: input.storage,
-      hosts: input.hosts, roles, files, protocolVersion: VERSION };
+      hosts: input.hosts, roles, files, reused, existingProfile, protocolVersion: VERSION };
     this.pending = plan;
     return { ...plan, files: files.map(({ content, previous, expectedHash, ...file }) => ({ ...file, operation: previous != null ? 'append' : 'create' })) };
   }
@@ -142,7 +176,8 @@ class MemorySetup {
       log = await fs.open(path.join(this.dataDir, 'logs', `setup-${plan.id}.jsonl`), 'wx');
       await send('prepare', 'running', 'Klasörler ve mevcut dosyalar kontrol ediliyor.');
       await assertOrdinaryPath(plan.vault);
-      if (await json(this.configFile)) throw new Error('Hafıza kaydı değişmiş; kurulum durduruldu.');
+      if (JSON.stringify(await json(this.configFile)) !== JSON.stringify(plan.existingProfile)) throw new Error('Hafıza kaydı değişmiş; kurulum durduruldu.');
+      for (const file of plan.reused) if (hash(await fs.readFile(file.path)) !== file.hash) throw new Error('Ortak bağlantı önizlemeden sonra değişti.');
       for (const file of plan.files) {
         await assertOrdinaryPath(file.path);
         if (file.expectedHash != null) {
@@ -182,8 +217,8 @@ class MemorySetup {
       for (const file of created) if (hash(await fs.readFile(file.path)) !== file.hash) throw new Error('Dosya doğrulaması başarısız.');
       await send('verify', 'done', 'Dosya bütünlüğü doğrulandı. AI içinden erişim ayrıca doğrulanacak.');
       const profile = { name: plan.name, vault: plan.vault, storage: plan.storage, protocolVersion: VERSION,
-        installedAt: new Date().toISOString(), hosts: plan.hosts.map(id => ({ id, label: HOSTS[id].label, status: 'configured' })),
-        files: created, mode: 'memory', companion: 'under-construction' };
+        installedAt: plan.existingProfile?.installedAt || new Date().toISOString(), hosts: [...(plan.existingProfile?.hosts || []), ...plan.hosts.map(id => ({ id, label: HOSTS[id].label, status: 'configured' }))],
+        files: [...(plan.existingProfile?.files || []), ...created], mode: 'memory', companion: 'under-construction' };
       check();
       await atomicJson(this.configFile, profile);
       // Profile is the commit point. No rollback may occur after it is durable.

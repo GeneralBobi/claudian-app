@@ -25,7 +25,7 @@ async function start() {
   }
   protocol.handle('claudian', request => {
     const url = new URL(request.url);
-    const allowed = { '/': 'index.html', '/index.html': 'index.html', '/setup.html': 'setup.html', '/styles.css': 'styles.css', '/fonts.css': 'fonts.css', '/renderer.js': 'renderer.js' };
+    const allowed = { '/': 'index.html', '/index.html': 'index.html', '/setup.html': 'setup.html', '/styles.css': 'styles.css', '/fonts.css': 'fonts.css', '/renderer.js': 'renderer.js', '/lottie.min.js': 'lottie.min.js', '/claudian-memory.json': 'claudian-memory.json' };
     if (url.hostname === 'app' && /^\/fonts\/[a-zA-Z0-9_.-]+\.woff2$/.test(url.pathname)) return net.fetch(pathToFileURL(path.join(__dirname, 'ui', url.pathname.slice(1))).href);
     if (url.hostname !== 'app' || !allowed[url.pathname]) return new Response('Not found', { status: 404 });
     return net.fetch(pathToFileURL(path.join(__dirname, 'ui', allowed[url.pathname])).href);
@@ -36,7 +36,7 @@ async function start() {
     if (win && !win.isDestroyed()) win.webContents.send('setup:event', event);
   } });
   const installed = Boolean((await core.snapshot()).profile);
-  win = new BrowserWindow({ width: installed ? 940 : 720, height: installed ? 760 : 640, minWidth: 680, minHeight: 560,
+  win = new BrowserWindow({ icon: path.join(__dirname, 'assets', 'icon.ico'), width: installed ? 940 : 720, height: installed ? 760 : 640, minWidth: 680, minHeight: 560,
     title: installed ? 'claudian.app' : 'claudian.app — Setup', backgroundColor: '#0e0e10', show: false, autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false, offscreen: smoke } });
   win.removeMenu();

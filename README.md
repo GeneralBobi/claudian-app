@@ -2,13 +2,13 @@
 
 Build your second brain. Keep it yours.
 
-A Windows application that prepares a local Markdown memory environment for Claude Code and Codex. The first-run setup discovers existing note locations and AI configuration folders, proposes settings, previews changes, and reports real installation progress. After setup, the application opens directly into the memory panel.
+A Windows application that prepares a local Markdown memory environment for Claude Code, Codex, Cursor, Gemini CLI, Antigravity and Antigravity CLI. The first-run setup discovers existing note locations and AI configuration folders, proposes settings, previews changes, and reports real installation progress. After setup, the application opens directly into the memory panel.
 
-**Preview software — version 0.3.0.** The proactive companion is under construction. This application does not run an always-on language model or require an API key.
+**Preview software — version 0.4.0.** The proactive companion is under construction. This application does not run an always-on language model or require an API key.
 
 ## Download
 
-[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/tag/v0.3.0) · [Website](https://claudian.app)
+[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/tag/v0.4.0) · [Website](https://claudian.app)
 
 The Windows x64 installer is unsigned. Windows may display an unknown-publisher warning. Windows VM install/uninstall coverage and production signing are not complete.
 

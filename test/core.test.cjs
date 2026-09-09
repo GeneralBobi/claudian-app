@@ -5,6 +5,77 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { MemorySetup } = require('../core.cjs');
+const allHosts = ['claude-code', 'codex', 'cursor', 'gemini-cli', 'antigravity', 'antigravity-cli'];
+
+test('six hosts share skill aliases and Google context without duplicate writes', async t => {
+  const {core, home, input} = await fixture(t);
+  input.hosts = allHosts;
+  const global = path.join(home, '.gemini', 'GEMINI.md');
+  await fs.mkdir(path.dirname(global), {recursive:true});
+  await fs.writeFile(global, '# Personal rules\nKeep this.\n');
+  const plan = await core.prepare(input);
+  assert.equal(new Set(plan.files.map(f => f.path)).size, plan.files.length);
+  assert.equal(plan.files.filter(f => f.type === 'skill').length, 4);
+  await core.install(plan.id);
+  assert.equal((await core.snapshot()).profile.hosts.length, 6);
+  const rule = await fs.readFile(global, 'utf8');
+  assert.ok(rule.startsWith('# Personal rules\nKeep this.\n'));
+  assert.equal(rule.split('<!-- claudian:memory:start -->').length, 2);
+  assert.match(await fs.readFile(path.join(home, '.cursor/rules/claudian-memory.mdc'), 'utf8'), /alwaysApply: true/);
+  assert.match(await fs.readFile(path.join(home, '.gemini/antigravity-cli/skills/claudian-memory.md'), 'utf8'), /name: claudian-memory/);
+});
+
+for (const host of allHosts.slice(2)) test(`${host} installs independently`, async t => {
+  const {core,input} = await fixture(t); input.hosts = [host];
+  const plan = await core.prepare(input);
+  assert.equal(plan.files.filter(f => f.type === 'skill').length, 1);
+  assert.equal(plan.files.filter(f => f.type === 'rule').length, 1);
+  await core.install(plan.id);
+  assert.equal((await core.snapshot()).profile.hosts[0].id, host);
+});
+
+test('add hosts to installed memory, reusing owned shared skill without changing notes', async t => {
+  const {core, input} = await fixture(t);
+  await core.install((await core.prepare(input)).id);
+  const note = path.join(input.vault, 'CLAUDIAN.md');
+  await fs.appendFile(note, '\nUser decision.\n');
+  const original = await fs.readFile(note, 'utf8');
+  const plan = await core.prepare({...input, action:'extend', mode:'existing', hosts:allHosts.slice(2)});
+  assert.equal(plan.files.filter(f => f.type === 'note').length, 0);
+  assert.equal(plan.reused.length, 1);
+  await core.install(plan.id);
+  assert.equal((await core.snapshot()).profile.hosts.length, 6);
+  assert.equal(await fs.readFile(note,'utf8'), original);
+});
+
+test('changed shared skill blocks adding another host', async t => {
+  const {core, home, input} = await fixture(t);
+  await core.install((await core.prepare(input)).id);
+  await fs.appendFile(path.join(home,'.agents/skills/claudian-memory/SKILL.md'), '\nChanged');
+  await assert.rejects(core.prepare({...input, action:'extend', mode:'existing', hosts:['cursor']}), /zaten var/);
+});
+
+test('Gemini custom context filename is respected without modifying settings', async t => {
+  const {core,home,input} = await fixture(t);
+  await fs.mkdir(path.join(home,'.gemini'));
+  const settings = JSON.stringify({context:{fileName:['CONTEXT.md']}});
+  await fs.writeFile(path.join(home,'.gemini/settings.json'), settings);
+  const plan = await core.prepare({...input, hosts:['gemini-cli','antigravity']});
+  assert.ok(plan.files.some(f => f.path === path.join(home,'.gemini/CONTEXT.md')));
+  assert.ok(plan.files.some(f => f.path === path.join(home,'.gemini/GEMINI.md')));
+  await core.install(plan.id);
+  assert.equal(await fs.readFile(path.join(home,'.gemini/settings.json'),'utf8'), settings);
+});
+
+test('discovery does not infer Cursor or Antigravity from a shared skills directory', async t => {
+  const {core,home} = await fixture(t);
+  await fs.mkdir(path.join(home,'.agents'));
+  await fs.mkdir(path.join(home,'.codex'));
+  const state = await core.snapshot();
+  assert.equal(state.hosts.find(h => h.id === 'codex').configurationFound,true);
+  assert.equal(state.hosts.find(h => h.id === 'cursor').configurationFound,false);
+  assert.equal(state.hosts.find(h => h.id === 'antigravity').configurationFound,false);
+});
 async function fixture(t, emit) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'claudian-test-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
@@ -94,7 +165,7 @@ test('invalid config is preserved rather than reset', async t => {
 test('discovery reuses registered Obsidian vault and detects host settings without writing', async t => {
   const { core, home, input } = await fixture(t);
   const settings = path.join(home, 'AppData', 'Roaming', 'obsidian'); await fs.mkdir(settings, { recursive:true });
-  await fs.mkdir(input.vault); await fs.mkdir(path.join(home,'.agents'));
+  await fs.mkdir(input.vault); await fs.mkdir(path.join(home,'.codex'));
   await fs.writeFile(path.join(settings,'obsidian.json'), JSON.stringify({vaults:{example:{path:input.vault}}}));
   const result = await core.discover();
   assert.equal(result.suggested.vault,input.vault); assert.equal(result.suggested.mode,'existing');

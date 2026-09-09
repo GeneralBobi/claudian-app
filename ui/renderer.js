@@ -1,9 +1,10 @@
 'use strict';
 const api = window.claudian, content = document.querySelector('#content'), errorBox = document.querySelector('#error');
+let extending = false;
 const setup = document.body.dataset.surface === 'setup';
 let state, discovery, draft, plan, busy = false, complete = false, events = [], view = 'home', prompt;
 const checkIcon = '<svg class="status-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17 4 12"/></svg>';
-const labels = { 'claude-code': 'Claude Code', codex: 'Codex' };
+const labels = { 'claude-code': 'Claude Code', codex: 'Codex', cursor: 'Cursor', 'gemini-cli': 'Gemini CLI', antigravity: 'Antigravity', 'antigravity-cli': 'Antigravity CLI' };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 const btn = (text, action, primary = false, extra = '') => `<button data-action="${action}" class="${primary ? 'primary' : ''}" ${extra}>${text}</button>`;
 function error(e) { errorBox.textContent = e.message; errorBox.hidden = false; }
@@ -27,25 +28,32 @@ function renderSetup() {
     return;
   }
   if (plan) {
-    content.innerHTML = `<h1>Hafızanı AI uygulamalarına bağla.</h1><p>Seçtiğin uygulamalar yeni konuşmalarda hafıza talimatını otomatik yüklesin. Slash komutu gerektirmez.</p><section class="consent"><div><h2>Bağlantının kapsamı</h2><ul><li>İlgili notları konuşma başında oku</li><li>Kalıcı karar ve tercihleri notlara işle</li><li>Güncel düzeltmelerle hafızayı güncelle</li></ul></div><div><h2>${draft.hosts.map(h => labels[h]).join(" · ")}</h2><p>Skill ve otomatik başlangıç kuralı kurulacak. Mevcut global talimatlara yalnız Claudian bölümü eklenir; önce yedek alınır.</p></div></section><details><summary>Oluşturulacak ${plan.files.length} dosyayı incele</summary><ul class="file-list">${plan.files.map(f => `<li>${f.operation === "append" ? "Ekleme · " : "Yeni · "}${esc(f.path)}</li>`).join('')}</ul></details><div class="summary"><div class="summary-row"><div>${draft.mode === 'existing' ? 'Mevcut hafıza' : 'Yeni hafıza'}<small>${esc(draft.vault)}</small></div><span class="tag">YEREL</span></div><div class="summary-row"><div>${draft.hosts.map(h => labels[h]).join(' · ')}</div><span class="tag">HAZIRLANACAK</span></div></div><p class="note">Bu onay yerel dosya kurulumudur; sağlayıcı hesabına OAuth erişimi vermez. AI içindeki klasör izinleri geçerlidir. Not içeriği seçtiğin sağlayıcıya iletilebilir.</p><div class="actions">${btn('Geri', 'back')}${btn('Onayla ve bağla →', 'install', true)}</div>`;
+    content.innerHTML = `<h1>Hafızanı AI uygulamalarına bağla.</h1><p>Seçtiğin uygulamalar yeni konuşmalarda hafıza talimatını otomatik yüklesin. Slash komutu gerektirmez.</p><details class="consent-details"><summary>Bağlantı ne yapacak?</summary><p>İlgili notları oku, kalıcı karar ve tercihleri işle, düzeltmelerle hafızayı güncelle. Seçtiğin uygulamalara skill ve başlangıç kuralı kurulacak; mevcut global talimata ekleme yapılmadan önce yedek alınacak.</p></details><details><summary>Oluşturulacak ${plan.files.length} dosyayı incele</summary><ul class="file-list">${plan.files.map(f => `<li>${f.operation === "append" ? "Ekleme · " : "Yeni · "}${esc(f.path)}</li>`).join('')}</ul></details><div class="summary"><div class="summary-row"><div>${draft.mode === 'existing' ? 'Mevcut hafıza' : 'Yeni hafıza'}<small>${esc(draft.vault)}</small></div><span class="tag">YEREL</span></div><div class="summary-row"><div>${draft.hosts.map(h => labels[h]).join(' · ')}</div><span class="tag">HAZIRLANACAK</span></div></div><p class="note">Bu onay yerel dosya kurulumudur; sağlayıcı hesabına OAuth erişimi vermez. AI içindeki klasör izinleri geçerlidir. Not içeriği seçtiğin sağlayıcıya iletilebilir.</p><div class="actions">${btn('Geri', 'back')}${btn('Onayla ve bağla →', 'install', true)}</div>`;
     return;
   }
   const found = draft.hosts.map(h => labels[h]).join(' · ');
-  content.innerHTML = `<h1>Claudian’ı hazırlayalım.</h1><p>Bu bilgisayardaki ortamı kontrol ettik. Önerilen ayarlarla devam edebilir veya ayrıntıları değiştirebilirsin.</p><div class="summary"><div class="summary-row"><div>${draft.mode === 'existing' ? 'Mevcut not ortamı bulundu' : 'Yeni hafıza klasörü'}<small>${esc(draft.vault)}</small></div><span class="tag">${draft.mode === 'existing' ? 'BULUNDU' : 'ÖNERİLEN'}</span></div><div class="summary-row"><div>${found || 'AI bağlantısı seçilmeli'}<small>${found ? 'Ayar klasörleri bulundu; erişim kurulumdan sonra doğrulanır.' : 'Aşağıdaki ayarlardan kullandığın AI uygulamasını seç.'}</small></div><span class="tag">${found ? 'TESPİT EDİLDİ' : 'SEÇİM GEREKLİ'}</span></div></div><details id="settings" ${found ? '' : 'open'}><summary>Ayarları değiştir</summary><div class="grid"><div><label for="name">Adın</label><input id="name" type="text" value="${esc(draft.name)}" maxlength="100"></div><div><label for="storage">Not ortamı</label><select id="storage"><option value="markdown" ${draft.storage === 'markdown' ? 'selected' : ''}>Markdown</option><option value="obsidian" ${draft.storage === 'obsidian' ? 'selected' : ''}>Obsidian</option></select></div></div><label for="vault">Not klasörü</label><div class="row"><input id="vault" type="text" value="${esc(draft.vault)}">${btn('Değiştir', 'folder')}</div><label for="mode">Klasör kullanımı</label><select id="mode"><option value="new" ${draft.mode === 'new' ? 'selected' : ''}>Yeni / boş klasör</option><option value="existing" ${draft.mode === 'existing' ? 'selected' : ''}>Mevcut notları koru</option></select>${state.hosts.map(h => `<label class="check"><input type="checkbox" name="host" value="${h.id}" ${draft.hosts.includes(h.id) ? 'checked' : ''}>${esc(h.label)}</label>`).join('')}</details><div class="actions"><span class="subtle">Yerel kurulum · Hesap gerekmez</span>${btn('Devam et →', 'preview', true)}</div>`;
+  content.innerHTML = `<h1>Claudian’ı hazırlayalım.</h1><p>Bu bilgisayardaki ortamı kontrol ettik. Önerilen ayarlarla devam edebilir veya ayrıntıları değiştirebilirsin.</p><div class="summary"><div class="summary-row"><div>${draft.mode === 'existing' ? 'Mevcut not ortamı bulundu' : 'Yeni hafıza klasörü'}<small>${esc(draft.vault)}</small></div><span class="tag">${draft.mode === 'existing' ? 'BULUNDU' : 'ÖNERİLEN'}</span></div><div class="summary-row"><div>${found || 'AI bağlantısı seçilmeli'}<small>${found ? 'Ayar klasörleri bulundu; erişim kurulumdan sonra doğrulanır.' : 'Aşağıdaki ayarlardan kullandığın AI uygulamasını seç.'}</small></div><span class="tag">${found ? 'TESPİT EDİLDİ' : 'SEÇİM GEREKLİ'}</span></div></div><details id="settings" ${found ? '' : 'open'}><summary>Ayarları değiştir</summary><div class="grid"><div><label for="name">Adın</label><input id="name" type="text" value="${esc(draft.name)}" maxlength="100"></div><div><label for="storage">Not ortamı</label><select id="storage"><option value="markdown" ${draft.storage === 'markdown' ? 'selected' : ''}>Markdown</option><option value="obsidian" ${draft.storage === 'obsidian' ? 'selected' : ''}>Obsidian</option></select></div></div><label for="vault">Not klasörü</label><div class="row"><input id="vault" type="text" value="${esc(draft.vault)}">${btn('Değiştir', 'folder')}</div><label for="mode">Klasör kullanımı</label><select id="mode"><option value="new" ${draft.mode === 'new' ? 'selected' : ''}>Yeni / boş klasör</option><option value="existing" ${draft.mode === 'existing' ? 'selected' : ''}>Mevcut notları koru</option></select>${state.hosts.filter(h => !extending || !state.profile.hosts.some(p => p.id === h.id)).map(h => `<label class="check"><input type="checkbox" name="host" value="${h.id}" ${draft.hosts.includes(h.id) ? 'checked' : ''}>${esc(h.label)}</label>`).join('')}</details><div class="actions"><span class="subtle">Yerel kurulum · Hesap gerekmez</span>${btn('Devam et →', 'preview', true)}</div>`;
 }
 async function renderPanel() {
   const p = state.profile;
   document.querySelectorAll('[data-view]').forEach(n => n.classList.toggle('active', n.dataset.view === view));
   if (view === 'companion') { content.innerHTML = `<section class="empty"><div class="caption">GELİŞTİRME AŞAMASINDA</div><div class="wordmark">claudian<span>.</span>app</div><h1>Bir asistandan, yol arkadaşına.</h1><p>Notlarını, zamanını ve değişen koşullarını birlikte anlayan; doğru anda yanında olan bir katman.</p><p>Bu sistem henüz hazır değil. Ortak hafıza bugün çalışıyor; yol arkadaşını bunun üzerine geliştiriyoruz.</p></section>`; return; }
   if (!p) { error(new Error('Hafıza kaydı bulunamadı; uygulamayı yeniden açın.')); return; }
-  const connections = `<section class="card"><h2>AI bağlantıları</h2>${p.hosts.map(h => `<div class="connection"><div class="row"><div><strong>${esc(h.label)}</strong><span class="badge">${h.status === 'verified' ? 'Erişim testi geçti' : 'Skill hazır'}</span></div><div>${btn('Test yönergesi', 'challenge', false, `data-host="${h.id}"`)} ${btn('Yanıtı kontrol et', 'verify', false, `data-host="${h.id}"`)}</div></div></div>`).join('')}<p class="note">AI uygulamasını yeniden aç. Test yönergesini bir konuşmada çalıştır; ardından yanıtı kontrol et.</p>${prompt ? `<pre class="prompt">${esc(prompt.prompt)}</pre>${btn('Kopyala', 'copy')}` : ''}</section>`;
+  const connections = `<section class="card"><h2>AI bağlantıları</h2>${state.hosts.some(h => !p.hosts.some(x => x.id === h.id)) ? btn("Bağlantı ekle", "add-hosts") : ""}${p.hosts.map(h => `<div class="connection"><div class="row"><div><strong>${esc(h.label)}</strong><span class="badge">${h.status === 'verified' ? 'Erişim testi geçti' : 'Skill hazır'}</span></div><div>${btn('Test yönergesi', 'challenge', false, `data-host="${h.id}"`)} ${btn('Yanıtı kontrol et', 'verify', false, `data-host="${h.id}"`)}</div></div></div>`).join('')}<p class="note">AI uygulamasını yeniden aç. Test yönergesini bir konuşmada çalıştır; ardından yanıtı kontrol et.</p>${prompt ? `<pre class="prompt">${esc(prompt.prompt)}</pre>${btn('Kopyala', 'copy')}` : ''}</section>`;
   content.innerHTML = `<h1>${view === 'home' ? 'Hafızan burada.' : 'Konuşmalar arasında süreklilik.'}</h1><p>Build your second brain. Keep it yours.</p>${connections}`;
   if (view === 'home') {
     let notes; try { notes = await api.activity(); } catch (e) { error(e); notes = []; }
     content.insertAdjacentHTML('beforeend', `<section class="card"><div class="row"><h2>Not ortamı</h2>${btn('Klasörü aç', 'vault')}</div><p class="note">${esc(p.vault)}</p>${notes.map(n => `<div class="note-row"><span>${esc(n.name)}</span><time>${new Date(n.modified).toLocaleDateString('tr-TR')}</time></div>`).join('')}<p class="note">Kök klasörde son değişen notlar. Sürüm geçmişi değildir.</p></section>`);
   }
 }
-function render() { return setup ? renderSetup() : renderPanel(); }
+function render() {
+  if (setup || extending) {
+    renderSetup();
+    if (extending) for (const el of document.querySelectorAll('#name, #vault, #storage, #mode, [data-action="folder"]')) el.disabled = true;
+    return;
+  }
+  return renderPanel();
+}
 document.addEventListener('click', async event => {
   const nav = event.target.closest('[data-view]');
   if (nav) { view = nav.dataset.view; await render(); return; }
@@ -53,6 +61,7 @@ document.addEventListener('click', async event => {
   target.disabled = true; errorBox.hidden = true;
   try {
     const action = target.dataset.action;
+    if (action === 'add-hosts') { extending = true; discovery = await api.discover(); draft = { name: state.profile.name, vault: state.profile.vault, storage: state.profile.storage, mode: 'existing', action: 'extend', hosts: discovery.suggested.hosts.filter(id => !state.profile.hosts.some(h => h.id === id)) }; await render(); }
     if (action === 'folder') { capture(); const folder = await api.chooseFolder(); if (folder) { draft.vault = folder; draft.mode = 'existing'; } render(); document.querySelector('#settings').open = true; }
     if (action === 'preview') { capture(); plan = await api.prepare(draft); render(); }
     if (action === 'back' || action === 'retry') { plan = null; events = []; render(); }
@@ -62,7 +71,7 @@ document.addEventListener('click', async event => {
       finally { busy = false; render(); }
     }
     if (action === 'cancel') await api.cancel();
-    if (action === 'enter') await api.enter();
+    if (action === 'enter') { if (extending) { extending = false; complete = false; events = []; plan = null; await render(); } else await api.enter(); }
     if (action === 'vault' || action === 'logs') await api.open(action);
     if (action === 'challenge') { prompt = await api.challenge(target.dataset.host); await render(); }
     if (action === 'verify') { const result = await api.verify(target.dataset.host); state = await api.snapshot(); await render(); if (!result.verified) throw new Error(result.message); }
