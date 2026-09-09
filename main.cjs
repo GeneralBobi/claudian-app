@@ -6,6 +6,8 @@ const os = require('node:os');
 const { pathToFileURL } = require('node:url');
 const { MemorySetup } = require('./core.cjs');
 const smoke = process.argv.includes('--smoke');
+if (smoke) app.setPath('userData', require('node:fs').mkdtempSync(path.join(os.tmpdir(), 'claudian-smoke-profile-')));
+if (smoke) app.disableHardwareAcceleration();
 const origin = 'claudian://app';
 let win, core;
 protocol.registerSchemesAsPrivileged([{ scheme: 'claudian', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
@@ -25,7 +27,7 @@ async function start() {
   }
   protocol.handle('claudian', request => {
     const url = new URL(request.url);
-    const allowed = { '/': 'index.html', '/index.html': 'index.html', '/setup.html': 'setup.html', '/styles.css': 'styles.css', '/fonts.css': 'fonts.css', '/renderer.js': 'renderer.js', '/lottie.min.js': 'lottie.min.js', '/claudian-memory.json': 'claudian-memory.json' };
+    const allowed = { '/': 'index.html', '/index.html': 'index.html', '/setup.html': 'setup.html', '/styles.css': 'styles.css', '/fonts.css': 'fonts.css', '/renderer.js': 'renderer.js', '/errors.js': 'errors.js', '/lottie.min.js': 'lottie.min.js', '/claudian-memory.json': 'claudian-memory.json' };
     if (url.hostname === 'app' && /^\/fonts\/[a-zA-Z0-9_.-]+\.woff2$/.test(url.pathname)) return net.fetch(pathToFileURL(path.join(__dirname, 'ui', url.pathname.slice(1))).href);
     if (url.hostname !== 'app' || !allowed[url.pathname]) return new Response('Not found', { status: 404 });
     return net.fetch(pathToFileURL(path.join(__dirname, 'ui', allowed[url.pathname])).href);
@@ -53,6 +55,24 @@ async function start() {
     });
   }
   handle('app:snapshot', () => core.snapshot());
+  handle('app:preferences', language => core.preferences(language));
+  handle('memory:connections', () => core.connections());
+  handle('memory:check-files', () => core.checkFiles());
+  handle('memory:remove', host => core.removeHost(host));
+  handle('memory:configuration', async (host, kind) => {
+    if (!['skill','rule'].includes(kind)) throw new Error('Invalid configuration type.');
+    const profile = (await core.snapshot()).profile;
+    const files = await core.hostPaths(profile,host);
+    if (smoke) return files[kind];
+    shell.showItemInFolder(files[kind]);
+  });
+  handle('memory:obsidian', async () => {
+    const profile = (await core.snapshot()).profile;
+    if (!profile) throw new Error('Memory is not configured.');
+    const uri = 'obsidian://open?vault=' + encodeURIComponent(profile.vault);
+    if (smoke) return uri;
+    await shell.openExternal(uri);
+  });
   handle('app:discover', () => core.discover());
   handle('app:enter', async () => {
     if (!(await core.snapshot()).profile) throw new Error('Önce kurulumu tamamlayın.');
@@ -76,6 +96,7 @@ async function start() {
   handle('app:open', async kind => {
     const target = kind === 'logs' ? path.join(core.dataDir, 'logs') : kind === 'vault' ? (await core.snapshot()).profile?.vault : null;
     if (!target) throw new Error('Klasör henüz hazır değil.');
+    if (smoke) return target;
     const error = await shell.openPath(target); if (error) throw new Error(error);
   });
   await win.loadURL(origin + (installed ? '/index.html' : '/setup.html'));

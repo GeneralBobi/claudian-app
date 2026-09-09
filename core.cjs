@@ -2,6 +2,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const {englishStarter, turkishSkill} = require('./protocol.cjs');
 const VERSION = '1.2.0';
 const HOSTS = {
   'claude-code': { label: 'Claude Code', parts: ['.claude', 'skills', 'claudian-memory'] },
@@ -97,7 +98,9 @@ class MemorySetup {
     if (input.mode === 'existing' && !hasVault) throw new Error('Mevcut not klasörü bulunamadı.');
     if (input.mode === 'new' && hasVault && (await fs.readdir(vault)).length) throw new Error('Yeni hafıza için boş veya yeni bir klasör seçin. Mevcut klasör için diğer seçeneği kullanın.');
     const files = [];
-    const definitions = starter(input.name.trim());
+    const language = input.language || existingProfile?.language || 'en';
+    if (!['en','tr'].includes(language)) throw new Error('Invalid language.');
+    const definitions = language === 'en' ? englishStarter(input.name.trim()) : starter(input.name.trim());
     if (input.mode === 'new') for (const [file, content] of Object.entries(definitions)) files.push({ path: path.join(vault, file), content, type: 'note' });
     const english = ['CLAUDIAN.md', 'Control Panel.md', 'Reminders.md', 'Vault Protocol.md'];
     const turkish = ['Start Here.md', 'Kontrol Paneli.md', 'Hatırlatıcılar.md', 'Vault Protokolü.md'];
@@ -109,7 +112,8 @@ class MemorySetup {
       if (!await exists(entry)) files.push({ path: entry, content: definitions['Vault Protocol.md'], type: 'note' });
       roles.splice(0, roles.length, 'Claudian Memory Protocol.md');
     }
-    const text = skill(vault, roles);
+    const text = language === 'tr' ? turkishSkill(vault, roles, VERSION) : skill(vault, roles);
+    const artifacts = {};
     const reused = [];
     const reusable = async target => {
       const owned = existingProfile?.files.find(f => f.path === target);
@@ -123,7 +127,8 @@ class MemorySetup {
       const reuseSkill = await reusable(target);
       if (await exists(target) && !reuseSkill) throw new Error(`${HOSTS[host].label}: claudian-memory skill'i zaten var. Mevcut skill korunuyor; başka bir AI seçin veya mevcut kurulumu ayrı değerlendirin.`);
       if (!reuseSkill && !files.some(f => f.path === target)) files.push({ path: target, content: text, type: 'skill', host });
-      const rule = `\n<!-- claudian:memory:start -->\n## Claudian shared memory\n\nFor conversations involving the user's work, projects, learning, preferences or prior decisions, read the claudian-memory skill at ${JSON.stringify(target)} before substantive work. Use it without waiting for a slash command or a request to remember. Read relevant context and maintain durable decisions proactively in ${JSON.stringify(vault)}. Skip isolated generic facts. Respect host permissions and higher-priority instructions; never claim unavailable access. This is conversation-time memory, not a background agent.\n<!-- claudian:memory:end -->\n`;
+      const instruction = language === 'tr' ? `Kullanıcının işleri, projeleri, öğrenimi, tercihleri veya önceki kararlarıyla ilgili konuşmalarda çalışmadan önce ${JSON.stringify(target)} konumundaki claudian-memory skill'ini oku. Slash komutu veya hatırlatma isteği bekleme. ${JSON.stringify(vault)} konumunda ilgili bağlamı oku ve kalıcı kararları kendiliğinden güncelle. Bağımsız genel bilgi sorularını atla. Uygulama izinlerine ve üst düzey talimatlara uy; olmayan erişimi var gösterme. Bu, konuşma içi hafızadır; arka plan ajanı değildir.` : `For conversations involving the user's work, projects, learning, preferences or prior decisions, read the claudian-memory skill at ${JSON.stringify(target)} before substantive work. Use it without waiting for a slash command or a request to remember. Read relevant context and maintain durable decisions proactively in ${JSON.stringify(vault)}. Skip isolated generic facts. Respect host permissions and higher-priority instructions; never claim unavailable access. This is conversation-time memory, not a background agent.`;
+      const rule = `\n<!-- claudian:memory:start -->\n## ${language === 'tr' ? 'Claudian ortak hafıza' : 'Claudian shared memory'}\n\n${instruction}\n<!-- claudian:memory:end -->\n`;
       let rulePath = path.join(this.home, '.claude', 'rules', 'claudian-memory.md');
       let header = '';
       if (host === 'cursor') {
@@ -145,6 +150,7 @@ class MemorySetup {
         rulePath = await exists(override) && (await fs.readFile(override, 'utf8')).trim() ? override : path.join(this.codexHome, 'AGENTS.md');
       }
       await assertOrdinaryPath(rulePath);
+      artifacts[host] = {skill: target, rule: rulePath};
       // Google hosts share global context; install a single instruction pointing to a valid skill.
       if (files.some(f => f.path === rulePath) || await reusable(rulePath)) continue;
       const previous = await exists(rulePath) ? await fs.readFile(rulePath, 'utf8') : null;
@@ -155,7 +161,7 @@ class MemorySetup {
       files.push({ path: rulePath, content: header + (previous || '') + rule, previous, expectedHash: previous === null ? null : hash(previous), type: 'rule', host });
     }
     const plan = { id: crypto.randomUUID(), name: input.name.trim(), vault, mode: input.mode, storage: input.storage,
-      hosts: input.hosts, roles, files, reused, existingProfile, protocolVersion: VERSION };
+      hosts: input.hosts, roles, files, reused, existingProfile, artifacts, language, protocolVersion: VERSION };
     this.pending = plan;
     return { ...plan, files: files.map(({ content, previous, expectedHash, ...file }) => ({ ...file, operation: previous != null ? 'append' : 'create' })) };
   }
@@ -207,7 +213,7 @@ class MemorySetup {
               await fs.rename(temp, file.path);
             } finally { await fs.rm(temp,{force:true}); }
           } else await fs.writeFile(file.path, file.content, { flag: 'wx' });
-          created.push({ path: file.path, hash: hash(file.content), backup });
+          created.push({ path: file.path, hash: hash(file.content), backup, type: file.type });
           await send(type === 'skill' ? 'skills' : 'notes', 'running', type === 'skill' ? `${HOSTS[file.host].label} skill'i yazıldı.` : `${path.basename(file.path)} hazır.`);
         }
         check();
@@ -216,8 +222,8 @@ class MemorySetup {
       check(); await send('verify', 'running', 'Yazılan dosyalar yeniden okunuyor.');
       for (const file of created) if (hash(await fs.readFile(file.path)) !== file.hash) throw new Error('Dosya doğrulaması başarısız.');
       await send('verify', 'done', 'Dosya bütünlüğü doğrulandı. AI içinden erişim ayrıca doğrulanacak.');
-      const profile = { name: plan.name, vault: plan.vault, storage: plan.storage, protocolVersion: VERSION,
-        installedAt: plan.existingProfile?.installedAt || new Date().toISOString(), hosts: [...(plan.existingProfile?.hosts || []), ...plan.hosts.map(id => ({ id, label: HOSTS[id].label, status: 'configured' }))],
+      const profile = { name: plan.name, vault: plan.vault, storage: plan.storage, language: plan.existingProfile?.language || plan.language, protocolVersion: VERSION,
+        installedAt: plan.existingProfile?.installedAt || new Date().toISOString(), hosts: [...(plan.existingProfile?.hosts || []), ...plan.hosts.map(id => ({ id, label: HOSTS[id].label, status: 'configured', artifacts: plan.artifacts[id] }))],
         files: [...(plan.existingProfile?.files || []), ...created], mode: 'memory', companion: 'under-construction' };
       check();
       await atomicJson(this.configFile, profile);
@@ -274,3 +280,4 @@ class MemorySetup {
   }
 }
 module.exports = { MemorySetup, HOSTS, VERSION, hash, assertOrdinaryPath };
+require('./management.cjs')(MemorySetup, {HOSTS, hash, assertOrdinaryPath, json, atomicJson, exists});

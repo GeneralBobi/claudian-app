@@ -7,6 +7,12 @@ const invoke = async (channel, ...args) => {
 };
 contextBridge.exposeInMainWorld('claudian', {
   snapshot: () => invoke('app:snapshot'),
+  preferences: language => invoke('app:preferences', language),
+  connections: () => invoke('memory:connections'),
+  checkFiles: () => invoke('memory:check-files'),
+  removeHost: host => invoke('memory:remove', host),
+  configuration: (host, kind) => invoke('memory:configuration', host, kind),
+  obsidian: () => invoke('memory:obsidian'),
   discover: () => invoke('app:discover'),
   enter: () => invoke('app:enter'),
   chooseFolder: () => invoke('app:folder'),

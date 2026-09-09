@@ -1,7 +1,7 @@
 {
   "name": "claudian-desktop",
   "productName": "Claudian",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "description": "Claudian ortak hafıza uygulaması",
   "author": "Claudian",
@@ -27,6 +27,8 @@
       "main.cjs",
       "preload.cjs",
       "core.cjs",
+      "protocol.cjs",
+      "management.cjs",
       "assets/icon.ico",
       "smoke.cjs",
       "ui/**/*",
@@ -40,6 +42,8 @@
     },
     "nsis": {
       "include": "assets/installer.nsh",
+      "installerLanguages": ["en_US", "tr_TR"],
+      "displayLanguageSelector": true,
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,

@@ -4,11 +4,11 @@ Build your second brain. Keep it yours.
 
 A Windows application that prepares a local Markdown memory environment for Claude Code, Codex, Cursor, Gemini CLI, Antigravity and Antigravity CLI. The first-run setup discovers existing note locations and AI configuration folders, proposes settings, previews changes, and reports real installation progress. After setup, the application opens directly into the memory panel.
 
-**Preview software — version 0.4.0.** The proactive companion is under construction. This application does not run an always-on language model or require an API key.
+**Preview software — version 0.5.0.** The proactive companion is under construction. This application does not run an always-on language model or require an API key.
 
 ## Download
 
-[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/tag/v0.4.0) · [Website](https://claudian.app)
+[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/tag/v0.5.0) · [Website](https://claudian.app)
 
 The Windows x64 installer is unsigned. Windows may display an unknown-publisher warning. Windows VM install/uninstall coverage and production signing are not complete.
 
@@ -60,3 +60,9 @@ The tests use isolated temporary directories. The Electron smoke test exercises 
 
 The source is public for review. An application redistribution license has not yet been assigned; third-party fonts retain their included licenses.
 
+
+## 0.5 connection management
+
+Choose English or Turkish in setup. New protocol and skill files use the selected language; existing notes are preserved. The panel provides removal, configuration file locations, Obsidian and folder shortcuts, and local integrity checks. Removal preserves notes and shared dependencies. Local checks do not claim to verify AI behavior.
+
+Validation: 26 core/management tests passed; English and Turkish DOM flows passed setup, installation, removal and reconnection. Native Electron window testing was blocked by a GPU/helper startup failure in the build environment and is not claimed as passed.

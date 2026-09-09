@@ -1,82 +1,45 @@
 'use strict';
-const api = window.claudian, content = document.querySelector('#content'), errorBox = document.querySelector('#error');
-let extending = false;
-const setup = document.body.dataset.surface === 'setup';
-let state, discovery, draft, plan, busy = false, complete = false, events = [], view = 'home', prompt;
-const checkIcon = '<svg class="status-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17 4 12"/></svg>';
-const labels = { 'claude-code': 'Claude Code', codex: 'Codex', cursor: 'Cursor', 'gemini-cli': 'Gemini CLI', antigravity: 'Antigravity', 'antigravity-cli': 'Antigravity CLI' };
-const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
-const btn = (text, action, primary = false, extra = '') => `<button data-action="${action}" class="${primary ? 'primary' : ''}" ${extra}>${text}</button>`;
-function error(e) { errorBox.textContent = e.message; errorBox.hidden = false; }
-function capture() {
-  if (!document.querySelector('#name')) return;
-  draft.name = document.querySelector('#name').value;
-  draft.vault = document.querySelector('#vault').value;
-  draft.mode = document.querySelector('#mode').value;
-  draft.storage = document.querySelector('#storage').value;
-  draft.hosts = [...document.querySelectorAll('[name=host]:checked')].map(x => x.value);
+const api=window.claudian, content=document.querySelector('#content'), errorBox=document.querySelector('#error');
+let state, draft, plan, language='en', extending=false, busy=false, complete=false, events=[], view='home', removing=null, notice='';
+const setup=document.body.dataset.surface==='setup';
+const t=(en,tr)=>language==='tr'?tr:en;
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const btn=(en,tr,action,primary=false,extra='')=>`<button data-action="${action}" class="${primary?'primary':''}" ${extra}>${t(en,tr)}</button>`;
+function error(e){errorBox.textContent=window.claudianError(e.message,language);errorBox.hidden=false;}
+function capture(){if(!document.querySelector('#name'))return;for(const k of ['name','vault','storage','mode'])draft[k]=document.querySelector('#'+k).value;draft.hosts=[...document.querySelectorAll('[name=host]:checked')].map(x=>x.value);draft.language=language;}
+function header(){document.documentElement.lang=language;document.querySelector('header .caption').innerHTML=`<label for="language">${t('Language','Dil')}</label><select id="language" ${busy?'disabled':''}><option value="en" ${language==='en'?'selected':''}>English</option><option value="tr" ${language==='tr'?'selected':''}>Türkçe</option></select>`;const nav=document.querySelector('nav');if(nav){nav.hidden=extending;nav.innerHTML=`<button data-view="home">${t('Memory','Hafıza')}</button><button data-view="connections">${t('Connections','Bağlantılar')}</button><button data-view="companion">${t('Companion · In development','Yol arkadaşı · Geliştiriliyor')}</button>`;nav.querySelectorAll('button').forEach(n=>n.classList.toggle('active',n.dataset.view===view));}}
+function renderSetup(){
+ if(complete){content.innerHTML=`<h1>${t('Your connections are configured.','Bağlantıların yapılandırıldı.')}</h1><p>${t('Restart your AI application to load its memory instructions. It may request permission to access your notes.','Hafıza talimatlarını yüklemek için AI uygulamanı yeniden aç. Notlarına erişim izni isteyebilir.')}</p><p class="path">${esc(state.profile.vault)}</p><div class="actions">${btn('Open folder','Klasörü aç','vault')}${btn('Open Claudian','Claudian’ı aç','enter',true)}</div>`;return;}
+ if(busy||events.length){const stages=[['prepare',t('Check installation','Kurulumu kontrol et')],['notes',t('Prepare notes','Notları hazırla')],['skills',t('Configure connections','Bağlantıları yapılandır')],['verify',t('Check saved files','Yazılan dosyaları kontrol et')]];const done=stages.filter(([id])=>events.some(e=>e.stage===id&&e.status==='done')).length;content.innerHTML=`<h1>${t('Setting up Claudian','Claudian kuruluyor')}</h1><progress max="4" value="${done}" aria-label="${t('Installation progress','Kurulum ilerlemesi')}"></progress>${stages.map(([id,title])=>`<div class="summary-row"><span>${title}</span><span>${events.some(e=>e.stage===id&&e.status==='done')?t('Done','Tamamlandı'):t('Waiting','Bekliyor')}</span></div>`).join('')}<p>${t('Detailed diagnostic messages are saved in the installation log.','Ayrıntılı tanılama mesajları kurulum günlüğüne kaydedilir.')}</p><div class="actions">${btn('Open log folder','Günlük klasörü','logs')}${busy?btn('Cancel','İptal et','cancel'):btn('Try again','Yeniden dene','retry')}</div>`;return;}
+ if(plan){content.innerHTML=`<h1>${t('Connect your memory','Hafızanı bağla')}</h1><p>${t('Your selected AI applications will receive a memory skill and startup instructions. Existing global instructions are backed up before changes.','Seçtiğin AI uygulamalarına hafıza skill’i ve başlangıç talimatları eklenecek. Değişiklikten önce mevcut global talimatlar yedeklenir.')}</p><p class="path">${esc(draft.vault)}</p><p>${draft.hosts.map(id=>esc(state.hosts.find(h=>h.id===id).label)).join(' · ')}</p><p>${t('New protocol language: English. Existing notes are preserved.','Yeni protokol dili: Türkçe. Mevcut notlar korunur.')}</p><details><summary>${t('Review file changes','Dosya değişikliklerini incele')} (${plan.files.length})</summary><ul class="file-list">${plan.files.map(f=>`<li>${esc(f.path)}</li>`).join('')}</ul></details><p>${t('This configures local files; it does not grant account access. You can remove connections later without deleting your notes.','Bu işlem yerel dosyaları yapılandırır; hesap erişimi vermez. Bağlantıları daha sonra notlarını silmeden kaldırabilirsin.')}</p><div class="actions">${btn('Back','Geri','back')}${btn('Approve and connect','Onayla ve bağla','install',true)}</div>`;return;}
+ const locked=extending?'disabled':'';
+ content.innerHTML=`<h1>${extending?t('Add a connection','Bağlantı ekle'):t('Set up your memory','Hafızanı hazırla')}</h1><p>${t('Choose where your notes live and which AI applications can use them.','Notlarının konumunu ve onları kullanacak AI uygulamalarını seç.')}</p><div class="grid"><div><label for="name">${t('Your name','Adın')}</label><input id="name" maxlength="100" value="${esc(draft.name)}" ${locked}></div><div><label for="storage">${t('Note application','Not uygulaması')}</label><select id="storage" ${locked}><option value="markdown" ${draft.storage==='markdown'?'selected':''}>Markdown</option><option value="obsidian" ${draft.storage==='obsidian'?'selected':''}>Obsidian</option></select></div></div><label for="vault">${t('Notes folder','Not klasörü')}</label><div class="row"><input id="vault" value="${esc(draft.vault)}" ${locked}>${btn('Browse','Gözat','folder',false,locked)}</div><label for="mode">${t('Folder usage','Klasör kullanımı')}</label><select id="mode" ${locked}><option value="new" ${draft.mode==='new'?'selected':''}>${t('New / empty folder','Yeni / boş klasör')}</option><option value="existing" ${draft.mode==='existing'?'selected':''}>${t('Use existing notes','Mevcut notları kullan')}</option></select><fieldset><legend>${t('AI applications','AI uygulamaları')}</legend>${state.hosts.filter(h=>!extending||!state.profile.hosts.some(p=>p.id===h.id)).map(h=>`<label class="check"><input name="host" type="checkbox" value="${h.id}" ${draft.hosts.includes(h.id)?'checked':''}>${esc(h.label)}</label>`).join('')}</fieldset><p>${t('The selected language applies to new protocol files. Existing notes will not be translated or replaced.','Seçilen dil yeni protokol dosyalarına uygulanır. Mevcut notlar çevrilmez veya değiştirilmez.')}</p><div class="actions">${extending?btn('Cancel','Vazgeç','exit-setup'):'<span></span>'}${btn('Continue','Devam et','preview',true)}</div>`;
 }
-function renderSetup() {
-  if (complete) {
-    content.innerHTML = `<div class="success-mark">${checkIcon}</div><h1>Kurulum tamamlandı.</h1><p>Hafıza skill’i ve otomatik başlangıç kuralları hazır.<br>AI uygulamanı yeniden açıp normal bir konuşmayla devam et.</p><div class="summary"><div class="summary-row"><div>Not ortamı<small>${esc(state.profile.vault)}</small></div><span class="tag">HAZIR</span></div><div class="summary-row"><div>${state.profile.hosts.map(h => esc(h.label)).join(' · ')}</div><span class="tag">SKILL HAZIR</span></div></div><p class="note">Özel komut gerekmez. AI klasör erişimi isterse seçtiğin not ortamına izin ver. Bağlantı testi yalnız bir kez kontrol içindir; günlük kullanım adımı değildir.</p><div class="actions">${btn('Günlüğü aç', 'logs')}${btn('Claudian’ı aç →', 'enter', true)}</div>`;
-    return;
-  }
-  if (busy || events.length) {
-    const stages = [['prepare','Kurulum alanını kontrol et'],['notes','Not ortamını hazırla'],['skills','AI bağlantılarını kur'],['verify','Kurulumu doğrula']];
-    const done = stages.filter(([s]) => events.some(e => e.stage === s && e.status === 'done')).length;
-    content.innerHTML = `<h1>Claudian kuruluyor.</h1><p>Bu yalnızca ilk açılışta yapılır. Gerekli dosyalar hazırlanıyor ve bağlantılar yapılandırılıyor.</p><div class="progress-title"><span>${done} / 4 adım tamamlandı</span><span>%${done * 25}</span></div><progress value="${done}" max="4" aria-label="Kurulum ilerlemesi"></progress>${stages.map(([id, title]) => { const e = [...events].reverse().find(e => e.stage === id); return `<div class="stage ${e?.status || ''}"><b>${e?.status === 'done' ? checkIcon : '—'}</b>${title}<time>${e ? (e.durationMs / 1000).toFixed(1) + ' sn' : 'Bekliyor'}</time></div>`; }).join('')}<details ${!busy ? 'open' : ''}><summary>Ayrıntıları göster</summary><pre>${events.map(e => `${e.time.slice(11,19)}  ${esc(e.message)}`).join('\n')}</pre></details><div class="actions">${btn('Günlük klasörü', 'logs')}${busy ? btn('İptal et', 'cancel') : btn('Yeniden dene', 'retry', true)}</div>`;
-    return;
-  }
-  if (plan) {
-    content.innerHTML = `<h1>Hafızanı AI uygulamalarına bağla.</h1><p>Seçtiğin uygulamalar yeni konuşmalarda hafıza talimatını otomatik yüklesin. Slash komutu gerektirmez.</p><details class="consent-details"><summary>Bağlantı ne yapacak?</summary><p>İlgili notları oku, kalıcı karar ve tercihleri işle, düzeltmelerle hafızayı güncelle. Seçtiğin uygulamalara skill ve başlangıç kuralı kurulacak; mevcut global talimata ekleme yapılmadan önce yedek alınacak.</p></details><details><summary>Oluşturulacak ${plan.files.length} dosyayı incele</summary><ul class="file-list">${plan.files.map(f => `<li>${f.operation === "append" ? "Ekleme · " : "Yeni · "}${esc(f.path)}</li>`).join('')}</ul></details><div class="summary"><div class="summary-row"><div>${draft.mode === 'existing' ? 'Mevcut hafıza' : 'Yeni hafıza'}<small>${esc(draft.vault)}</small></div><span class="tag">YEREL</span></div><div class="summary-row"><div>${draft.hosts.map(h => labels[h]).join(' · ')}</div><span class="tag">HAZIRLANACAK</span></div></div><p class="note">Bu onay yerel dosya kurulumudur; sağlayıcı hesabına OAuth erişimi vermez. AI içindeki klasör izinleri geçerlidir. Not içeriği seçtiğin sağlayıcıya iletilebilir.</p><div class="actions">${btn('Geri', 'back')}${btn('Onayla ve bağla →', 'install', true)}</div>`;
-    return;
-  }
-  const found = draft.hosts.map(h => labels[h]).join(' · ');
-  content.innerHTML = `<h1>Claudian’ı hazırlayalım.</h1><p>Bu bilgisayardaki ortamı kontrol ettik. Önerilen ayarlarla devam edebilir veya ayrıntıları değiştirebilirsin.</p><div class="summary"><div class="summary-row"><div>${draft.mode === 'existing' ? 'Mevcut not ortamı bulundu' : 'Yeni hafıza klasörü'}<small>${esc(draft.vault)}</small></div><span class="tag">${draft.mode === 'existing' ? 'BULUNDU' : 'ÖNERİLEN'}</span></div><div class="summary-row"><div>${found || 'AI bağlantısı seçilmeli'}<small>${found ? 'Ayar klasörleri bulundu; erişim kurulumdan sonra doğrulanır.' : 'Aşağıdaki ayarlardan kullandığın AI uygulamasını seç.'}</small></div><span class="tag">${found ? 'TESPİT EDİLDİ' : 'SEÇİM GEREKLİ'}</span></div></div><details id="settings" ${found ? '' : 'open'}><summary>Ayarları değiştir</summary><div class="grid"><div><label for="name">Adın</label><input id="name" type="text" value="${esc(draft.name)}" maxlength="100"></div><div><label for="storage">Not ortamı</label><select id="storage"><option value="markdown" ${draft.storage === 'markdown' ? 'selected' : ''}>Markdown</option><option value="obsidian" ${draft.storage === 'obsidian' ? 'selected' : ''}>Obsidian</option></select></div></div><label for="vault">Not klasörü</label><div class="row"><input id="vault" type="text" value="${esc(draft.vault)}">${btn('Değiştir', 'folder')}</div><label for="mode">Klasör kullanımı</label><select id="mode"><option value="new" ${draft.mode === 'new' ? 'selected' : ''}>Yeni / boş klasör</option><option value="existing" ${draft.mode === 'existing' ? 'selected' : ''}>Mevcut notları koru</option></select>${state.hosts.filter(h => !extending || !state.profile.hosts.some(p => p.id === h.id)).map(h => `<label class="check"><input type="checkbox" name="host" value="${h.id}" ${draft.hosts.includes(h.id) ? 'checked' : ''}>${esc(h.label)}</label>`).join('')}</details><div class="actions"><span class="subtle">Yerel kurulum · Hesap gerekmez</span>${btn('Devam et →', 'preview', true)}</div>`;
+async function renderPanel(){const p=state.profile;
+ if(view==='companion'){content.innerHTML=`<h1>${t('A companion, in time.','Zamanla, bir yol arkadaşı.')}</h1><p>${t('The proactive companion is in development. Today, Claudian configures shared memory for conversations in your AI applications.','Proaktif yol arkadaşı geliştirme aşamasında. Claudian bugün AI uygulamalarındaki konuşmalar için ortak hafızayı yapılandırır.')}</p>`;return;}
+ if(!p)throw new Error('Memory is not configured.');
+ const hosts=await api.connections();
+ content.innerHTML=`<h1>${view==='home'?t('Your memory','Hafızan'):t('AI connections','AI bağlantıları')}</h1>${notice?`<p role="status">${esc(notice)}</p>`:''}`;
+ if(view==='home'){const notes=await api.activity();content.insertAdjacentHTML('beforeend',`<section class="vault-section"><h2>${t('Notes folder','Not klasörü')}</h2><p class="path">${esc(p.vault)}</p><div class="toolbar">${btn('Open in Obsidian','Obsidian’da aç','obsidian',true)}${btn('Open folder','Klasörü aç','vault')}${btn('Check local files','Yerel dosyaları kontrol et','check')}</div><p>${t('Local checks confirm files and folder access, not AI model behavior.','Yerel kontrol, dosyaları ve klasör erişimini doğrular; AI modelinin davranışını doğrulamaz.')}</p><details><summary>${t('Recent notes','Son notlar')}</summary>${notes.length?notes.map(n=>`<div class="note-row"><span>${esc(n.name)}</span><time>${new Date(n.modified).toLocaleDateString(language)}</time></div>`).join(''):`<p>${t('No notes yet.','Henüz not yok.')}</p>`}</details></section>`);}
+ content.insertAdjacentHTML('beforeend',`<section><div class="toolbar"><h2>${t('Connections','Bağlantılar')}</h2>${state.hosts.some(h=>!p.hosts.some(x=>x.id===h.id))?btn('Add connection','Bağlantı ekle','add-hosts'):''}</div>${hosts.length?hosts.map(h=>`<div class="connection"><div class="row"><div><strong>${esc(h.label)}</strong><span class="badge">${h.status==='ready'?t('Files installed','Dosyalar kurulu'):t('Needs attention','Kontrol gerekli')}</span></div>${btn('Remove','Kaldır','remove',false,`data-host="${h.id}"`)}</div><details><summary>${t('Configuration','Yapılandırma')}</summary>${h.files.map(f=>`<div class="config-file"><span>${t(f.kind==='skill'?'Memory skill':'Startup instructions',f.kind==='skill'?'Hafıza skill’i':'Başlangıç talimatı')}</span><p class="path">${esc(f.path)}</p>${btn('Show file','Dosyayı göster','configuration',false,`data-host="${h.id}" data-kind="${f.kind}"`)}<span class="badge">${t({ready:'Installed',missing:'Missing',changed:'Modified',unreadable:'Unreadable'}[f.status],{ready:'Kurulu',missing:'Eksik',changed:'Değiştirilmiş',unreadable:'Okunamıyor'}[f.status])}</span></div>`).join('')}</details>${removing===h.id?`<div class="remove-confirm"><p>${t('Remove this connection? Your notes stay. Files still used by other connections are kept. Restart this AI application afterward.','Bu bağlantı kaldırılsın mı? Notların ve diğer bağlantıların kullandığı dosyalar korunur. Ardından bu AI uygulamasını yeniden başlat.')}</p>${btn('Keep connection','Bağlantıyı koru','dismiss-remove')}${btn('Remove connection','Bağlantıyı kaldır','confirm-remove',false,`data-host="${h.id}"`)}</div>`:''}</div>`).join(''):`<p>${t('No AI connections. Add one whenever you are ready; your notes are still here.','AI bağlantısı yok. Hazır olduğunda ekleyebilirsin; notların burada kalır.')}</p`}<p>${t('Restart your AI application after changing connections. Folder permissions remain under its control.','Bağlantıları değiştirdikten sonra AI uygulamanı yeniden başlat. Klasör izinleri o uygulamanın kontrolündedir.')}</p></section>`);
 }
-async function renderPanel() {
-  const p = state.profile;
-  document.querySelectorAll('[data-view]').forEach(n => n.classList.toggle('active', n.dataset.view === view));
-  if (view === 'companion') { content.innerHTML = `<section class="empty"><div class="caption">GELİŞTİRME AŞAMASINDA</div><div class="wordmark">claudian<span>.</span>app</div><h1>Bir asistandan, yol arkadaşına.</h1><p>Notlarını, zamanını ve değişen koşullarını birlikte anlayan; doğru anda yanında olan bir katman.</p><p>Bu sistem henüz hazır değil. Ortak hafıza bugün çalışıyor; yol arkadaşını bunun üzerine geliştiriyoruz.</p></section>`; return; }
-  if (!p) { error(new Error('Hafıza kaydı bulunamadı; uygulamayı yeniden açın.')); return; }
-  const connections = `<section class="card"><h2>AI bağlantıları</h2>${state.hosts.some(h => !p.hosts.some(x => x.id === h.id)) ? btn("Bağlantı ekle", "add-hosts") : ""}${p.hosts.map(h => `<div class="connection"><div class="row"><div><strong>${esc(h.label)}</strong><span class="badge">${h.status === 'verified' ? 'Erişim testi geçti' : 'Skill hazır'}</span></div><div>${btn('Test yönergesi', 'challenge', false, `data-host="${h.id}"`)} ${btn('Yanıtı kontrol et', 'verify', false, `data-host="${h.id}"`)}</div></div></div>`).join('')}<p class="note">AI uygulamasını yeniden aç. Test yönergesini bir konuşmada çalıştır; ardından yanıtı kontrol et.</p>${prompt ? `<pre class="prompt">${esc(prompt.prompt)}</pre>${btn('Kopyala', 'copy')}` : ''}</section>`;
-  content.innerHTML = `<h1>${view === 'home' ? 'Hafızan burada.' : 'Konuşmalar arasında süreklilik.'}</h1><p>Build your second brain. Keep it yours.</p>${connections}`;
-  if (view === 'home') {
-    let notes; try { notes = await api.activity(); } catch (e) { error(e); notes = []; }
-    content.insertAdjacentHTML('beforeend', `<section class="card"><div class="row"><h2>Not ortamı</h2>${btn('Klasörü aç', 'vault')}</div><p class="note">${esc(p.vault)}</p>${notes.map(n => `<div class="note-row"><span>${esc(n.name)}</span><time>${new Date(n.modified).toLocaleDateString('tr-TR')}</time></div>`).join('')}<p class="note">Kök klasörde son değişen notlar. Sürüm geçmişi değildir.</p></section>`);
-  }
-}
-function render() {
-  if (setup || extending) {
-    renderSetup();
-    if (extending) for (const el of document.querySelectorAll('#name, #vault, #storage, #mode, [data-action="folder"]')) el.disabled = true;
-    return;
-  }
-  return renderPanel();
-}
-document.addEventListener('click', async event => {
-  const nav = event.target.closest('[data-view]');
-  if (nav) { view = nav.dataset.view; await render(); return; }
-  const target = event.target.closest('[data-action]'); if (!target) return;
-  target.disabled = true; errorBox.hidden = true;
-  try {
-    const action = target.dataset.action;
-    if (action === 'add-hosts') { extending = true; discovery = await api.discover(); draft = { name: state.profile.name, vault: state.profile.vault, storage: state.profile.storage, mode: 'existing', action: 'extend', hosts: discovery.suggested.hosts.filter(id => !state.profile.hosts.some(h => h.id === id)) }; await render(); }
-    if (action === 'folder') { capture(); const folder = await api.chooseFolder(); if (folder) { draft.vault = folder; draft.mode = 'existing'; } render(); document.querySelector('#settings').open = true; }
-    if (action === 'preview') { capture(); plan = await api.prepare(draft); render(); }
-    if (action === 'back' || action === 'retry') { plan = null; events = []; render(); }
-    if (action === 'install') {
-      busy = true; events = []; render();
-      try { await api.install(plan.id); state = await api.snapshot(); complete = true; }
-      finally { busy = false; render(); }
-    }
-    if (action === 'cancel') await api.cancel();
-    if (action === 'enter') { if (extending) { extending = false; complete = false; events = []; plan = null; await render(); } else await api.enter(); }
-    if (action === 'vault' || action === 'logs') await api.open(action);
-    if (action === 'challenge') { prompt = await api.challenge(target.dataset.host); await render(); }
-    if (action === 'verify') { const result = await api.verify(target.dataset.host); state = await api.snapshot(); await render(); if (!result.verified) throw new Error(result.message); }
-    if (action === 'copy') { await api.copy(prompt.prompt); target.textContent = 'Kopyalandı'; }
-  } catch (e) { error(e); } finally { if (target.isConnected) target.disabled = false; }
-});
-api.onProgress(e => { events.push(e); if (busy) { const open = document.querySelector('details')?.open; renderSetup(); if (open) document.querySelector('details').open = true; } });
-(async () => { state = await api.snapshot(); if (setup) { discovery = await api.discover(); draft = discovery.suggested; } await render(); })().catch(error);
+async function render(){header();return setup||extending?renderSetup():renderPanel();}
+document.addEventListener('change',async e=>{if(e.target.id!=='language')return;try{capture();language=e.target.value;await api.preferences(language);plan=null;if(draft)draft.language=language;await render();}catch(err){error(err);}});
+document.addEventListener('click',async e=>{const nav=e.target.closest('[data-view]');if(nav&&!busy){view=nav.dataset.view;notice='';await render();return;}const el=e.target.closest('[data-action]');if(!el||busy&&el.dataset.action!=='cancel')return;el.disabled=true;errorBox.hidden=true;try{const a=el.dataset.action;
+ if(a==='add-hosts'){extending=true;plan=null;events=[];complete=false;const d=await api.discover();draft={name:state.profile.name,vault:state.profile.vault,storage:state.profile.storage,mode:'existing',action:'extend',language,hosts:d.suggested.hosts.filter(id=>!state.profile.hosts.some(h=>h.id===id))};await render();}
+ if(a==='folder'){capture();const folder=await api.chooseFolder();if(folder){draft.vault=folder;draft.mode='existing';}await render();}
+ if(a==='preview'){capture();plan=await api.prepare(draft);await render();}
+ if(a==='back'||a==='retry'){plan=null;events=[];await render();}
+ if(a==='install'){busy=true;events=[];await render();try{await api.install(plan.id);state=await api.snapshot();complete=true;}finally{busy=false;await render();}}
+ if(a==='cancel')await api.cancel();
+ if(a==='enter'||a==='exit-setup'){if(extending){extending=false;complete=false;events=[];plan=null;await render();}else await api.enter();}
+ if(a==='vault'||a==='logs')await api.open(a);
+ if(a==='obsidian')await api.obsidian();
+ if(a==='configuration')await api.configuration(el.dataset.host,el.dataset.kind);
+ if(a==='remove'){removing=el.dataset.host;await render();}
+ if(a==='dismiss-remove'){removing=null;await render();}
+ if(a==='confirm-remove'){busy=true;try{await api.removeHost(el.dataset.host);state=await api.snapshot();removing=null;notice=t('Connection removed. Your notes were preserved.','Bağlantı kaldırıldı. Notların korundu.');}finally{busy=false;}await render();}
+ if(a==='check'){const r=await api.checkFiles();notice=r.connections.every(h=>h.status==='ready')?t('Local files and folder access are ready.','Yerel dosyalar ve klasör erişimi hazır.'):t('Folder access works. Review connections marked “Needs attention”.','Klasör erişimi çalışıyor. “Kontrol gerekli” bağlantılarını incele.');await render();}
+ }catch(err){error(err);}finally{if(el.isConnected)el.disabled=false;}});
+api.onProgress(e=>{events.push(e);if(busy&&(setup||extending))renderSetup();});
+(async()=>{language=(await api.preferences()).language;state=await api.snapshot();if(setup){draft=(await api.discover()).suggested;draft.language=language;}await render();})().catch(error);
