@@ -32,7 +32,7 @@ async function start() {
   });
   session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
   session.defaultSession.setPermissionCheckHandler(() => false);
-  core = new MemorySetup({ home, dataDir: app.getPath('userData'), emit: event => {
+  core = new MemorySetup({ home, dataDir: app.getPath('userData'), codexHome: !smoke && process.env.CODEX_HOME ? process.env.CODEX_HOME : path.join(home, '.codex'), emit: event => {
     if (win && !win.isDestroyed()) win.webContents.send('setup:event', event);
   } });
   const installed = Boolean((await core.snapshot()).profile);

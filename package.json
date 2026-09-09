@@ -1,7 +1,7 @@
 {
   "name": "claudian-desktop",
   "productName": "Claudian",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Claudian ortak hafıza uygulaması",
   "author": "Claudian",
@@ -20,9 +20,23 @@
   "build": {
     "appId": "app.claudian.desktop",
     "asar": true,
-    "directories": { "output": "release" },
-    "files": ["main.cjs", "preload.cjs", "core.cjs", "smoke.cjs", "ui/**/*", "licenses/**/*", "package.json"],
-    "win": { "target": "nsis", "signExecutable": false, "icon": "assets/icon.ico" },
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "core.cjs",
+      "smoke.cjs",
+      "ui/**/*",
+      "licenses/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "signExecutable": false,
+      "icon": "assets/icon.ico"
+    },
     "nsis": {
       "oneClick": false,
       "perMachine": false,

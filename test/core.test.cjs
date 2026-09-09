@@ -16,7 +16,7 @@ test('new install uses exact custom path, both adapters, durable profile and liv
   const events = []; const { core, home, input } = await fixture(t, e => events.push(e));
   const plan = await core.prepare(input);
   assert.equal(await fs.readdir(home).then(x => x.length), 0, 'preview does not mutate host files');
-  assert.equal(plan.files.length, 7);
+  assert.equal(plan.files.length, 9);
   await core.install(plan.id);
   const snapshot = await core.snapshot();
   assert.equal(snapshot.profile.hosts.length, 2);
@@ -35,7 +35,7 @@ test('existing Turkish vault is preserved byte for byte', async t => {
   const note = path.join(input.vault, 'Vault Protokolü.md');
   await fs.writeFile(note, 'Özgün protokol\n');
   const plan = await core.prepare(input);
-  assert.equal(plan.files.length, 2);
+  assert.equal(plan.files.length, 4);
   await core.install(plan.id);
   assert.equal(await fs.readFile(note, 'utf8'), 'Özgün protokol\n');
   assert.deepEqual((await fs.readdir(input.vault)), ['Vault Protokolü.md']);
@@ -100,4 +100,28 @@ test('discovery reuses registered Obsidian vault and detects host settings witho
   assert.equal(result.suggested.vault,input.vault); assert.equal(result.suggested.mode,'existing');
   assert.deepEqual(result.suggested.hosts,['codex']); assert.equal((await core.snapshot()).profile,null);
   assert.deepEqual(await fs.readdir(input.vault),[]);
+});
+test('automatic startup preserves Codex instructions and backs up the original', async t => {
+  const { core, home, input } = await fixture(t);
+  const codexDir = path.join(home,'.codex'); await fs.mkdir(codexDir);
+  const instructions = path.join(codexDir,'AGENTS.override.md');
+  await fs.writeFile(instructions,'# Existing user instructions\nKeep my rules.\n');
+  const plan = await core.prepare(input);
+  assert.ok(plan.files.some(f=>f.path === instructions && f.operation === 'append'));
+  assert.ok(plan.files.every(f=> !('previous' in f) && !('content' in f)));
+  await core.install(plan.id);
+  const text = await fs.readFile(instructions,'utf8');
+  assert.ok(text.startsWith('# Existing user instructions\nKeep my rules.\n'));
+  assert.ok(text.includes('without waiting for a slash command'));
+  const profile = (await core.snapshot()).profile;
+  const changed = profile.files.find(f=>f.path === instructions);
+  assert.equal(await fs.readFile(changed.backup,'utf8'),'# Existing user instructions\nKeep my rules.\n');
+  assert.ok((await fs.readFile(path.join(home,'.claude','rules','claudian-memory.md'),'utf8')).includes('before substantive work'));
+});
+test('changed global instructions after preview are not overwritten', async t => {
+  const { core, home, input } = await fixture(t);
+  const dir=path.join(home,'.codex'); await fs.mkdir(dir);const file=path.join(dir,'AGENTS.md');
+  await fs.writeFile(file,'old');const plan=await core.prepare(input);await fs.writeFile(file,'new user rule');
+  await assert.rejects(core.install(plan.id),/talimat dosyası değişti/);
+  assert.equal(await fs.readFile(file,'utf8'),'new user rule');
 });

@@ -2,7 +2,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 const HOSTS = {
   'claude-code': { label: 'Claude Code', parts: ['.claude', 'skills', 'claudian-memory'] },
   codex: { label: 'Codex', parts: ['.agents', 'skills', 'claudian-memory'] },
@@ -50,8 +50,9 @@ function skill(vault, roles) {
 }
 
 class MemorySetup {
-  constructor({ home, dataDir, emit = () => {} }) {
+  constructor({ home, dataDir, emit = () => {}, codexHome = path.join(home, '.codex') }) {
     this.home = home; this.dataDir = dataDir; this.emit = emit;
+    this.codexHome = codexHome;
     this.configFile = path.join(dataDir, 'profile.json');
     this.pending = null; this.running = false; this.cancelled = false; this.events = [];
   }
@@ -106,11 +107,23 @@ class MemorySetup {
       await assertOrdinaryPath(target);
       if (await exists(target)) throw new Error(`${HOSTS[host].label}: claudian-memory skill'i zaten var. Mevcut skill korunuyor; başka bir AI seçin veya mevcut kurulumu ayrı değerlendirin.`);
       files.push({ path: target, content: text, type: 'skill', host });
+      const rule = `\n<!-- claudian:memory:start -->\n## Claudian shared memory\n\nFor conversations involving the user's work, projects, learning, preferences or prior decisions, read the claudian-memory skill at ${JSON.stringify(target)} before substantive work. Use it without waiting for a slash command or a request to remember. Read relevant context and maintain durable decisions proactively in ${JSON.stringify(vault)}. Skip isolated generic facts. Respect host permissions and higher-priority instructions; never claim unavailable access. This is conversation-time memory, not a background agent.\n<!-- claudian:memory:end -->\n`;
+      let rulePath = path.join(this.home, '.claude', 'rules', 'claudian-memory.md');
+      if (host === 'codex') {
+        const override = path.join(this.codexHome, 'AGENTS.override.md');
+        rulePath = await exists(override) && (await fs.readFile(override, 'utf8')).trim() ? override : path.join(this.codexHome, 'AGENTS.md');
+      }
+      await assertOrdinaryPath(rulePath);
+      const previous = await exists(rulePath) ? await fs.readFile(rulePath, 'utf8') : null;
+      if (previous?.includes('<!-- claudian:memory:start -->')) throw new Error('Başlangıç kuralı zaten var; mevcut bağlantı korunuyor.');
+      if (host === 'claude-code' && previous !== null) throw new Error('Claude başlangıç kuralı zaten var; mevcut dosya korunuyor.');
+      if (previous !== null && Buffer.byteLength(previous + rule) > 24000) throw new Error('Global talimat dosyası çok büyük; otomatik kural eklenmedi.');
+      files.push({ path: rulePath, content: (previous || '') + rule, previous, expectedHash: previous === null ? null : hash(previous), type: 'rule', host });
     }
     const plan = { id: crypto.randomUUID(), name: input.name.trim(), vault, mode: input.mode, storage: input.storage,
       hosts: input.hosts, roles, files, protocolVersion: VERSION };
     this.pending = plan;
-    return { ...plan, files: files.map(({ content, ...file }) => file) };
+    return { ...plan, files: files.map(({ content, previous, expectedHash, ...file }) => ({ ...file, operation: previous != null ? 'append' : 'create' })) };
   }
   cancel() { this.cancelled = true; }
   async install(id) {
@@ -132,7 +145,9 @@ class MemorySetup {
       if (await json(this.configFile)) throw new Error('Hafıza kaydı değişmiş; kurulum durduruldu.');
       for (const file of plan.files) {
         await assertOrdinaryPath(file.path);
-        if (await exists(file.path)) throw new Error('Önizlemeden sonra bir hedef dosya oluştu. Mevcut içerik korunuyor.');
+        if (file.expectedHash != null) {
+          if (!await exists(file.path) || hash(await fs.readFile(file.path)) !== file.expectedHash) throw new Error('Önizlemeden sonra talimat dosyası değişti. Yeniden inceleyin.');
+        } else if (await exists(file.path)) throw new Error('Önizlemeden sonra bir hedef dosya oluştu. Mevcut içerik korunuyor.');
       }
       await send('prepare', 'done', 'Mevcut dosyalar korundu.');
       check();
@@ -140,12 +155,24 @@ class MemorySetup {
       await fs.mkdir(plan.vault, { recursive: true });
       for (const type of ['note', 'skill']) {
         if (type === 'skill') await send('skills', 'running', 'Seçilen AI skill’leri hazırlanıyor.');
-        for (const file of plan.files.filter(f => f.type === type)) {
+        for (const file of plan.files.filter(f => type === 'skill' ? f.type !== 'note' : f.type === 'note')) {
           check();
           await assertOrdinaryPath(file.path);
           await fs.mkdir(path.dirname(file.path), { recursive: true });
-          await fs.writeFile(file.path, file.content, { flag: 'wx' });
-          created.push({ path: file.path, hash: hash(file.content) });
+          let backup = null;
+          if (file.expectedHash != null) {
+            if (hash(await fs.readFile(file.path)) !== file.expectedHash) throw new Error('Talimat dosyası kurulum sırasında değişti.');
+            backup = path.join(this.dataDir, 'backups', `${plan.id}-${file.host}.md`);
+            await fs.mkdir(path.dirname(backup), { recursive:true });
+            await fs.writeFile(backup, file.previous, { flag:'wx' });
+            const temp = `${file.path}.${plan.id}.tmp`;
+            try {
+              await fs.writeFile(temp, file.content, {flag:'wx'});
+              if (hash(await fs.readFile(file.path)) !== file.expectedHash) throw new Error('Talimat dosyası değişti; yeniden deneyin.');
+              await fs.rename(temp, file.path);
+            } finally { await fs.rm(temp,{force:true}); }
+          } else await fs.writeFile(file.path, file.content, { flag: 'wx' });
+          created.push({ path: file.path, hash: hash(file.content), backup });
           await send(type === 'skill' ? 'skills' : 'notes', 'running', type === 'skill' ? `${HOSTS[file.host].label} skill'i yazıldı.` : `${path.basename(file.path)} hazır.`);
         }
         check();
@@ -165,7 +192,9 @@ class MemorySetup {
     } catch (error) {
       // Roll back only this run's files, and only if their content is unchanged.
       for (const file of created.reverse()) {
-        try { if (hash(await fs.readFile(file.path)) === file.hash) await fs.unlink(file.path); } catch { /* preserve unknown changes */ }
+        try { if (hash(await fs.readFile(file.path)) === file.hash) {
+          if (file.backup) await fs.copyFile(file.backup, file.path); else await fs.unlink(file.path);
+        } } catch { /* preserve unknown changes */ }
       }
       try { await send('error', 'failed', error.message); } catch { /* original error wins */ }
       throw error;

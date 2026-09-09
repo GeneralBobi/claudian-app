@@ -4,11 +4,11 @@ Build your second brain. Keep it yours.
 
 A Windows application that prepares a local Markdown memory environment for Claude Code and Codex. The first-run setup discovers existing note locations and AI configuration folders, proposes settings, previews changes, and reports real installation progress. After setup, the application opens directly into the memory panel.
 
-**Preview software — version 0.2.0.** The proactive companion is under construction. This application does not run an always-on language model or require an API key.
+**Preview software — version 0.3.0.** The proactive companion is under construction. This application does not run an always-on language model or require an API key.
 
 ## Download
 
-[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/tag/v0.2.0) · [Website](https://claudian.app)
+[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/tag/v0.3.0) · [Website](https://claudian.app)
 
 The Windows x64 installer is unsigned. Windows may display an unknown-publisher warning. Windows VM install/uninstall coverage and production signing are not complete.
 
@@ -31,7 +31,7 @@ The installer is generated in `release/`. End users do not need Node.js, npm, a 
 - Discovers registered Obsidian vaults and common Claudian folders without changing them.
 - Detects Claude Code/Codex configuration directories and suggests connections. Directory detection is not proof of an installed or authenticated AI application.
 - Creates starter notes in a new empty folder, or preserves an existing note environment.
-- Installs a versioned memory skill with the exact chosen vault path.
+- Installs a versioned memory skill with the exact chosen vault path, plus automatic startup instructions in Claude Code user rules and Codex global AGENTS.md (or its active override). No slash command is required. Existing Codex rules are backed up before appending a scoped Claudian block.
 - Refuses to overwrite existing notes or a conflicting skill.
 - Records setup progress and verifies written files.
 - Separately guides a real read/write check in the chosen AI application.
@@ -59,3 +59,4 @@ Claude Desktop, ChatGPT, Notion, cloud synchronization, and the autonomous compa
 The tests use isolated temporary directories. The Electron smoke test exercises setup, the panel transition, persistent profile state, and renderer isolation. Its AI filesystem response is simulated; it does not invoke a paid model. Use `--smoke` with a packaged executable to exercise the same diagnostic flow in an isolated profile.
 
 The source is public for review. An application redistribution license has not yet been assigned; third-party fonts retain their included licenses.
+
