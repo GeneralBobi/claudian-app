@@ -101,17 +101,24 @@ class MemorySetup {
     const language = input.language || existingProfile?.language || 'en';
     if (!['en','tr'].includes(language)) throw new Error('Invalid language.');
     const definitions = language === 'en' ? englishStarter(input.name.trim()) : starter(input.name.trim());
-    if (input.mode === 'new') for (const [file, content] of Object.entries(definitions)) files.push({ path: path.join(vault, file), content, type: 'note' });
+    const empty = !hasVault || (await fs.readdir(vault)).length === 0;
+    if (input.mode === 'new' || empty) for (const [file, content] of Object.entries(definitions)) files.push({ path: path.join(vault, file), content, type: 'note' });
+    if (!existingProfile) {
+      const skeleton = require('./welcome.cjs').skeleton(language);
+      for (const [file, content] of Object.entries(skeleton)) if (!await exists(path.join(vault,file))) files.push({path:path.join(vault,file),content,type:'note'});
+      if(input.storage === 'obsidian' && !await exists(path.join(vault,'.obsidian','app.json'))) files.push({path:path.join(vault,'.obsidian','app.json'),content:'{}\n',type:'note'});
+    }
     const english = ['CLAUDIAN.md', 'Control Panel.md', 'Reminders.md', 'Vault Protocol.md'];
     const turkish = ['Start Here.md', 'Kontrol Paneli.md', 'Hatırlatıcılar.md', 'Vault Protokolü.md'];
     const roles = input.mode === 'existing' && await exists(path.join(vault, 'Vault Protokolü.md')) ? turkish : english;
     // Existing arbitrary Markdown vaults get a separate entry; no existing note is changed.
-    if (input.mode === 'existing' && !await exists(path.join(vault, roles[3]))) {
+    if (input.mode === 'existing' && !empty && !await exists(path.join(vault, roles[3]))) {
       const entry = path.join(vault, 'Claudian Memory Protocol.md');
       if (await exists(entry) && !existingProfile) throw new Error('Claudian Memory Protocol.md zaten var; mevcut protokolü düzenlemeden önce bağlantı uyarlaması gerekiyor.');
       if (!await exists(entry)) files.push({ path: entry, content: definitions['Vault Protocol.md'], type: 'note' });
       roles.splice(0, roles.length, 'Claudian Memory Protocol.md');
     }
+    if (!roles.includes('Claudian Home.md')) roles.push('Claudian Home.md');
     const text = language === 'tr' ? turkishSkill(vault, roles, VERSION) : skill(vault, roles);
     const artifacts = {};
     const reused = [];

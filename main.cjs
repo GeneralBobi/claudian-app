@@ -4,7 +4,10 @@ const path = require('node:path');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const { pathToFileURL } = require('node:url');
-const { MemorySetup } = require('./core.cjs');
+const { MemorySetup, assertOrdinaryPath } = require('./core.cjs');
+const {execFile,spawn}=require('node:child_process');
+const runFile=require('node:util').promisify(execFile);
+const welcome=require('./welcome.cjs');
 const smoke = process.argv.includes('--smoke');
 if (smoke) app.setPath('userData', require('node:fs').mkdtempSync(path.join(os.tmpdir(), 'claudian-smoke-profile-')));
 if (smoke) app.disableHardwareAcceleration();
@@ -70,13 +73,33 @@ async function start() {
   handle('memory:obsidian', async () => {
     const profile = (await core.snapshot()).profile;
     if (!profile) throw new Error('Memory is not configured.');
-    const registry = await fs.readFile(path.join(app.getPath('appData'),'obsidian','obsidian.json'),'utf8').then(JSON.parse).catch(()=>({vaults:{}}));
-    const normalize = value => path.resolve(value).replace(/[\\/]+$/,'').toLowerCase();
-    const match = Object.entries(registry.vaults || {}).find(([,v])=>v.path && normalize(v.path)===normalize(profile.vault));
-    const uri = match ? 'obsidian://open?vault=' + encodeURIComponent(match[0]) : 'obsidian://choose-vault';
+    if (smoke) return 'obsidian://open?path='+encodeURIComponent(path.join(profile.vault,'Claudian Home.md'));
+    await welcome.ensure(profile,assertOrdinaryPath);
+    const processes=await runFile('tasklist.exe',['/FI','IMAGENAME eq Obsidian.exe','/FO','CSV','/NH'],{windowsHide:true});
+    const result=await require('./obsidian.cjs').register(path.join(app.getPath('appData'),'obsidian','obsidian.json'),profile.vault,{running:/obsidian\.exe/i.test(processes.stdout),assertPath:assertOrdinaryPath});
+    if(result.needsClose)return result;
+    const uri = 'obsidian://open?vault=' + encodeURIComponent(result.id) + '&file=Claudian%20Home';
     if (smoke) return uri;
     await shell.openExternal(uri);
-    return {needsRegistration: !match};
+    return result;
+  });
+  handle('memory:starter',async()=>welcome.ensure((await core.snapshot()).profile,assertOrdinaryPath));
+  handle('memory:introduction',async answers=>welcome.save((await core.snapshot()).profile,answers,assertOrdinaryPath));
+  handle('memory:begin-ai',async host=>{
+    const profile=(await core.snapshot()).profile;
+    if(!profile?.hosts.some(h=>h.id===host))throw new Error('Choose an installed connection.');
+    const command={codex:'codex','claude-code':'claude'}[host];
+    if(!command)throw new Error('Direct launch currently supports Claude Code and Codex CLI.');
+    const found=await runFile('where.exe',[command],{windowsHide:true}).catch(()=>({stdout:''}));
+    const executable=found.stdout.split(/\r?\n/).find(p=>/\.exe$/i.test(p.trim()))?.trim();
+    if(!executable)throw new Error(command+' native CLI executable was not found. Install its native Windows CLI or use the introduction questions here.');
+    await welcome.ensure(profile,assertOrdinaryPath);
+    const quote=s=>"'"+s.replace(/'/g,"''")+"'";
+    const script=`Set-Location -LiteralPath ${quote(profile.vault)}\n& ${quote(executable)} ${quote(welcome.prompt(profile))}`;
+    const encoded=Buffer.from(script,'utf16le').toString('base64');
+    // A visible interactive session is the action requested by the user; keep provider permission prompts.
+    await new Promise((resolve,reject)=>{const child=spawn('powershell.exe',['-NoProfile','-NoExit','-EncodedCommand',encoded],{detached:true,stdio:'ignore',windowsHide:false});child.once('error',reject);child.once('spawn',()=>{child.unref();resolve();});});
+    return {launched:true};
   });
   handle('app:discover', () => core.discover());
   handle('app:enter', async () => {

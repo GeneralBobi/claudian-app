@@ -87,7 +87,7 @@ test('new install uses exact custom path, both adapters, durable profile and liv
   const events = []; const { core, home, input } = await fixture(t, e => events.push(e));
   const plan = await core.prepare(input);
   assert.equal(await fs.readdir(home).then(x => x.length), 0, 'preview does not mutate host files');
-  assert.equal(plan.files.length, 9);
+  assert.equal(plan.files.length, 15);
   await core.install(plan.id);
   const snapshot = await core.snapshot();
   assert.equal(snapshot.profile.hosts.length, 2);
@@ -97,7 +97,7 @@ test('new install uses exact custom path, both adapters, durable profile and liv
     assert.ok(text.includes(JSON.stringify(input.vault)));
   }
   assert.ok(events.some(e => e.stage === 'complete'));
-  assert.equal((await core.activity()).length, 5);
+  assert.equal((await core.activity()).length, 10);
   await assert.rejects(core.prepare(input), /zaten kurulu/);
 });
 test('existing Turkish vault is preserved byte for byte', async t => {
@@ -106,10 +106,10 @@ test('existing Turkish vault is preserved byte for byte', async t => {
   const note = path.join(input.vault, 'Vault Protokolü.md');
   await fs.writeFile(note, 'Özgün protokol\n');
   const plan = await core.prepare(input);
-  assert.equal(plan.files.length, 4);
+  assert.equal(plan.files.length, 10);
   await core.install(plan.id);
   assert.equal(await fs.readFile(note, 'utf8'), 'Özgün protokol\n');
-  assert.deepEqual((await fs.readdir(input.vault)), ['Vault Protokolü.md']);
+  assert.ok((await fs.readdir(input.vault)).includes('Claudian Home.md'));
 });
 test('unknown existing Markdown vault gets separate protocol, preserves other notes', async t => {
   const { core, input } = await fixture(t); input.mode = 'existing';
