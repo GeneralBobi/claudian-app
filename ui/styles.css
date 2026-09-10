@@ -10,3 +10,5 @@ header .caption{display:flex;align-items:center;gap:10px;letter-spacing:0;font-f
 
 .companion-heading{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.companion-heading p{margin-bottom:12px}.companion-heading .toolbar{margin:0;flex-shrink:0}body.companion-active{height:100vh;overflow:hidden}#companion-slot{min-height:160px;padding-top:16px}.companion-active main{padding-top:16px}@media(max-width:780px){.companion-heading{display:block}.companion-heading .toolbar{margin-bottom:12px}}
 textarea{width:100%;box-sizing:border-box;resize:vertical;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:12px;font:inherit;margin:8px 0 16px}.introduction{margin:24px 0;padding:20px 0;border-top:1px solid var(--line)}.introduction details{margin:18px 0}.introduction summary{cursor:pointer}.introduction button{margin:8px 8px 0 0}
+
+#scan-message{width:100%;box-sizing:border-box;resize:vertical;min-height:240px;padding:16px;background:#161618;color:#f2f0eb;border:1px solid #353538;border-radius:10px;line-height:1.6;font:inherit;}

@@ -4,11 +4,11 @@ Build your second brain. Keep it yours.
 
 A Windows application that prepares a local Markdown memory environment for Claude Code, Codex, Cursor, Gemini CLI, Antigravity and Antigravity CLI. The first-run setup discovers existing note locations and AI configuration folders, proposes settings, previews changes, and reports real installation progress. After setup, the application opens directly into the memory panel.
 
-**Preview software — version 0.9.0.** The proactive companion is under construction. This application does not run an always-on language model or require an API key.
+**Preview software — version 0.10.0.** The proactive companion is under construction. This application does not run an always-on language model or require an API key.
 
 ## Download
 
-[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/tag/v0.9.0) · [Website](https://claudian.app)
+[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/tag/v0.10.0) · [Website](https://claudian.app)
 
 The Windows x64 installer is unsigned. Windows may display an unknown-publisher warning. Windows VM install/uninstall coverage and production signing are not complete.
 
@@ -82,3 +82,8 @@ Managed files migrate on launch. Customized notes are preserved; conflicting con
 The starter-repair button and introduction questionnaire/AI launcher have been removed. Existing personal introduction notes are preserved. Manual skill invocation: Claude Code and Cursor /claudian-memory; Codex $claudian-memory. Automatic use is requested by host startup rules, subject to host capabilities and permissions.
 
 35 isolated tests passed. A real 0.8-generated fixture migrated successfully to protocol 2.0. No paid model or full native end-to-end test was run.
+
+## Optional context review
+
+Review the prepared message in the desktop app and press Enter to launch an interactive native Codex CLI or Claude Code session. Other configured hosts do not yet support direct message launch. This uses the selected provider account and its permissions; it cannot retrieve inaccessible chat histories. The companion tab remains an under-development placeholder.
+

@@ -1,6 +1,6 @@
 'use strict';
 const fs=require('node:fs');const path=require('node:path');
-const VERSION='2.0.0';
+const VERSION='2.1.0';
 const protocol=language=>fs.readFileSync(path.join(__dirname,'policies',language==='tr'?'protocol-tr.md':'protocol-en.md'),'utf8');
 const instruction=(target,vault,language)=>language==='tr'
  ? `Her yeni konuşmanın başında ${JSON.stringify(target)} konumundaki claudian-memory skill’ini sessizce oku. ${JSON.stringify(vault)} seçili hafızadır. İlgili konu varsa giriş haritasından gerekli notları seç; genel bağımsız soruda kişisel tarama yapma. Slash komutu bekleme. Kalıcı bilgiyi yazmadan önce Claudian Universal Protocol.md dosyasını oku; ADD/UPDATE/INVALIDATE/DELETE/NO_OP kurallarını uygula. Başarılı rutin hafıza işlemlerini duyurma; kayda değer bilgi kaydedilemediyse kısaca belirt. Sistem/uygulama izinleri geçerlidir; bu arka plan ajanı değildir.`

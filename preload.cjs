@@ -6,6 +6,9 @@ const invoke = async (channel, ...args) => {
   return result.value;
 };
 contextBridge.exposeInMainWorld('claudian', {
+  downloadObsidian: () => invoke('app:download-obsidian'),
+  scanPreview: () => invoke('memory:scan-preview'),
+  scanSend: (id,prompt) => invoke('memory:scan-send',id,prompt),
   repair: host => invoke('memory:repair',host),
   updates: () => invoke('app:updates'),
   downloadUpdate: () => invoke('app:download-update'),

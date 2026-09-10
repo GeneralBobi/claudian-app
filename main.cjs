@@ -62,6 +62,14 @@ async function start() {
 
   handle('app:preferences', language => core.preferences(language));
   handle('memory:connections', () => core.connections());
+  handle('memory:scan-preview', async () => {
+    const profile=(await core.snapshot()).profile;if(!profile)throw new Error('Memory is not configured.');
+    const scan=require('./scan.cjs');return {prompt:scan.prompt(profile),hosts:await Promise.all(profile.hosts.map(async h=>({...h,available:!!await scan.resolve(h.id)})))};
+  });
+  handle('memory:scan-send', async (id,prompt) => {
+    const profile=(await core.snapshot()).profile;if(!profile)throw new Error('Memory is not configured.');
+    return require('./scan.cjs').launch(profile,id,prompt,app.getPath('userData'));
+  });
   handle('memory:repair', host => core.upgrade(host));
   handle('app:updates', async () => {
     const response=await net.fetch('https://api.github.com/repos/GeneralBobi/claudian-app/releases/latest',{headers:{'Accept':'application/vnd.github+json'},signal:AbortSignal.timeout(12000)});
@@ -81,10 +89,13 @@ async function start() {
     if (smoke) return files[kind];
     shell.showItemInFolder(files[kind]);
   });
+  handle('app:download-obsidian', () => shell.openExternal('https://obsidian.md/download'));
   handle('memory:obsidian', async () => {
     const profile = (await core.snapshot()).profile;
     if (!profile) throw new Error('Memory is not configured.');
     if (smoke) return 'obsidian://open?path='+encodeURIComponent(path.join(profile.vault,'Claudian Home.md'));
+    try { await runFile('reg.exe',['query','HKCR\\obsidian\\shell\\open\\command'],{windowsHide:true}); }
+    catch { return {notInstalled:true}; }
     await welcome.ensure(profile,assertOrdinaryPath);
     const processes=await runFile('tasklist.exe',['/FI','IMAGENAME eq Obsidian.exe','/FO','CSV','/NH'],{windowsHide:true});
     const result=await require('./obsidian.cjs').register(path.join(app.getPath('appData'),'obsidian','obsidian.json'),profile.vault,{running:/obsidian\.exe/i.test(processes.stdout),assertPath:assertOrdinaryPath});
