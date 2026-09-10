@@ -4,11 +4,11 @@ Build your second brain. Keep it yours.
 
 A Windows application that prepares a local Markdown memory environment for Claude Code, Codex, Cursor, Gemini CLI, Antigravity and Antigravity CLI. The first-run setup discovers existing note locations and AI configuration folders, proposes settings, previews changes, and reports real installation progress. After setup, the application opens directly into the memory panel.
 
-**Preview software — version 0.8.0.** The proactive companion is under construction. This application does not run an always-on language model or require an API key.
+**Preview software — version 0.9.0.** The proactive companion is under construction. This application does not run an always-on language model or require an API key.
 
 ## Download
 
-[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/tag/v0.8.0) · [Website](https://claudian.app)
+[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/tag/v0.9.0) · [Website](https://claudian.app)
 
 The Windows x64 installer is unsigned. Windows may display an unknown-publisher warning. Windows VM install/uninstall coverage and production signing are not complete.
 
@@ -34,7 +34,7 @@ The installer is generated in `release/`. End users do not need Node.js, npm, a 
 - Installs a versioned memory skill with the exact chosen vault path, plus automatic startup instructions in Claude Code user rules and Codex global AGENTS.md (or its active override). No slash command is required. Existing Codex rules are backed up before appending a scoped Claudian block.
 - Refuses to overwrite existing notes or a conflicting skill.
 - Records setup progress and verifies written files.
-- Separately guides a real read/write check in the chosen AI application.
+- Reports local file health without claiming model behaviour has been verified.
 
 The application does not install Obsidian, Claude Code, or Codex themselves. Reading notes in an AI application is subject to that application's permissions and provider data policies.
 
@@ -73,12 +73,12 @@ The embedded companion panel has been withdrawn pending a native redesign. The M
 
 Validation: 26 core and management tests passed, and the Windows installer was built. Full native end-to-end validation was not repeated for this release.
 
-## Starting memory in 0.8
+## Protocol and maintenance in 0.9
 
-Empty selected folders now receive the full starter set. Linked Home, About me, Projects, Decisions and Lessons notes are added without overwriting existing notes. Older installations can prepare missing starter notes from Memory.
+Protocol 2.0 defines admission criteria, quiet retrieval, targeted updates, invalidation, forgetting, source and validity metadata, and no-op decisions. It is a behavioural contract; it is not an enforced semantic memory engine. Read the English or Turkish protocol in policies/.
 
-Optional introduction questions save source-labelled user answers. Native Claude Code and Codex CLI executables can launch an interactive introduction with normal permissions and account usage. No automatic access to other applications' private chat histories is claimed. Other hosts can consume the resulting notes through their existing connection.
+Managed files migrate on launch. Customized notes are preserved; conflicting configuration is surfaced rather than overwritten. Configuration offers Repair with backups. Unrelated global instructions survive repair and later connection removal. The app provides release checking and a download link.
 
-Open in Obsidian registers new vaults after Obsidian is closed, preserving a backup of the registry and existing registrations. Existing registered vaults open directly. Semantic brain-pack merging remains future work.
+The starter-repair button and introduction questionnaire/AI launcher have been removed. Existing personal introduction notes are preserved. Manual skill invocation: Claude Code and Cursor /claudian-memory; Codex $claudian-memory. Automatic use is requested by host startup rules, subject to host capabilities and permissions.
 
-Validation: 30 isolated tests passed. Paid model sessions were not launched for verification.
+35 isolated tests passed. A real 0.8-generated fixture migrated successfully to protocol 2.0. No paid model or full native end-to-end test was run.

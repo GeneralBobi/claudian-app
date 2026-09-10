@@ -1,7 +1,7 @@
 {
   "name": "claudian-desktop",
   "productName": "Claudian",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "private": true,
   "description": "Claudian ortak hafıza uygulaması",
   "author": "Claudian",
@@ -36,7 +36,10 @@
       "licenses/**/*",
       "package.json",
       "welcome.cjs",
-      "obsidian.cjs"
+      "obsidian.cjs",
+      "upgrade.cjs",
+      "policy.cjs",
+      "policies/**/*"
     ],
     "win": {
       "target": "nsis",

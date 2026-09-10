@@ -3,7 +3,8 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const {englishStarter, turkishSkill} = require('./protocol.cjs');
-const VERSION = '1.2.0';
+const policy = require('./policy.cjs');
+const VERSION = policy.VERSION;
 const HOSTS = {
   'claude-code': { label: 'Claude Code', parts: ['.claude', 'skills', 'claudian-memory'] },
   codex: { label: 'Codex', parts: ['.agents', 'skills', 'claudian-memory'] },
@@ -101,6 +102,8 @@ class MemorySetup {
     const language = input.language || existingProfile?.language || 'en';
     if (!['en','tr'].includes(language)) throw new Error('Invalid language.');
     const definitions = language === 'en' ? englishStarter(input.name.trim()) : starter(input.name.trim());
+    definitions['Vault Protocol.md'] = policy.protocol(language);
+    if(!existingProfile && !await exists(path.join(vault,'Claudian Universal Protocol.md'))) files.push({path:path.join(vault,'Claudian Universal Protocol.md'),content:policy.protocol(language),type:'note'});
     const empty = !hasVault || (await fs.readdir(vault)).length === 0;
     if (input.mode === 'new' || empty) for (const [file, content] of Object.entries(definitions)) files.push({ path: path.join(vault, file), content, type: 'note' });
     if (!existingProfile) {
@@ -119,7 +122,7 @@ class MemorySetup {
       roles.splice(0, roles.length, 'Claudian Memory Protocol.md');
     }
     if (!roles.includes('Claudian Home.md')) roles.push('Claudian Home.md');
-    const text = language === 'tr' ? turkishSkill(vault, roles, VERSION) : skill(vault, roles);
+    const text = policy.skill(vault,roles,language);
     const artifacts = {};
     const reused = [];
     const reusable = async target => {
@@ -134,7 +137,7 @@ class MemorySetup {
       const reuseSkill = await reusable(target);
       if (await exists(target) && !reuseSkill) throw new Error(`${HOSTS[host].label}: claudian-memory skill'i zaten var. Mevcut skill korunuyor; başka bir AI seçin veya mevcut kurulumu ayrı değerlendirin.`);
       if (!reuseSkill && !files.some(f => f.path === target)) files.push({ path: target, content: text, type: 'skill', host });
-      const instruction = language === 'tr' ? `Kullanıcının işleri, projeleri, öğrenimi, tercihleri veya önceki kararlarıyla ilgili konuşmalarda çalışmadan önce ${JSON.stringify(target)} konumundaki claudian-memory skill'ini oku. Slash komutu veya hatırlatma isteği bekleme. ${JSON.stringify(vault)} konumunda ilgili bağlamı oku ve kalıcı kararları kendiliğinden güncelle. Bağımsız genel bilgi sorularını atla. Uygulama izinlerine ve üst düzey talimatlara uy; olmayan erişimi var gösterme. Bu, konuşma içi hafızadır; arka plan ajanı değildir.` : `For conversations involving the user's work, projects, learning, preferences or prior decisions, read the claudian-memory skill at ${JSON.stringify(target)} before substantive work. Use it without waiting for a slash command or a request to remember. Read relevant context and maintain durable decisions proactively in ${JSON.stringify(vault)}. Skip isolated generic facts. Respect host permissions and higher-priority instructions; never claim unavailable access. This is conversation-time memory, not a background agent.`;
+      const instruction = policy.instruction(target,vault,language);
       const rule = `\n<!-- claudian:memory:start -->\n## ${language === 'tr' ? 'Claudian ortak hafıza' : 'Claudian shared memory'}\n\n${instruction}\n<!-- claudian:memory:end -->\n`;
       let rulePath = path.join(this.home, '.claude', 'rules', 'claudian-memory.md');
       let header = '';
@@ -288,3 +291,4 @@ class MemorySetup {
 }
 module.exports = { MemorySetup, HOSTS, VERSION, hash, assertOrdinaryPath };
 require('./management.cjs')(MemorySetup, {HOSTS, hash, assertOrdinaryPath, json, atomicJson, exists});
+require('./upgrade.cjs')(MemorySetup, {hash,assertOrdinaryPath,json,atomicJson});

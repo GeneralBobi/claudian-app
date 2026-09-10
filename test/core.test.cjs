@@ -87,7 +87,7 @@ test('new install uses exact custom path, both adapters, durable profile and liv
   const events = []; const { core, home, input } = await fixture(t, e => events.push(e));
   const plan = await core.prepare(input);
   assert.equal(await fs.readdir(home).then(x => x.length), 0, 'preview does not mutate host files');
-  assert.equal(plan.files.length, 15);
+  assert.equal(plan.files.length, 17);
   await core.install(plan.id);
   const snapshot = await core.snapshot();
   assert.equal(snapshot.profile.hosts.length, 2);
@@ -97,7 +97,7 @@ test('new install uses exact custom path, both adapters, durable profile and liv
     assert.ok(text.includes(JSON.stringify(input.vault)));
   }
   assert.ok(events.some(e => e.stage === 'complete'));
-  assert.equal((await core.activity()).length, 10);
+  assert.equal((await core.activity()).length, 12);
   await assert.rejects(core.prepare(input), /zaten kurulu/);
 });
 test('existing Turkish vault is preserved byte for byte', async t => {
@@ -106,7 +106,7 @@ test('existing Turkish vault is preserved byte for byte', async t => {
   const note = path.join(input.vault, 'Vault Protokolü.md');
   await fs.writeFile(note, 'Özgün protokol\n');
   const plan = await core.prepare(input);
-  assert.equal(plan.files.length, 10);
+  assert.equal(plan.files.length, 12);
   await core.install(plan.id);
   assert.equal(await fs.readFile(note, 'utf8'), 'Özgün protokol\n');
   assert.ok((await fs.readdir(input.vault)).includes('Claudian Home.md'));
@@ -183,11 +183,11 @@ test('automatic startup preserves Codex instructions and backs up the original',
   await core.install(plan.id);
   const text = await fs.readFile(instructions,'utf8');
   assert.ok(text.startsWith('# Existing user instructions\nKeep my rules.\n'));
-  assert.ok(text.includes('without waiting for a slash command'));
+  assert.ok(text.includes('Do not wait for a slash command'));
   const profile = (await core.snapshot()).profile;
   const changed = profile.files.find(f=>f.path === instructions);
   assert.equal(await fs.readFile(changed.backup,'utf8'),'# Existing user instructions\nKeep my rules.\n');
-  assert.ok((await fs.readFile(path.join(home,'.claude','rules','claudian-memory.md'),'utf8')).includes('before substantive work'));
+  assert.ok((await fs.readFile(path.join(home,'.claude','rules','claudian-memory.md'),'utf8')).includes('At the start of each new conversation'));
 });
 test('changed global instructions after preview are not overwritten', async t => {
   const { core, home, input } = await fixture(t);

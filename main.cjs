@@ -12,7 +12,7 @@ const smoke = process.argv.includes('--smoke');
 if (smoke) app.setPath('userData', require('node:fs').mkdtempSync(path.join(os.tmpdir(), 'claudian-smoke-profile-')));
 if (smoke) app.disableHardwareAcceleration();
 const origin = 'claudian://app';
-let win, core;
+let win, core, migrationError='';
 protocol.registerSchemesAsPrivileged([{ scheme: 'claudian', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 if (!smoke) app.setPath('userData', path.join(app.getPath('appData'), 'Claudian Desktop'));
 if (!app.requestSingleInstanceLock({ smoke })) { app.quit(); }
@@ -40,6 +40,7 @@ async function start() {
   core = new MemorySetup({ home, dataDir: app.getPath('userData'), codexHome: !smoke && process.env.CODEX_HOME ? process.env.CODEX_HOME : path.join(home, '.codex'), emit: event => {
     if (win && !win.isDestroyed()) win.webContents.send('setup:event', event);
   } });
+  try { if((await core.snapshot()).profile?.protocolVersion !== require('./policy.cjs').VERSION) await core.upgrade(); } catch(error) { migrationError=error.message; }
   const installed = Boolean((await core.snapshot()).profile);
   win = new BrowserWindow({ icon: path.join(__dirname, 'assets', 'icon.ico'), width: installed ? 940 : 720, height: installed ? 760 : 640, minWidth: 680, minHeight: 560,
     title: installed ? 'claudian.app' : 'claudian.app — Setup', backgroundColor: '#0e0e10', show: false, autoHideMenuBar: true,
@@ -57,10 +58,20 @@ async function start() {
       catch (error) { return { ok: false, error: error.message }; }
     });
   }
-  handle('app:snapshot', () => core.snapshot());
+  handle('app:snapshot', async () => ({...await core.snapshot(),appVersion:app.getVersion(),migrationError}));
 
   handle('app:preferences', language => core.preferences(language));
   handle('memory:connections', () => core.connections());
+  handle('memory:repair', host => core.upgrade(host));
+  handle('app:updates', async () => {
+    const response=await net.fetch('https://api.github.com/repos/GeneralBobi/claudian-app/releases/latest',{headers:{'Accept':'application/vnd.github+json'},signal:AbortSignal.timeout(12000)});
+    if(!response.ok)throw new Error('Update service unavailable. Try again later.');
+    const release=await response.json(); const latest=String(release.tag_name||'').replace(/^v/,'');
+    if(!/^\d+\.\d+\.\d+$/.test(latest))throw new Error('Invalid release version.');
+    const a=latest.split('.').map(Number),b=app.getVersion().split('.').map(Number);
+    const index=a.findIndex((n,i)=>n!==b[i]);return {latest,available:index>=0&&a[index]>b[index]};
+  });
+  handle('app:download-update', () => shell.openExternal('https://github.com/GeneralBobi/claudian-app/releases/latest'));
   handle('memory:check-files', () => core.checkFiles());
   handle('memory:remove', host => core.removeHost(host));
   handle('memory:configuration', async (host, kind) => {
@@ -82,24 +93,6 @@ async function start() {
     if (smoke) return uri;
     await shell.openExternal(uri);
     return result;
-  });
-  handle('memory:starter',async()=>welcome.ensure((await core.snapshot()).profile,assertOrdinaryPath));
-  handle('memory:introduction',async answers=>welcome.save((await core.snapshot()).profile,answers,assertOrdinaryPath));
-  handle('memory:begin-ai',async host=>{
-    const profile=(await core.snapshot()).profile;
-    if(!profile?.hosts.some(h=>h.id===host))throw new Error('Choose an installed connection.');
-    const command={codex:'codex','claude-code':'claude'}[host];
-    if(!command)throw new Error('Direct launch currently supports Claude Code and Codex CLI.');
-    const found=await runFile('where.exe',[command],{windowsHide:true}).catch(()=>({stdout:''}));
-    const executable=found.stdout.split(/\r?\n/).find(p=>/\.exe$/i.test(p.trim()))?.trim();
-    if(!executable)throw new Error(command+' native CLI executable was not found. Install its native Windows CLI or use the introduction questions here.');
-    await welcome.ensure(profile,assertOrdinaryPath);
-    const quote=s=>"'"+s.replace(/'/g,"''")+"'";
-    const script=`Set-Location -LiteralPath ${quote(profile.vault)}\n& ${quote(executable)} ${quote(welcome.prompt(profile))}`;
-    const encoded=Buffer.from(script,'utf16le').toString('base64');
-    // A visible interactive session is the action requested by the user; keep provider permission prompts.
-    await new Promise((resolve,reject)=>{const child=spawn('powershell.exe',['-NoProfile','-NoExit','-EncodedCommand',encoded],{detached:true,stdio:'ignore',windowsHide:false});child.once('error',reject);child.once('spawn',()=>{child.unref();resolve();});});
-    return {launched:true};
   });
   handle('app:discover', () => core.discover());
   handle('app:enter', async () => {

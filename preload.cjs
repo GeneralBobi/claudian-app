@@ -6,6 +6,9 @@ const invoke = async (channel, ...args) => {
   return result.value;
 };
 contextBridge.exposeInMainWorld('claudian', {
+  repair: host => invoke('memory:repair',host),
+  updates: () => invoke('app:updates'),
+  downloadUpdate: () => invoke('app:download-update'),
   snapshot: () => invoke('app:snapshot'),
   preferences: language => invoke('app:preferences', language),
   connections: () => invoke('memory:connections'),
@@ -13,9 +16,6 @@ contextBridge.exposeInMainWorld('claudian', {
   removeHost: host => invoke('memory:remove', host),
   configuration: (host, kind) => invoke('memory:configuration', host, kind),
   obsidian: () => invoke('memory:obsidian'),
-  starter: () => invoke('memory:starter'),
-  introduction: answers => invoke('memory:introduction',answers),
-  beginAI: host => invoke('memory:begin-ai',host),
   discover: () => invoke('app:discover'),
   enter: () => invoke('app:enter'),
   chooseFolder: () => invoke('app:folder'),
