@@ -55,7 +55,7 @@ async function start() {
     });
   }
   handle('app:snapshot', () => core.snapshot());
-  require('./companion.cjs').attach(win,handle);
+
   handle('app:preferences', language => core.preferences(language));
   handle('memory:connections', () => core.connections());
   handle('memory:check-files', () => core.checkFiles());
@@ -70,9 +70,13 @@ async function start() {
   handle('memory:obsidian', async () => {
     const profile = (await core.snapshot()).profile;
     if (!profile) throw new Error('Memory is not configured.');
-    const uri = 'obsidian://open?vault=' + encodeURIComponent(profile.vault);
+    const registry = await fs.readFile(path.join(app.getPath('appData'),'obsidian','obsidian.json'),'utf8').then(JSON.parse).catch(()=>({vaults:{}}));
+    const normalize = value => path.resolve(value).replace(/[\\/]+$/,'').toLowerCase();
+    const match = Object.entries(registry.vaults || {}).find(([,v])=>v.path && normalize(v.path)===normalize(profile.vault));
+    const uri = match ? 'obsidian://open?vault=' + encodeURIComponent(match[0]) : 'obsidian://choose-vault';
     if (smoke) return uri;
     await shell.openExternal(uri);
+    return {needsRegistration: !match};
   });
   handle('app:discover', () => core.discover());
   handle('app:enter', async () => {
