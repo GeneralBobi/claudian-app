@@ -62,13 +62,25 @@ async function start() {
 
   handle('app:preferences', language => core.preferences(language));
   handle('memory:connections', () => core.connections());
-  handle('memory:scan-preview', async () => {
+  const scanPaths=new Map();
+  handle('memory:choose-cli', async id=>{
+    if(!['codex','claude-code'].includes(id))throw new Error('This host does not support direct launch yet.');
+    const result=await dialog.showOpenDialog(win,{title:'Select '+id,properties:['openFile'],filters:[{name:'Application',extensions:['exe']}]});
+    if(result.canceled)return false;
+    const selected=result.filePaths[0];if(!await require('./scan.cjs').resolve(id,selected))throw new Error('Invalid executable.');
+    scanPaths.set(id,selected);return true;
+  });
+  handle('memory:existing-skill', async id=>{
+    const host=require('./core.cjs').HOSTS[id];if(!host)throw new Error('Unknown connection.');
+    const target=path.join(home,...host.parts,host.filename||'SKILL.md');await assertOrdinaryPath(target);shell.showItemInFolder(target);
+  });
+  handle('memory:scan-preview', async language => {
     const profile=(await core.snapshot()).profile;if(!profile)throw new Error('Memory is not configured.');
-    const scan=require('./scan.cjs');return {prompt:scan.prompt(profile),hosts:await Promise.all(profile.hosts.map(async h=>({...h,available:!!await scan.resolve(h.id)})))};
+    const scan=require('./scan.cjs');return {prompt:scan.prompt({...profile,language:language==='tr'?'tr':'en'}),hosts:await Promise.all(profile.hosts.map(async h=>({...h,available:!!await scan.resolve(h.id,scanPaths.get(h.id))})))};
   });
   handle('memory:scan-send', async (id,prompt) => {
     const profile=(await core.snapshot()).profile;if(!profile)throw new Error('Memory is not configured.');
-    return require('./scan.cjs').launch(profile,id,prompt,app.getPath('userData'));
+    return require('./scan.cjs').launch(profile,id,prompt,scanPaths.get(id));
   });
   handle('memory:repair', host => core.upgrade(host));
   handle('app:updates', async () => {

@@ -7,7 +7,9 @@ const invoke = async (channel, ...args) => {
 };
 contextBridge.exposeInMainWorld('claudian', {
   downloadObsidian: () => invoke('app:download-obsidian'),
-  scanPreview: () => invoke('memory:scan-preview'),
+  scanPreview: language => invoke('memory:scan-preview',language),
+  chooseCli: id => invoke('memory:choose-cli',id),
+  existingSkill: id => invoke('memory:existing-skill',id),
   scanSend: (id,prompt) => invoke('memory:scan-send',id,prompt),
   repair: host => invoke('memory:repair',host),
   updates: () => invoke('app:updates'),

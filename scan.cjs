@@ -4,11 +4,28 @@ const run=require('node:util').promisify(execFile);
 const fs=require('node:fs/promises');
 const path=require('node:path');
 const commands={'codex':'codex','claude-code':'claude'};
-exports.resolve=async id=>{
+exports.resolve=async (id,explicit)=>{
  if(!commands[id])return null;
+ if(explicit && path.isAbsolute(explicit) && /\.exe$/i.test(explicit)){try{if((await fs.stat(explicit)).isFile())return explicit;}catch{}}
+ const home=require('node:os').homedir();
+ const candidates=id==='claude-code'?[path.join(home,'.local','bin','claude.exe')]:[];
+ if(id==='codex'){const base=path.join(process.env.LOCALAPPDATA||path.join(home,'AppData','Local'),'OpenAI','Codex','bin');try{for(const entry of (await fs.readdir(base,{withFileTypes:true})).filter(e=>e.isDirectory()).reverse())candidates.push(path.join(base,entry.name,'codex.exe'));}catch{}}
+ for(const candidate of candidates){try{if((await fs.stat(candidate)).isFile())return candidate;}catch{}}
  try {const {stdout}=await run('where.exe',[commands[id]],{windowsHide:true});return stdout.split(/\r?\n/).map(x=>x.trim()).find(x=>path.isAbsolute(x)&&/\.exe$/i.test(x))||null;}catch{return null;}
 };
-exports.prompt=profile=>`Use the installed claudian-memory skill for the selected vault: ${JSON.stringify(profile.vault)}.
+exports.prompt=profile=>profile.language==='tr'?`Seçili hafıza klasörü: ${profile.vault}
+
+Kurulu claudian-memory yeteneğini kullan. Önce Claudian Home.md, Claudian Universal Protocol.md ve Claudian Record Guide.md dosyalarını oku.
+
+Benim hakkımda zaten erişebildiğin bilgileri dikkatle gözden geçirmeni istiyorum. Yalnız bu oturumda gerçekten kullanılabilen hafızanı ve erişimine izin verdiğim bağlı kaynakları kullan. Önce hangi kaynaklara erişebildiğini kısaca belirt. Bir kaynak ek izin gerektiriyorsa veya kapsamı belirsizse okumadan önce sor. İlgisiz bilgisayar dosyalarını tarama; başka sağlayıcıların geçmiş sohbetlerine erişimin varmış gibi davranma. Faydalı bilgi yoksa en fazla üç odaklı soru sor ve yanıtımı bekle.
+
+Kalıcı hedeflerimi, aktif projelerimi, kabul ettiğim kararları ve gerekçelerini, istikrarlı tercihlerimi, düzeltmeleri ve tekrarını önleyecek dersleri ara. Önce mevcut notları kontrol et. Beyanlarımı, gözlemleri ve belirsiz çıkarımları ayır. Hassas özellikler çıkarma; sırları, üçüncü kişilerin özel kayıtlarını, ham sohbeti veya geçici ruh hâlini kaydetme. Derin inceleme daha çok not değil, daha iyi seçim demektir.
+
+Her konu için tek kanonik kayıt tut. Protokole göre ADD, UPDATE, INVALIDATE, DELETE veya NO_OP seç. Kaynağı, bilinen tarihleri ve belirsizliği koru. Ana harita ve ilgili notlar arasındaki bağlantıları düzenle; ilgisiz notları silme. Yazdıklarını doğrula. Bu başlangıç incelemesi sonunda gerçekten kullanılan kaynakları, değişen kayıtları ve kalan boşlukları kısaca özetle.
+
+Bu uygulamanın kalıcı hafıza özelliği varsa oraya yalnız şu kullanım bilgisini ekle: İlgili konuşmaların başında claudian-memory yeteneğini sessizce yükle, bu seçili vaultu protokolüne göre kullan ve slash komutu bekleme. Vaultun tamamını sağlayıcının hafızasına çoğaltma. Kalıcı hafıza yoksa bunu açıkça belirt; kurulu başlangıç talimatları giriş yolu olarak kalır.
+
+Bu başlangıç incelemesinden sonra rutin hafıza bakımını sessiz yap. Bu, kullanıcının başlattığı bir oturumdur; sürekli çalışan arka plan ajanı değildir. Türkçe yanıt ver.`:`Use the installed claudian-memory skill for the selected vault: ${JSON.stringify(profile.vault)}.
 Read Claudian Home.md, Claudian Universal Protocol.md and Claudian Record Guide.md before working.
 
 I want an initial, careful review of what you already know about me. Use only memories actually available to this session and connected sources I have authorized. First tell me briefly which sources you can access; if a source needs permission or its scope is unclear, ask before reading it. Do not scan unrelated computer files, invent access to earlier chats, or treat this request as access to other providers' accounts. If nothing useful is available, ask up to three focused questions and wait for my answers.
@@ -21,10 +38,10 @@ If this host offers persistent memory, remember only this usage pointer there: u
 
 After this initial review, keep routine memory maintenance quiet. This is a user-started session, not an always-running background agent.
 Respond in ${profile.language==='tr'?'Turkish':'English'}.`;
-exports.launch=async(profile,id,prompt,dataDir)=>{
+exports.launch=async(profile,id,prompt,executablePath)=>{
  if(!profile.hosts.some(h=>h.id===id))throw new Error('This AI connection is not configured.');
  if(typeof prompt!=='string'||!prompt.trim()||prompt.length>8000)throw new Error('Invalid scan message.');
- const executable=await exports.resolve(id);if(!executable)throw new Error('An interactive native Claude Code or Codex CLI executable is required.');
+ const executable=await exports.resolve(id,executablePath);if(!executable)throw new Error('An interactive native Claude Code or Codex CLI executable is required.');
  const quote=s=>"'"+s.replace(/'/g,"''")+"'";
  const script=`Set-Location -LiteralPath ${quote(profile.vault)}\n& ${quote(executable)} ${quote(prompt)}\n`;
  // No shell interpolation of user text; PowerShell literals double embedded quotes.
