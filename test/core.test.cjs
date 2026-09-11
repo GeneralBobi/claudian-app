@@ -48,11 +48,11 @@ test('add hosts to installed memory, reusing owned shared skill without changing
   assert.equal(await fs.readFile(note,'utf8'), original);
 });
 
-test('changed shared skill blocks adding another host', async t => {
+test('changed shared skill is preserved while another host gets an isolated bridge', async t => {
   const {core, home, input} = await fixture(t);
   await core.install((await core.prepare(input)).id);
   await fs.appendFile(path.join(home,'.agents/skills/claudian-memory/SKILL.md'), '\nChanged');
-  await assert.rejects(core.prepare({...input, action:'extend', mode:'existing', hosts:['cursor']}), /zaten var/);
+  const plan=await core.prepare({...input, action:'extend', mode:'existing', hosts:['cursor']}); await core.install(plan.id); assert.match(await fs.readFile(path.join(home,'.agents/skills/claudian-memory/SKILL.md'),'utf8'), /Changed/); assert.match(await fs.readFile(path.join(home,'.agents/skills/claudian-memory-bridge/SKILL.md'),'utf8'), /name: claudian-memory-bridge/);
 });
 
 test('Gemini custom context filename is respected without modifying settings', async t => {
@@ -118,11 +118,11 @@ test('unknown existing Markdown vault gets separate protocol, preserves other no
   assert.equal(await fs.readFile(path.join(input.vault, 'My note.md'), 'utf8'), 'keep');
   assert.ok((await fs.readdir(input.vault)).includes('Claudian Memory Protocol.md'));
 });
-test('existing host skill blocks installation without overwrite', async t => {
+test('existing host skill survives isolated installation', async t => {
   const { core, home, input } = await fixture(t);
   const folder = path.join(home, '.claude', 'skills', 'claudian-memory'); await fs.mkdir(folder, { recursive: true });
   await fs.writeFile(path.join(folder, 'SKILL.md'), 'user content');
-  await assert.rejects(core.prepare(input), /zaten var/);
+  const plan=await core.prepare(input); await core.install(plan.id);
   assert.equal(await fs.readFile(path.join(folder, 'SKILL.md'), 'utf8'), 'user content');
 });
 test('preview-to-install race refuses to overwrite new content', async t => {

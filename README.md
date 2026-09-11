@@ -4,11 +4,11 @@ Build your second brain. Keep it yours.
 
 A Windows application that prepares a local Markdown memory environment for Claude Code, Codex, Cursor, Gemini CLI, Antigravity and Antigravity CLI. The first-run setup discovers existing note locations and AI configuration folders, proposes settings, previews changes, and reports real installation progress. After setup, the application opens directly into the memory panel.
 
-**Preview software — version 0.10.1.** The proactive companion is under construction. This application does not run an always-on language model or require an API key.
+**Preview software — version 0.11.0.** The proactive companion is under construction. This application does not run an always-on language model or require an API key.
 
 ## Download
 
-[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/tag/v0.10.1) · [Website](https://claudian.app)
+[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/tag/v0.11.0) · [Website](https://claudian.app)
 
 The Windows x64 installer is unsigned. Windows may display an unknown-publisher warning. Windows VM install/uninstall coverage and production signing are not complete.
 
@@ -87,4 +87,11 @@ The starter-repair button and introduction questionnaire/AI launcher have been r
 
 Review the prepared message in the desktop app and press Enter to launch an interactive native Codex CLI or Claude Code session. Other configured hosts do not yet support direct message launch. This uses the selected provider account and its permissions; it cannot retrieve inaccessible chat histories. The companion tab remains an under-development placeholder.
 
+
+
+## Native companion preview
+
+The access-code form connects to the existing Claudian Core and reads its authenticated surface endpoint. Focus and contacts are rendered locally, without embedding the website. It refreshes while the companion view is open and does not require feedback. An online Core and valid code are required. Voice, hardware actions and background desktop notifications are not implemented. Antigravity/Cursor desktop opening does not send a new chat message; direct prompt delivery remains limited to supported CLI adapters.
+
+An existing skill at the default path is preserved. Claudian installs an isolated claudian-memory-bridge entry rather than replacing that file. This is path-conflict handling, not semantic detection or consolidation of other memory skills.
 

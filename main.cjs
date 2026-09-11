@@ -58,6 +58,7 @@ async function start() {
       catch (error) { return { ok: false, error: error.message }; }
     });
   }
+  require('./companion-bridge.cjs').attach(handle,session);
   handle('app:snapshot', async () => ({...await core.snapshot(),appVersion:app.getVersion(),migrationError}));
 
   handle('app:preferences', language => core.preferences(language));
@@ -74,6 +75,7 @@ async function start() {
     const host=require('./core.cjs').HOSTS[id];if(!host)throw new Error('Unknown connection.');
     const target=path.join(home,...host.parts,host.filename||'SKILL.md');await assertOrdinaryPath(target);shell.showItemInFolder(target);
   });
+  handle('memory:open-app',async id=>{const relative={'antigravity':'antigravity/Antigravity.exe','cursor':'cursor/Cursor.exe'}[id];if(!relative)throw Error('No desktop launch adapter.');const file=path.join(process.env.LOCALAPPDATA||path.join(home,'AppData','Local'),'Programs',relative);await fs.access(file);const message=await shell.openPath(file);if(message)throw Error(message);return true;});
   handle('memory:scan-preview', async language => {
     const profile=(await core.snapshot()).profile;if(!profile)throw new Error('Memory is not configured.');
     const scan=require('./scan.cjs');return {prompt:scan.prompt({...profile,language:language==='tr'?'tr':'en'}),hosts:await Promise.all(profile.hosts.map(async h=>({...h,available:!!await scan.resolve(h.id,scanPaths.get(h.id))})))};

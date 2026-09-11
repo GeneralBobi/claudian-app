@@ -16,7 +16,7 @@ module.exports=(Setup,{hash,assertOrdinaryPath,json,atomicJson})=>{
    }
    for(const host of profile.hosts.filter(h=>!repairHost||h.id===repairHost)){
     const files=await this.hostPaths(profile,host.id);
-    add(files.skill,policy.skill(profile.vault,roles,profile.language),'skill',!!repairHost);
+    add(files.skill,policy.skill(profile.vault,roles,profile.language).replace('name: claudian-memory',files.skill.includes('claudian-memory-bridge')?'name: claudian-memory-bridge':'name: claudian-memory'),'skill',!!repairHost);
     if(desired.has(files.rule))continue;
     await assertOrdinaryPath(files.rule);
     const before=await fs.readFile(files.rule,'utf8').catch(e=>{if(e.code==='ENOENT')return null;throw e;});

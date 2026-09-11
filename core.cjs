@@ -132,11 +132,15 @@ class MemorySetup {
       return true;
     };
     for (const host of input.hosts) {
-      const target = path.join(this.home, ...HOSTS[host].parts, HOSTS[host].filename || 'SKILL.md');
+      let target = path.join(this.home, ...HOSTS[host].parts, HOSTS[host].filename || 'SKILL.md');
       await assertOrdinaryPath(target);
-      const reuseSkill = await reusable(target);
-      if (await exists(target) && !reuseSkill) throw new Error(`${HOSTS[host].label}: claudian-memory skill'i zaten var. Mevcut skill korunuyor; başka bir AI seçin veya mevcut kurulumu ayrı değerlendirin.`);
-      if (!reuseSkill && !files.some(f => f.path === target)) files.push({ path: target, content: text, type: 'skill', host });
+      let reuseSkill = await reusable(target);
+      if (await exists(target) && !reuseSkill) {
+        target = HOSTS[host].filename ? path.join(path.dirname(target), "claudian-memory-bridge.md") : path.join(path.dirname(path.dirname(target)), "claudian-memory-bridge", "SKILL.md");
+        await assertOrdinaryPath(target); reuseSkill = await reusable(target);
+        if(await exists(target)&&!reuseSkill)throw new Error(`${HOSTS[host].label}: Claudian bridge dosyası zaten var; mevcut dosyayı inceleyin.`);
+      }
+      if (!reuseSkill && !files.some(f => f.path === target)) files.push({ path: target, content: target.includes("claudian-memory-bridge") ? text.replace("name: claudian-memory", "name: claudian-memory-bridge") : text, type: 'skill', host });
       const instruction = policy.instruction(target,vault,language);
       const rule = `\n<!-- claudian:memory:start -->\n## ${language === 'tr' ? 'Claudian ortak hafıza' : 'Claudian shared memory'}\n\n${instruction}\n<!-- claudian:memory:end -->\n`;
       let rulePath = path.join(this.home, '.claude', 'rules', 'claudian-memory.md');

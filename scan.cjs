@@ -38,6 +38,8 @@ If this host offers persistent memory, remember only this usage pointer there: u
 
 After this initial review, keep routine memory maintenance quiet. This is a user-started session, not an always-running background agent.
 Respond in ${profile.language==='tr'?'Turkish':'English'}.`;
+const basePrompt=exports.prompt;
+exports.prompt=profile=>basePrompt(profile)+'\n\n'+(profile.language==='tr'?'Uygulamanın yönettiği gerçek başlangıç dosyaları (kendi AI bağlantının dosyasını kullan):':'Actual application-managed entry files (use your own host entry):')+'\n'+(profile.hosts||[]).filter(h=>h.artifacts?.skill).map(h=>(h.label||h.id)+': '+h.artifacts.skill).join('\n');
 exports.launch=async(profile,id,prompt,executablePath)=>{
  if(!profile.hosts.some(h=>h.id===id))throw new Error('This AI connection is not configured.');
  if(typeof prompt!=='string'||!prompt.trim()||prompt.length>8000)throw new Error('Invalid scan message.');
