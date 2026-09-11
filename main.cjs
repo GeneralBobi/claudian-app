@@ -40,7 +40,18 @@ async function start() {
   core = new MemorySetup({ home, dataDir: app.getPath('userData'), codexHome: !smoke && process.env.CODEX_HOME ? process.env.CODEX_HOME : path.join(home, '.codex'), emit: event => {
     if (win && !win.isDestroyed()) win.webContents.send('setup:event', event);
   } });
-  try { if((await core.snapshot()).profile?.protocolVersion !== require('./policy.cjs').VERSION) await core.upgrade(); } catch(error) { migrationError=error.message; }
+  try {
+    const preferencesFile=path.join(app.getPath('userData'),'preferences.json');
+    let selectedLanguage;
+    if(!smoke){
+      const marker=path.join(path.dirname(process.resourcesPath),'install-language.txt');
+      try { selectedLanguage=(await fs.readFile(marker,'utf8')).trim()==='1055'?'tr':'en'; } catch(error) { if(error.code!=='ENOENT')throw error; }
+    }
+    if(!selectedLanguage)try { selectedLanguage=(JSON.parse(await fs.readFile(preferencesFile,'utf8'))).language; } catch(error) { if(error.code!=='ENOENT')throw error; }
+    selectedLanguage=selectedLanguage||((app.getLocale()||'').toLowerCase().startsWith('tr')?'tr':'en');
+    const languageChanged=await core.useLanguage(selectedLanguage);
+    if(languageChanged||(await core.snapshot()).profile?.protocolVersion !== require('./policy.cjs').VERSION) await core.upgrade();
+  } catch(error) { migrationError=error.message; }
   const installed = Boolean((await core.snapshot()).profile);
   win = new BrowserWindow({ icon: path.join(__dirname, 'assets', 'icon.ico'), width: installed ? 940 : 720, height: installed ? 760 : 640, minWidth: 680, minHeight: 560,
     title: installed ? 'claudian.app' : 'claudian.app — Setup', backgroundColor: '#0e0e10', show: false, autoHideMenuBar: true,

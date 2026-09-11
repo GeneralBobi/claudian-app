@@ -11,6 +11,14 @@ module.exports = (Setup, {HOSTS, hash, assertOrdinaryPath, json, atomicJson, exi
     }
     return await json(file, {language:'en'});
   };
+  Setup.prototype.useLanguage = async function(language) {
+    if (!['en','tr'].includes(language)) throw new Error('Invalid language.');
+    await this.preferences(language);
+    const profile = await json(this.configFile);
+    if (!profile || profile.language === language) return false;
+    await atomicJson(this.configFile, {...profile, language});
+    return true;
+  };
   Setup.prototype.hostPaths = async function(profile, id) {
     const host = profile.hosts.find(h=>h.id===id);
     if (!host || !HOSTS[id]) throw new Error('Connection not found.');

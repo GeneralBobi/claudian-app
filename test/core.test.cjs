@@ -55,6 +55,43 @@ test('changed shared skill is preserved while another host gets an isolated brid
   const plan=await core.prepare({...input, action:'extend', mode:'existing', hosts:['cursor']}); await core.install(plan.id); assert.match(await fs.readFile(path.join(home,'.agents/skills/claudian-memory/SKILL.md'),'utf8'), /Changed/); assert.match(await fs.readFile(path.join(home,'.agents/skills/claudian-memory-bridge/SKILL.md'),'utf8'), /name: claudian-memory-bridge/);
 });
 
+test('an existing Claudian startup block is accepted as configured', async t => {
+  const {core,home,input}=await fixture(t);
+  input.hosts=['claude-code'];
+  const rule=path.join(home,'.claude/rules/claudian-memory.md');
+  await fs.mkdir(path.dirname(rule),{recursive:true});
+  const existing='<!-- claudian:memory:start -->\nAlready configured\n<!-- claudian:memory:end -->\n';
+  await fs.writeFile(rule,existing);
+  const plan=await core.prepare(input);
+  assert.ok(plan.adopted.some(file=>file.path===rule));
+  await core.install(plan.id);
+  assert.equal(await fs.readFile(rule,'utf8'),existing);
+  assert.equal((await core.connections())[0].status,'ready');
+});
+
+test('an unrelated dedicated startup file is preserved using an alternate rule', async t => {
+  const {core,home,input}=await fixture(t);
+  input.hosts=['cursor'];
+  const original=path.join(home,'.cursor/rules/claudian-memory.mdc');
+  await fs.mkdir(path.dirname(original),{recursive:true});
+  await fs.writeFile(original,'User rule\n');
+  const plan=await core.prepare(input);
+  assert.ok(plan.files.some(file=>file.path===path.join(home,'.cursor/rules/claudian-memory-bridge.mdc')));
+  await core.install(plan.id);
+  assert.equal(await fs.readFile(original,'utf8'),'User rule\n');
+});
+
+test('installation language updates the profile language without changing its location', async t => {
+  const {core,input}=await fixture(t);
+  input.language='en';
+  await core.install((await core.prepare(input)).id);
+  assert.equal(await core.useLanguage('tr'),true);
+  const snapshot=await core.snapshot();
+  assert.equal(snapshot.profile.language,'tr');
+  assert.equal(snapshot.profile.vault,input.vault);
+  assert.equal((await core.preferences()).language,'tr');
+});
+
 test('Gemini custom context filename is respected without modifying settings', async t => {
   const {core,home,input} = await fixture(t);
   await fs.mkdir(path.join(home,'.gemini'));

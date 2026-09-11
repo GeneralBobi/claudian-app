@@ -124,6 +124,7 @@ class MemorySetup {
     if (!roles.includes('Claudian Home.md')) roles.push('Claudian Home.md');
     const text = policy.skill(vault,roles,language);
     const artifacts = {};
+    const adopted = [];
     const reused = [];
     const reusable = async target => {
       const owned = existingProfile?.files.find(f => f.path === target);
@@ -164,18 +165,26 @@ class MemorySetup {
         rulePath = await exists(override) && (await fs.readFile(override, 'utf8')).trim() ? override : path.join(this.codexHome, 'AGENTS.md');
       }
       await assertOrdinaryPath(rulePath);
+      let previous = await exists(rulePath) ? await fs.readFile(rulePath, 'utf8') : null;
+      if (previous !== null && !previous.includes('<!-- claudian:memory:start -->') && ['claude-code','cursor'].includes(host)) {
+        rulePath = path.join(path.dirname(rulePath), host === 'cursor' ? 'claudian-memory-bridge.mdc' : 'claudian-memory-bridge.md');
+        await assertOrdinaryPath(rulePath);
+        previous = await exists(rulePath) ? await fs.readFile(rulePath, 'utf8') : null;
+      }
       artifacts[host] = {skill: target, rule: rulePath};
       // Google hosts share global context; install a single instruction pointing to a valid skill.
       if (files.some(f => f.path === rulePath) || await reusable(rulePath)) continue;
-      const previous = await exists(rulePath) ? await fs.readFile(rulePath, 'utf8') : null;
-      if (previous?.includes('<!-- claudian:memory:start -->')) throw new Error('Başlangıç kuralı zaten var; mevcut bağlantı korunuyor.');
-      if (['claude-code', 'cursor'].includes(host) && previous !== null) throw new Error('Başlangıç kuralı zaten var; mevcut dosya korunuyor.');
+      if (previous?.includes('<!-- claudian:memory:start -->')) {
+        adopted.push({path:rulePath,hash:hash(previous),type:'rule'});
+        continue;
+      }
+      if (['claude-code', 'cursor'].includes(host) && previous !== null) throw new Error(`${HOSTS[host].label}: alternatif başlangıç kuralı kullanıcı tarafından değiştirilmiş; dosya korundu.`);
       if (rulePath.startsWith(path.join(this.home, '.gemini') + path.sep) && (previous || '').length + rule.length > 12000) throw new Error('Google başlangıç talimatı 12000 karakter sınırını aşıyor; mevcut dosya korundu.');
       if (previous !== null && Buffer.byteLength(previous + rule) > 24000) throw new Error('Global talimat dosyası çok büyük; otomatik kural eklenmedi.');
       files.push({ path: rulePath, content: header + (previous || '') + rule, previous, expectedHash: previous === null ? null : hash(previous), type: 'rule', host });
     }
     const plan = { id: crypto.randomUUID(), name: input.name.trim(), vault, mode: input.mode, storage: input.storage,
-      hosts: input.hosts, roles, files, reused, existingProfile, artifacts, language, protocolVersion: VERSION };
+      hosts: input.hosts, roles, files, reused, adopted, existingProfile, artifacts, language, protocolVersion: VERSION };
     this.pending = plan;
     return { ...plan, files: files.map(({ content, previous, expectedHash, ...file }) => ({ ...file, operation: previous != null ? 'append' : 'create' })) };
   }
@@ -236,9 +245,9 @@ class MemorySetup {
       check(); await send('verify', 'running', 'Yazılan dosyalar yeniden okunuyor.');
       for (const file of created) if (hash(await fs.readFile(file.path)) !== file.hash) throw new Error('Dosya doğrulaması başarısız.');
       await send('verify', 'done', 'Dosya bütünlüğü doğrulandı. AI içinden erişim ayrıca doğrulanacak.');
-      const profile = { name: plan.name, vault: plan.vault, storage: plan.storage, language: plan.existingProfile?.language || plan.language, protocolVersion: VERSION,
+      const profile = { name: plan.name, vault: plan.vault, storage: plan.storage, language: plan.language, protocolVersion: VERSION,
         installedAt: plan.existingProfile?.installedAt || new Date().toISOString(), hosts: [...(plan.existingProfile?.hosts || []), ...plan.hosts.map(id => ({ id, label: HOSTS[id].label, status: 'configured', artifacts: plan.artifacts[id] }))],
-        files: [...(plan.existingProfile?.files || []), ...created], mode: 'memory', companion: 'under-construction' };
+        files: [...(plan.existingProfile?.files || []), ...(plan.adopted||[]).filter(a=>!(plan.existingProfile?.files||[]).some(f=>f.path===a.path)), ...created], mode: 'memory', companion: 'under-construction' };
       check();
       await atomicJson(this.configFile, profile);
       // Profile is the commit point. No rollback may occur after it is durable.
