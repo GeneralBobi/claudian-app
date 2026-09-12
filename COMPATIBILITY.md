@@ -1,29 +1,19 @@
-# Claudian AI connections
+# Connection coverage — 0.16.0
 
-Implemented adapters as of 2026-09-09. Paths are relative to the user's home directory. These are conversation-time instructions, not an unattended agent or an OAuth grant.
+Installation and actual conversation behavior are separate checks. Connections offers a file-access challenge; it is not a complete long-conversation acceptance test.
 
-| Application | Skill | Automatic context |
+| Host | Installed integration | Acceptance evidence |
 | --- | --- | --- |
-| Claude Code | `.claude/skills/claudian-memory/SKILL.md` | `.claude/rules/claudian-memory.md` |
-| Codex | `.agents/skills/claudian-memory/SKILL.md` | Active `CODEX_HOME/AGENTS.override.md` or `AGENTS.md` |
-| Cursor Agent | `.agents/skills/claudian-memory/SKILL.md` | `.cursor/rules/claudian-memory.mdc`, alwaysApply |
-| Gemini CLI | `.agents/skills/claudian-memory/SKILL.md` | `.gemini/GEMINI.md`, respecting user context.fileName |
-| Antigravity | `.gemini/config/skills/claudian-memory/SKILL.md` | `.gemini/GEMINI.md` |
-| Antigravity CLI | `.gemini/antigravity-cli/skills/claudian-memory.md` | `.gemini/GEMINI.md` |
+| Claude Code | Skill, startup rule, local MCP, conversation hooks | Controlled 20-turn CLI session passed |
+| Codex | Skill, global AGENTS block, local MCP, conversation hooks | Controlled 5-turn CLI session passed; hooks need host trust |
+| Claude Desktop | Local MCP configuration | Configuration tests; native conversation acceptance pending |
+| Cursor | Skill, always-on rule, local MCP | Configuration tests; native conversation acceptance pending |
+| Gemini CLI | Skill, context file, local MCP | Configuration tests; real conversation acceptance pending |
+| Antigravity / CLI | Skill and context file | Configuration tests; real conversation acceptance pending |
+| ChatGPT | No working general-user remote connector | Managed relay pending; shown as unavailable |
 
-Shared destinations are written once. Existing global instructions are appended with a backup. Existing unmanaged Claudian files cause a conflict instead of being overwritten. Additional applications can be connected from the panel without replacing the vault; unchanged files owned by the previous installation are reused.
+Claude Code and Codex acceptance explicitly supplied generated settings and instructions in isolated synthetic vaults. Codex hook trust was explicitly enabled for that controlled fixture. Neither result proves that a freshly installed native host automatically activates the connection.
 
-Restart the selected host after installation. The host can still require skill activation, trusted-workspace or folder-access consent. Workspace overrides, disabled skills, custom provider settings and older host versions can affect activation. Cursor support concerns Agent Chat, not Tab completion or Inline Edit.
+Claude hooks can request a bounded retry for a missing review. Codex observes a missed final review without an automatic Stop retry, because that retry can create another user turn. Both record incomplete maintenance. MCP-only and file-only hosts do not have the same lifecycle hooks.
 
-The automated checks cover installation files, preservation and integration planning. Real provider sessions and visual acceptance are left to the user; installation status is not evidence of model behavior. The existing per-host read/write challenge remains available in the panel.
-
-## References
-
-- [Cursor rules](https://prod.cursor.com/help/customization/rules)
-- [Cursor skills](https://prod.cursor.com/help/customization/skills)
-- [Gemini skills](https://geminicli.com/docs/cli/skills/)
-- [Gemini context](https://geminicli.com/docs/cli/gemini-md/)
-- [Antigravity skills](https://antigravity.google/docs/skills)
-- [Antigravity rules](https://antigravity.google/docs/rules-workflows)
-- [Antigravity CLI skills](https://antigravity.google/docs/cli/plugins/)
-- [Antigravity CLI context migration](https://antigravity.google/docs/gcli-migration)
+Restart the selected AI application after setup. Review any host permission or trust request. Existing unrelated configuration and user rules are preserved. A conflicting same-name server is reported instead of overwritten. No account OAuth permission is obtained merely by editing local configuration.

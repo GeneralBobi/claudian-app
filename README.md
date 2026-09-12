@@ -1,99 +1,42 @@
 # claudian.app
 
-Build your second brain. Keep it yours.
+A Windows application for a local, user-owned Markdown memory shared by AI tools.
 
-A Windows application that prepares a local Markdown memory environment for Claude Code, Codex, Cursor, Gemini CLI, Antigravity and Antigravity CLI. The first-run setup discovers existing note locations and AI configuration folders, proposes settings, previews changes, and reports real installation progress. After setup, the application opens directly into the memory panel.
+**Preview 0.16.0 — protocol 2.6.0.** The companion and managed ChatGPT relay are not ready. This release improves local memory maintenance; it is not a guarantee that every AI host will automatically use memory.
 
-**Preview software — version 0.11.1.** The proactive companion is under construction. This application does not run an always-on language model or require an API key.
+[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/download/v0.16.0/Claudian-Setup-0.16.0.exe) · [Website](https://claudian.app) · [Connection coverage](COMPATIBILITY.md)
 
-## Download
+## Setup and updates
 
-[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/tag/v0.11.1) · [Website](https://claudian.app)
+Setup proposes a new folder under Documents and lets you change its path or choose an existing vault. A detected personal vault is never selected implicitly. Preview the changes and choose read-only or read/write access before installation.
 
-The Windows x64 installer is unsigned. Windows may display an unknown-publisher warning. Windows VM install/uninstall coverage and production signing are not complete.
+Updates preserve existing user notes and customized protocol copies. The runtime has an application-owned protocol, and generated skills include a fallback: removing the vault protocol copy does not remove the memory instructions. Removing a connection preserves the notes.
+
+Connections distinguishes installed files, file-access verification and observed conversation maintenance. Technical capability names, configuration paths and repair are available on demand. No remote connection is claimed from installing local files.
+
+## Memory maintenance
+
+Local MCP tools provide bounded retrieval and guarded create, patch, append and archive operations. Updates use current content hashes, backups and write receipts. Conversation hooks and memory reviews expose missing checks; a later successful turn does not erase earlier failures. Long tool sequences request another review.
+
+These controls verify writes and observed checks, not the model's semantic judgment. Direct filesystem writes outside these tools do not receive these protections. External writers can still race; receipt storage is local, not a tamper-proof audit system. Archive is reversible and is not permanent erasure of backups.
+
+## Validation
+
+168 unit tests and the Electron setup smoke test pass. Controlled real-model tests passed 20 Claude Code turns and 5 Codex turns, checking final notes, cancellation, preferences, no-op turns and quiet maintenance. These sessions explicitly supplied generated instructions and connector configuration in synthetic vaults. They do not establish automatic activation in all native apps. See acceptance/ for sanitized evidence.
 
 ## Development
 
-Use Windows with Node.js 22.12 or newer and npm:
+Use Windows and Node.js 22.12 or newer:
 
 ```sh
 npm ci
-npm start
 npm test
-npm run smoke
+npm start
 npm run dist
 ```
 
-The installer is generated in `release/`. End users do not need Node.js, npm, a tunnel, or a separately running web server.
+Installers are generated in release/. End users do not need a separate Node.js installation for the packaged local bridge. AI applications and their accounts are separate installations.
 
-## What it does
+The installer is unsigned. Production signing and Windows VM install/uninstall coverage remain incomplete. Notes stay in the selected folder; application state and migration backups live under %APPDATA%/Claudian Desktop.
 
-- Discovers registered Obsidian vaults and common Claudian folders without changing them.
-- Detects Claude Code/Codex configuration directories and suggests connections. Directory detection is not proof of an installed or authenticated AI application.
-- Creates starter notes in a new empty folder, or preserves an existing note environment.
-- Installs a versioned memory skill with the exact chosen vault path, plus automatic startup instructions in Claude Code user rules and Codex global AGENTS.md (or its active override). No slash command is required. Existing Codex rules are backed up before appending a scoped Claudian block.
-- Refuses to overwrite existing notes or a conflicting skill.
-- Records setup progress and verifies written files.
-- Reports local file health without claiming model behaviour has been verified.
-
-The application does not install Obsidian, Claude Code, or Codex themselves. Reading notes in an AI application is subject to that application's permissions and provider data policies.
-
-## Architecture
-
-`core.cjs` is the filesystem setup engine. `main.cjs` owns the Electron window and narrow IPC handlers. `preload.cjs` exposes those handlers to a sandboxed renderer. `ui/` contains the local setup and memory panel. Fonts are bundled locally; their OFL licenses are included in `licenses/`.
-
-The visual identity follows claudian.app: Poppins, Lora, JetBrains Mono, dark surfaces, off-white text, and the orange dot wordmark. No custom motion or animation is included.
-
-This repository contains the standalone desktop preview. It does not contain personal memory, credentials, the private development history, or the separate legacy web backend.
-
-## Data and limitations
-
-Application state is stored under `%APPDATA%/Claudian Desktop`. Notes remain in the chosen directory. External skills and notes are preserved when the application is uninstalled.
-
-Existing skills are not automatically migrated. Direct AI edits do not yet have application-managed version history or concurrency protection. Controlled setup cancellation rolls back unchanged files created by that run; abrupt process termination recovery is not implemented.
-
-Claude Desktop, ChatGPT, Notion, cloud synchronization, and the autonomous companion are not implemented in this preview. The app does not claim that a copied skill guarantees automatic invocation by an AI host.
-
-## Tests
-
-The tests use isolated temporary directories. The Electron smoke test exercises setup, the panel transition, persistent profile state, and renderer isolation. Its AI filesystem response is simulated; it does not invoke a paid model. Use `--smoke` with a packaged executable to exercise the same diagnostic flow in an isolated profile.
-
-The source is public for review. An application redistribution license has not yet been assigned; third-party fonts retain their included licenses.
-
-
-## 0.5 connection management
-
-Choose English or Turkish in setup. New protocol and skill files use the selected language; existing notes are preserved. The panel provides removal, configuration file locations, Obsidian and folder shortcuts, and local integrity checks. Removal preserves notes and shared dependencies. Local checks do not claim to verify AI behavior.
-
-Validation: 26 core/management tests passed; English and Turkish DOM flows passed setup, installation, removal and reconnection. Native Electron window testing was blocked by a GPU/helper startup failure in the build environment and is not claimed as passed.
-
-## Desktop changes in 0.7
-
-The embedded companion panel has been withdrawn pending a native redesign. The Memory page focuses on notes; connection management lives in its own tab. Obsidian links use the registered vault ID. Unregistered folders open the vault manager with guidance for registering the selected folder.
-
-Validation: 38 core and management tests passed. Full native end-to-end validation was not repeated for this release.
-
-## Protocol and maintenance in 0.9
-
-Protocol 2.0 defines admission criteria, quiet retrieval, targeted updates, invalidation, forgetting, source and validity metadata, and no-op decisions. It is a behavioural contract; it is not an enforced semantic memory engine. Read the English or Turkish protocol in policies/.
-
-Managed files migrate on launch. Customized notes are preserved; conflicting configuration is surfaced rather than overwritten. Configuration offers Repair with backups. Unrelated global instructions survive repair and later connection removal. The app provides release checking and a download link.
-
-The starter-repair button and introduction questionnaire/AI launcher have been removed. Existing personal introduction notes are preserved. Manual skill invocation: Claude Code and Cursor /claudian-memory; Codex $claudian-memory. Automatic use is requested by host startup rules, subject to host capabilities and permissions.
-
-35 isolated tests passed. A real 0.8-generated fixture migrated successfully to protocol 2.0. No paid model or full native end-to-end test was run.
-
-## Optional context review
-
-Review the prepared message in the desktop app and press Enter to launch an interactive native Codex CLI or Claude Code session. Other configured hosts do not yet support direct message launch. This uses the selected provider account and its permissions; it cannot retrieve inaccessible chat histories.
-
-
-
-## Native companion preview
-
-The access-code form connects to the existing Claudian Core and reads its authenticated surface endpoint. Focus and contacts are rendered locally, without embedding the website. It refreshes while the companion view is open and does not require feedback. An online Core and valid code are required. Voice, hardware actions and background desktop notifications are not implemented. Antigravity/Cursor desktop opening does not send a new chat message; direct prompt delivery remains limited to supported CLI adapters.
-
-The original companion presentation remains in place and the access-code form sits below it. The installed language selector is removed; new installs use the setup wizard language for the application and managed memory files.
-
-An existing skill at the default path is preserved. Claudian installs an isolated claudian-memory-bridge entry rather than replacing that file. This is path-conflict handling, not semantic detection or consolidation of other memory skills.
-
+This public repository excludes personal vaults, credentials and the separate legacy backend. Third-party font licenses are included; an application redistribution license has not yet been assigned.

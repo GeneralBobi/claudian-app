@@ -6,6 +6,7 @@ const invoke = async (channel, ...args) => {
   return result.value;
 };
 contextBridge.exposeInMainWorld('claudian', {
+  obsidianInstalled: () => invoke('app:obsidian-installed'),
   downloadObsidian: () => invoke('app:download-obsidian'),
   scanPreview: language => invoke('memory:scan-preview',language),
   chooseCli: id => invoke('memory:choose-cli',id),
@@ -28,14 +29,25 @@ contextBridge.exposeInMainWorld('claudian', {
   discover: () => invoke('app:discover'),
   enter: () => invoke('app:enter'),
   chooseFolder: () => invoke('app:folder'),
+  relocate: target => invoke('memory:relocate', target),
+  verifyWatch: host => invoke('memory:verify-watch', host),
   prepare: input => invoke('setup:prepare', input),
   install: id => invoke('setup:install', id),
   cancel: () => invoke('setup:cancel'),
   activity: () => invoke('memory:activity'),
+  health: () => invoke('memory:health'),
+  notice: () => invoke('memory:notice'),
+  adoptProtocol: () => invoke('memory:adopt-protocol'),
+  skipVerification: () => invoke('memory:skip-verification'),
   challenge: host => invoke('memory:challenge', host),
   verify: host => invoke('memory:verify', host),
   copy: text => invoke('app:copy', text),
   open: kind => invoke('app:open', kind),
+  onVerify: callback => {
+    const listener = (_event, value) => callback(value);
+    ipcRenderer.on('verify:event', listener);
+    return () => ipcRenderer.removeListener('verify:event', listener);
+  },
   onProgress: callback => {
     const listener = (_event, value) => callback(value);
     ipcRenderer.on('setup:event', listener);

@@ -1,0 +1,342 @@
+{
+  "scenario": "atlas-20-turn-tr",
+  "host": "claude-code",
+  "method": "Controlled CLI session with explicit generated settings, skill and MCP configuration; not native app auto-discovery acceptance",
+  "passed": true,
+  "checks": [
+    {
+      "name": "20 turns completed",
+      "passed": true
+    },
+    {
+      "name": "Every turn has a successful review response",
+      "passed": true
+    },
+    {
+      "name": "Memory maintenance precedes visible response text",
+      "passed": true
+    },
+    {
+      "name": "No success bookkeeping announcements",
+      "passed": true
+    },
+    {
+      "name": "Durable information saved in turn 2",
+      "passed": true
+    },
+    {
+      "name": "Durable information saved in turn 3",
+      "passed": true
+    },
+    {
+      "name": "Durable information saved in turn 5",
+      "passed": true
+    },
+    {
+      "name": "Durable information saved in turn 13",
+      "passed": true
+    },
+    {
+      "name": "Durable information saved in turn 17",
+      "passed": true
+    },
+    {
+      "name": "No filler write in turn 4",
+      "passed": true
+    },
+    {
+      "name": "No filler write in turn 6",
+      "passed": true
+    },
+    {
+      "name": "No filler write in turn 7",
+      "passed": true
+    },
+    {
+      "name": "No filler write in turn 8",
+      "passed": true
+    },
+    {
+      "name": "No filler write in turn 9",
+      "passed": true
+    },
+    {
+      "name": "No filler write in turn 10",
+      "passed": true
+    },
+    {
+      "name": "No filler write in turn 11",
+      "passed": true
+    },
+    {
+      "name": "No filler write in turn 12",
+      "passed": true
+    },
+    {
+      "name": "No filler write in turn 14",
+      "passed": true
+    },
+    {
+      "name": "No filler write in turn 15",
+      "passed": true
+    },
+    {
+      "name": "No filler write in turn 16",
+      "passed": true
+    },
+    {
+      "name": "No filler write in turn 19",
+      "passed": true
+    },
+    {
+      "name": "No filler write in turn 20",
+      "passed": true
+    },
+    {
+      "name": "Project linked from index",
+      "passed": true
+    },
+    {
+      "name": "Both languages preserved",
+      "passed": true
+    },
+    {
+      "name": "Accountless decision preserved",
+      "passed": true
+    },
+    {
+      "name": "Rejection and reason preserved",
+      "passed": true
+    },
+    {
+      "name": "Cancellation explicit",
+      "passed": true
+    },
+    {
+      "name": "Cancelled deadline removed from reminders",
+      "passed": true
+    },
+    {
+      "name": "Hypothetical city not retained",
+      "passed": true
+    },
+    {
+      "name": "Final file matches receipt: Claudian About me.md",
+      "passed": true
+    },
+    {
+      "name": "Final file matches receipt: Atlas.md",
+      "passed": true
+    },
+    {
+      "name": "Final file matches receipt: Claudian Projects.md",
+      "passed": true
+    },
+    {
+      "name": "Final file matches receipt: Reminders.md",
+      "passed": true
+    },
+    {
+      "name": "Final file matches receipt: Claudian Working agreements.md",
+      "passed": true
+    }
+  ],
+  "turns": [
+    {
+      "turn": 1,
+      "reviewed": true,
+      "visibleBeforeReview": false,
+      "receipts": [],
+      "exit": 0
+    },
+    {
+      "turn": 2,
+      "reviewed": true,
+      "visibleBeforeReview": false,
+      "receipts": [
+        {
+          "id": "221482e9-4d96-4bd7-ac4f-d5513a9c39af",
+          "note": "Claudian About me.md",
+          "operation": "patch"
+        },
+        {
+          "id": "0a2b9eee-f82f-4f0b-adf3-7176ecf0f3e8",
+          "note": "Atlas.md",
+          "operation": "create"
+        },
+        {
+          "id": "d14113d8-6ffb-4c8d-8ec4-0ef2bbaf937a",
+          "note": "Claudian Projects.md",
+          "operation": "patch"
+        },
+        {
+          "id": "db7a5f37-3fc6-4639-a3b8-a9c19e89cd00",
+          "note": "Reminders.md",
+          "operation": "patch"
+        }
+      ],
+      "exit": 0
+    },
+    {
+      "turn": 3,
+      "reviewed": true,
+      "visibleBeforeReview": false,
+      "receipts": [
+        {
+          "id": "1b60db98-da01-48bf-a6ec-b17dbf58e1dd",
+          "note": "Claudian Working agreements.md",
+          "operation": "patch"
+        }
+      ],
+      "exit": 0
+    },
+    {
+      "turn": 4,
+      "reviewed": true,
+      "visibleBeforeReview": false,
+      "receipts": [],
+      "exit": 0
+    },
+    {
+      "turn": 5,
+      "reviewed": true,
+      "visibleBeforeReview": false,
+      "receipts": [
+        {
+          "id": "8aeaa8c1-6591-4f7b-931c-593267b7fea7",
+          "note": "Atlas.md",
+          "operation": "patch"
+        },
+        {
+          "id": "c4a5175c-2a06-4cd9-8c35-9ebdb225395b",
+          "note": "Reminders.md",
+          "operation": "patch"
+        }
+      ],
+      "exit": 0
+    },
+    {
+      "turn": 6,
+      "reviewed": true,
+      "visibleBeforeReview": false,
+      "receipts": [],
+      "exit": 0
+    },
+    {
+      "turn": 7,
+      "reviewed": true,
+      "visibleBeforeReview": false,
+      "receipts": [],
+      "exit": 0
+    },
+    {
+      "turn": 8,
+      "reviewed": true,
+      "visibleBeforeReview": false,
+      "receipts": [],
+      "exit": 0
+    },
+    {
+      "turn": 9,
+      "reviewed": true,
+      "visibleBeforeReview": false,
+      "receipts": [],
+      "exit": 0
+    },
+    {
+      "turn": 10,
+      "reviewed": true,
+      "visibleBeforeReview": false,
+      "receipts": [],
+      "exit": 0
+    },
+    {
+      "turn": 11,
+      "reviewed": true,
+      "visibleBeforeReview": false,
+      "receipts": [],
+      "exit": 0
+    },
+    {
+      "turn": 12,
+      "reviewed": true,
+      "visibleBeforeReview": false,
+      "receipts": [],
+      "exit": 0
+    },
+    {
+      "turn": 13,
+      "reviewed": true,
+      "visibleBeforeReview": false,
+      "receipts": [
+        {
+          "id": "6a200894-a84b-43a4-a91e-5757cb072cf6",
+          "note": "Atlas.md",
+          "operation": "patch"
+        }
+      ],
+      "exit": 0
+    },
+    {
+      "turn": 14,
+      "reviewed": true,
+      "visibleBeforeReview": false,
+      "receipts": [],
+      "exit": 0
+    },
+    {
+      "turn": 15,
+      "reviewed": true,
+      "visibleBeforeReview": false,
+      "receipts": [],
+      "exit": 0
+    },
+    {
+      "turn": 16,
+      "reviewed": true,
+      "visibleBeforeReview": false,
+      "receipts": [],
+      "exit": 0
+    },
+    {
+      "turn": 17,
+      "reviewed": true,
+      "visibleBeforeReview": false,
+      "receipts": [
+        {
+          "id": "496f91e8-068f-42d4-8436-7508e45c9bc0",
+          "note": "Atlas.md",
+          "operation": "patch"
+        },
+        {
+          "id": "95a25978-36a5-4db6-b51a-e9b3f5cd10bf",
+          "note": "Reminders.md",
+          "operation": "patch"
+        }
+      ],
+      "exit": 0
+    },
+    {
+      "turn": 18,
+      "reviewed": true,
+      "visibleBeforeReview": false,
+      "receipts": [],
+      "exit": 0
+    },
+    {
+      "turn": 19,
+      "reviewed": true,
+      "visibleBeforeReview": false,
+      "receipts": [],
+      "exit": 0
+    },
+    {
+      "turn": 20,
+      "reviewed": true,
+      "visibleBeforeReview": false,
+      "receipts": [],
+      "exit": 0
+    }
+  ],
+  "totalCostUsd": 1.02678555
+}
