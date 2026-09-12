@@ -1,12 +1,13 @@
 'use strict';
 const toml=require('smol-toml');
 const start='# Claudian MCP connection start',end='# Claudian MCP connection end';
+const same=(a,b)=>a===b||(typeof a==='string'&&typeof b==='string'&&/^[a-z]:[\\/]/i.test(a)&&/^[a-z]:[\\/]/i.test(b)&&require('node:path').win32.normalize(a).toLowerCase()===require('node:path').win32.normalize(b).toLowerCase());
 function grant(previous,entry) {
   const config=toml.parse(previous||'');
   const desired={command:entry.command,args:entry.args,env:entry.env};
   const current=config.mcp_servers?.claudian;
   if(current) {
-    if(current.command===desired.command&&JSON.stringify(current.args)===JSON.stringify(desired.args)&&Object.entries(desired.env).every(([k,v])=>current.env?.[k]===v))return previous;
+    if(same(current.command,desired.command)&&Array.isArray(current.args)&&current.args.length===desired.args.length&&current.args.every((arg,i)=>same(arg,desired.args[i]))&&Object.entries(desired.env).every(([k,v])=>same(current.env?.[k],v)))return previous;
     throw Error('A different Claudian Codex MCP connection exists; configuration preserved.');
   }
   if((previous||'').includes(start)||(previous||'').includes(end))throw Error('Incomplete Claudian MCP markers; configuration preserved.');

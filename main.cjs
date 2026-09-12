@@ -15,7 +15,7 @@ if(acceptanceRoot && (!path.isAbsolute(acceptanceRoot)||!require('node:fs').exis
 if (smoke) app.setPath('userData', require('node:fs').mkdtempSync(path.join(os.tmpdir(), 'claudian-smoke-profile-')));
 if (smoke) app.disableHardwareAcceleration();
 const origin = 'claudian://app';
-let win, core, migrationError='';
+let win, core, migrationError='', setupReview=false, installStamp='';
 protocol.registerSchemesAsPrivileged([{ scheme: 'claudian', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 if (!smoke) app.setPath('userData', acceptanceRoot?path.join(acceptanceRoot,'data'):path.join(app.getPath('appData'), 'Claudian Desktop'));
 if (!app.requestSingleInstanceLock({ smoke })) { app.quit(); }
@@ -59,6 +59,8 @@ async function start() {
     if(languageChanged||(await core.snapshot()).profile?.protocolVersion !== require('./policy.cjs').VERSION) await core.upgrade();
   } catch(error) { migrationError=error.message; }
   const installed = Boolean((await core.snapshot()).profile);
+  installStamp = app.getVersion()+':'+await fs.readFile(path.join(path.dirname(process.resourcesPath),'install-session.txt'),'utf8').catch(e=>{if(e.code==='ENOENT')return 'legacy';throw e;});
+  setupReview = !smoke && await require('./setup-review.cjs').pending(core.dataDir,installStamp,(await core.snapshot()).profile);
   win = new BrowserWindow({ icon: path.join(__dirname, 'assets', 'icon.ico'), width: installed ? 940 : 720, height: installed ? 760 : 640, minWidth: 680, minHeight: 560,
     title: installed ? 'claudian.app' : 'claudian.app — Setup', backgroundColor: '#0e0e10', show: false, autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false, offscreen: smoke } });
@@ -76,7 +78,14 @@ async function start() {
     });
   }
   require('./companion-bridge.cjs').attach(handle,session);
-  handle('app:snapshot', async () => ({...await core.snapshot(),appVersion:app.getVersion(),migrationError}));
+  handle('app:snapshot', async () => ({...await core.snapshot(),appVersion:app.getVersion(),migrationError,setupReview}));
+  handle('setup:review', async hosts => {
+    const result=await require('./setup-review.cjs').apply(core,hosts);
+    return result;
+  });
+  handle('setup:review-done', async () => {
+    await require('./setup-review.cjs').acknowledge(core.dataDir,installStamp);setupReview=false;return true;
+  });
 
   handle('app:preferences', language => core.preferences(language));
   handle('memory:connections', () => core.connections());
@@ -188,6 +197,7 @@ async function start() {
   handle('app:discover', () => core.discover());
   handle('app:enter', async () => {
     if (!(await core.snapshot()).profile) throw new Error('Önce kurulumu tamamlayın.');
+    await require('./setup-review.cjs').acknowledge(core.dataDir,installStamp);setupReview=false;
     win.setSize(940, 760); win.center(); win.setTitle('claudian.app');
     await win.loadURL(origin + '/index.html');
   });
@@ -218,9 +228,16 @@ async function start() {
   handle('memory:skip-verification', () => core.skipVerification());
   handle('memory:challenge', host => mutate(() => core.challenge(host)));
   handle('memory:verify', host => mutate(() => core.verify(host)));
-  handle('memory:verify-watch', host => core.watchVerification(host, event => {
-    if (win && !win.isDestroyed()) win.webContents.send('verify:event', {host, ...event});
-  }));
+  const verificationWatches=new Map();
+  handle('memory:verify-cancel', host => {verificationWatches.get(host)?.abort();return true;});
+  handle('memory:verify-watch', async (host,requestId) => {
+    verificationWatches.get(host)?.abort();
+    const controller=new AbortController();verificationWatches.set(host,controller);
+    try{return await core.watchVerification(host,event=>{
+      if(win&&!win.isDestroyed())win.webContents.send('verify:event',{host,requestId,...event});
+    },{signal:controller.signal});}
+    finally{if(verificationWatches.get(host)===controller)verificationWatches.delete(host);}
+  });
   handle('app:copy', text => { if (typeof text !== 'string' || text.length > 5000) throw new Error('Geçersiz metin.'); clipboard.writeText(text); });
   handle('app:open', async kind => {
     const target = kind === 'logs' ? path.join(core.dataDir, 'logs') : kind === 'vault' ? (await core.snapshot()).profile?.vault : null;

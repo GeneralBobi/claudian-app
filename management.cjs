@@ -104,7 +104,7 @@ module.exports = (Setup, {HOSTS, hash, assertOrdinaryPath, json, atomicJson, exi
     this.running = true;
     const replaced = [];
     try {
-      const stamp = new Date().toISOString().slice(0,10);
+      const stamp = new Date().toISOString().slice(0,10)+'-'+crypto.randomUUID();
       const updated = new Map(profile.files.map(f => [f.path, f]));
       for (const file of targets) {
         const expected=policy.protocol(profile.language,path.basename(file));
@@ -114,13 +114,14 @@ module.exports = (Setup, {HOSTS, hash, assertOrdinaryPath, json, atomicJson, exi
         if (before !== null) {
           const kept = path.join(path.dirname(file), `${path.basename(file, '.md')} (yours ${stamp}).md`);
           await assertOrdinaryPath(kept);
-          await fs.writeFile(kept, before, { flag: 'wx' }).catch(e => { if (e.code !== 'EEXIST') throw e; });
+          await fs.writeFile(kept, before, { flag: 'wx' });
           replaced.push({ file, kept });
         }
         await fs.writeFile(file, expected);
         updated.set(file, { ...updated.get(file), path: file, type: 'note', hash: hash(expected), backup: updated.get(file)?.backup ?? null });
       }
-      await atomicJson(this.configFile, { ...profile, files: [...updated.values()], protocolVersion: policy.VERSION, migration: { target: policy.VERSION, conflicts: [], backup: profile.migration?.backup ?? null } });
+      const remaining=(profile.migration?.conflicts||[]).filter(file=>!targets.includes(file));
+      await atomicJson(this.configFile, { ...profile, files: [...updated.values()], protocolVersion: remaining.length?profile.protocolVersion:policy.VERSION, migration: { target: policy.VERSION, conflicts: remaining, backup: profile.migration?.backup ?? null } });
       return { replaced: replaced.length, kept: replaced.map(r => path.basename(r.kept)) };
     } finally { this.running = false; }
   };
@@ -251,6 +252,7 @@ module.exports = (Setup, {HOSTS, hash, assertOrdinaryPath, json, atomicJson, exi
     let appearedAt = null;
 
     for (;;) {
+      if(options.signal?.aborted)return {verified:false,state:'cancelled'};
       const elapsed = Date.now() - started;
       const here = await exists(output);
       if (here && appearedAt === null) { appearedAt = Date.now(); emit({state: 'writing', elapsed}); }
@@ -262,7 +264,7 @@ module.exports = (Setup, {HOSTS, hash, assertOrdinaryPath, json, atomicJson, exi
       } else if (elapsed > LIMIT) {
         const message = 'AI yanıt dosyasını oluşturmadı. Yönergeyi çalıştırdığından ve o uygulamanın not klasörüne yazma izni olduğundan emin ol.';
         emit({state: 'timeout', elapsed, message});
-        return {verified: false, message};
+        return {verified: false, state:'timeout', message};
       } else if (elapsed % 3500 < STEP) emit({state: 'waiting', elapsed});
       await new Promise(resolve => setTimeout(resolve, STEP));
     }
