@@ -16,6 +16,8 @@ function capabilities(vault, notice, options={}) {
     schema({note:string,reason:string,...properties},['note','reason',...required]),
     args=>store.mutate(vault,{...args,operation},actor));
   return [
+    tool('read_connection_test','read','Read only the active connection test created by the Claudian application for this host. Does not expose other hidden files.',schema({}),()=>require('./connection-test.cjs').read(dataDir,vault,actor)),
+    tool('submit_connection_test','write','Submit the value read from this host test. Creates only its dedicated response; never edits user notes.',schema({test_id:string,value:string},['test_id','value']),args=>require('./connection-test.cjs').submit(dataDir,vault,actor,args)),
     tool('startup_context','read','Load shared memory and its protocol at conversation start, including greetings.',schema({topic:string}),
       ({topic})=>runtime.context(vault,topic,options.access||'read',options.language||'en')),
     tool('begin_memory_turn','read','For hosts WITHOUT a prompt hook: begin each user turn, reusing one session_id throughout this conversation. Hook-managed hosts must use the supplied turn.',schema({session_id:string}),

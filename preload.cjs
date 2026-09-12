@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('claudian', {
   chooseCli: id => invoke('memory:choose-cli',id),
   existingSkill: id => invoke('memory:existing-skill',id),
   scanSend: (id,prompt) => invoke('memory:scan-send',id,prompt),
+  memoryTrigger: () => invoke('memory:trigger'),
   companionConnect: code => invoke('companion:connect',code),
   companionRefresh: () => invoke('companion:refresh'),
   companionDisconnect: () => invoke('companion:disconnect'),

@@ -405,6 +405,7 @@ class MemorySetup {
     if (this.running) throw new Error('Kurulumun tamamlanmasını bekleyin.');
     const profile = await json(this.configFile);
     if (!profile?.hosts.some(h => h.id === host)) throw new Error('Bağlantı bulunamadı.');
+    if(profile.access!=='write')throw new Error('Bu okuma/yazma testi için yazma izni gerekir. Salt okunur bağlantı not yazamaz.');
     const nonce = crypto.randomBytes(18).toString('hex');
     const input = path.join(profile.vault, `.claudian-check-${host}-${crypto.randomUUID()}.md`);
     await assertOrdinaryPath(input);
@@ -418,12 +419,17 @@ class MemorySetup {
     const say = profile.language === 'tr'
       ? `${quote(input)} dosyasını oku ve içindeki doğrulama değerini ${quote(output)} dosyasına yaz. Başka hiçbir dosyayı değiştirme. Dosyaya erişemiyorsan bunu açıkça söyle.`
       : `Read ${quote(input)} and write the verification value inside it to ${quote(output)}. Do not change any other file. If you cannot reach the file, say so plainly.`;
-    return { prompt: say, host };
+    const mcp=profile.language==='tr'
+      ? 'Claudian MCP araçları varsa önce read_connection_test çağır, dönen test_id ve dosyadan okuduğun doğrulama değerini submit_connection_test ile gönder. Gizli test dosyasını read_note veya write_note ile açmaya çalışma. Bu yalnız bağlantı testidir; kullanıcı hakkında kalıcı not üretme. MCP yoksa şu dosya testini kullan: '
+      : 'If Claudian MCP tools are available, call read_connection_test, then submit_connection_test with the returned test_id and the verification value you read. Do not use read_note or write_note for the hidden test file. This is a connection test, not a durable fact about the user. If MCP is unavailable, use this file test: ';
+    return { prompt: mcp+say, host };
   }
   async verify(host) {
     const profile = await json(this.configFile); const h = profile?.hosts.find(h => h.id === host);
     if (!h?.challenge) throw new Error('Önce test yönergesini oluşturun.');
     const c = h.challenge;
+    await assertOrdinaryPath(c.input);
+    if(hash(await fs.readFile(c.input))!==c.inputHash)return {verified:false,message:'Test dosyası değişmiş. Yeni test başlatın.'};
     await assertOrdinaryPath(c.output);
     if (!await exists(c.output)) return { verified: false, message: 'AI henüz yanıt dosyasını oluşturmamış.' };
     if ((await fs.stat(c.output)).size > 256) return { verified: false, message: 'Test yanıtı beklenen biçimde değil.' };

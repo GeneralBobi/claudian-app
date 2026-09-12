@@ -1,0 +1,25 @@
+{
+  "verification": {
+    "verified": true,
+    "message": "Okuma ve yazma testi geçti. Test dosyaları not ortamında bırakıldı."
+  },
+  "summary": [
+    {
+      "turn": 1,
+      "exit": 0,
+      "tools": [
+        "ToolSearch",
+        "mcp__claudian__startup_context",
+        "mcp__claudian__read_connection_test",
+        "mcp__claudian__submit_connection_test",
+        "mcp__claudian__memory_review"
+      ],
+      "said": [
+        "Bağlantı testi başarıyla tamamlandı. MCP üzerinden doğrulama değeri okundu ve yanıt dosyasına yazıldı."
+      ],
+      "result": "Bağlantı testi başarıyla tamamlandı. MCP üzerinden doğrulama değeri okundu ve yanıt dosyasına yazıldı.",
+      "cost": 0.1417525,
+      "error": ""
+    }
+  ]
+}

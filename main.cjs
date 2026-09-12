@@ -101,6 +101,7 @@ async function start() {
     const profile=(await core.snapshot()).profile;if(!profile)throw new Error('Memory is not configured.');
     return require('./scan.cjs').launch(profile,id,prompt,scanPaths.get(id));
   });
+  handle('memory:trigger', async () => require('./policy.cjs').memoryTrigger((await core.preferences()).language));
   handle('memory:repair', host => core.upgrade(host));
   const RELEASES='https://api.github.com/repos/GeneralBobi/claudian-app/releases/latest';
   handle('app:updates', async () => {

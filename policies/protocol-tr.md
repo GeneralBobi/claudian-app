@@ -144,3 +144,7 @@ Bunlar temenni değil, kabul vakalarıdır. Dosyaların kurulmuş olması hiçbi
 - Kalıcı bilgi üretmeyen bir konuşma hiçbir yazma üretmez.
 - Başarısız bir kayıt kullanıcıya görünür; başarılı olan görünmez.
 - Kullanıcının bir kez yaptığı düzeltmenin ikinci kez yapılması gerekmez.
+
+## Sağlayıcının kalıcı hafızası
+
+Sağlayıcı hafızası veya özel talimatlar, Claudian’ı başlatmayı hatırlatan kısa bir giriş tercihi taşıyabilir. Bağlı aracın güncel vault seçimi ve uygulama protokolü esas alınır; eski dosya yollarını veya protokol kopyalarını sağlayıcı hafızasından uygulama. Vault içeriğini bu depoya çoğaltma. Persona/üslup tercihini ortak gerçeklerden ayrı tut. Kalıcı hafızaya yazma aracı yoksa kaydedildiğini iddia etme; kullanıcıya özel talimatlara eklenebilecek metni ver. Bu hatırlatma bağlantı, izin veya kesintisiz çalışma garantisi değildir.

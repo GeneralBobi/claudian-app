@@ -14,6 +14,7 @@ exports.run=async({win,core,app,home})=>{const output=process.env.CLAUDIAN_SMOKE
  // is a local, under-construction surface. The invariant worth guarding is that no remote
  // view comes back and that the access code form is the only input offered here.
  await wait('!!document.querySelector("#core-form")');
+ assert.equal(await js('getComputedStyle(document.querySelector("nav .development-label")).display'),'inline');
  assert.ok(await js('!!document.querySelector("#core-code")'));
  assert.ok(await js('!!document.querySelector(".development-label")'));
  assert.equal(win.contentView.children.filter(v=>v.webContents&&v.webContents!==win.webContents).length,0,'no embedded remote view');

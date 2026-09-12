@@ -2,9 +2,9 @@
 
 A Windows application for a local, user-owned Markdown memory shared by AI tools.
 
-**Preview 0.16.0 — protocol 2.6.0.** The companion and managed ChatGPT relay are not ready. This release improves local memory maintenance; it is not a guarantee that every AI host will automatically use memory.
+**Preview 0.16.1 — protocol 2.6.1.** The companion and managed ChatGPT relay are not ready. This release improves local memory maintenance; it is not a guarantee that every AI host will automatically use memory.
 
-[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/download/v0.16.0/Claudian-Setup-0.16.0.exe) · [Website](https://claudian.app) · [Connection coverage](COMPATIBILITY.md)
+[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/download/v0.16.1/Claudian-Setup-0.16.1.exe) · [Website](https://claudian.app) · [Connection coverage](COMPATIBILITY.md)
 
 ## Setup and updates
 
@@ -22,7 +22,7 @@ These controls verify writes and observed checks, not the model's semantic judgm
 
 ## Validation
 
-168 unit tests and the Electron setup smoke test pass. Controlled real-model tests passed 20 Claude Code turns and 5 Codex turns, checking final notes, cancellation, preferences, no-op turns and quiet maintenance. These sessions explicitly supplied generated instructions and connector configuration in synthetic vaults. They do not establish automatic activation in all native apps. See acceptance/ for sanitized evidence.
+170 unit tests and the Electron setup smoke test pass. Controlled real-model tests passed 20 Claude Code turns and 5 Codex turns, checking final notes, cancellation, preferences, no-op turns and quiet maintenance. These sessions explicitly supplied generated instructions and connector configuration in synthetic vaults. They do not establish automatic activation in all native apps. See acceptance/ for sanitized evidence.
 
 ## Development
 
@@ -40,3 +40,5 @@ Installers are generated in release/. End users do not need a separate Node.js i
 The installer is unsigned. Production signing and Windows VM install/uninstall coverage remain incomplete. Notes stay in the selected folder; application state and migration backups live under %APPDATA%/Claudian Desktop.
 
 This public repository excludes personal vaults, credentials and the separate legacy backend. Third-party font licenses are included; an application redistribution license has not yet been assigned.
+
+The connection test now uses host-scoped MCP test tools; the hidden-note boundary remains in place. A real Claude test read and submitted the challenge successfully. The provider-memory pointer is available under Connections, but saving it in a provider account is not automatically verified.

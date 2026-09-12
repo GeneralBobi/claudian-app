@@ -144,3 +144,7 @@ These are acceptance cases, not aspirations. Installing files proves none of the
 - A conversation that produced no durable information produces no write.
 - A failed save is visible to the user; a successful one is not.
 - A correction the user made once does not have to be made again.
+
+## Provider persistent memory
+
+Provider memory or custom instructions may hold a short preference to initialize Claudian. Use the connected tool’s current vault selection and application protocol; do not apply stale paths or protocol copies from provider memory. Do not duplicate vault contents there. Keep persona/style preferences separate from shared facts. If persistent memory cannot be written, do not claim it was saved; provide text the user can put in custom instructions. This pointer is not a connection, permission grant or guarantee of continuous operation.

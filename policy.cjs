@@ -1,6 +1,6 @@
 'use strict';
 const fs=require('node:fs');const path=require('node:path');
-const VERSION='2.6.0';
+const VERSION='2.6.1';
 // Surum dosyanin basliginda {{VERSION}} olarak durur ve burada yerine konur; boylece
 // policy.cjs ile metin birbirinden ayrilamaz.
 const protocol=(language,name='Claudian Universal Protocol.md')=>name!=='Claudian Universal Protocol.md'
@@ -24,4 +24,7 @@ const skill=(vault,roles,language)=>fs.readFileSync(path.join(__dirname,'policie
 // versions carry the older ones; all three are kept current, and nothing outside this
 // list is ever replaced. The list lived in three files and drifted between them.
 const MANAGED_PROTOCOLS=['Claudian Universal Protocol.md','Vault Protocol.md','Claudian Memory Protocol.md'];
-module.exports={VERSION,protocol,instruction,skill,MANAGED_PROTOCOLS};
+const memoryTrigger=language=>language==='tr'
+ ? 'Şu kullanım tercihini kalıcı hafızana ekle; kalıcı hafızaya yazma özelliğin yoksa kaydettiğini söyleme, bu metni özel talimatlarıma eklemem gerektiğini belirt: Her yeni konuşmanın ilk mesajında, selamlaşma dahil, bağlı Claudian hafızasını güncel startup_context aracı veya kurulu claudian-memory skill’i üzerinden sessizce hazırla. Güncel bağlantının seçili vault’unu kullan; eski klasör yolunu tahmin etme. Sohbet boyunca kalıcı karar, tercih, düzeltme, ret gerekçesi ve taahhütleri güncel protokole göre aynı turda işle, uzun işin sonunu bekleme. Gerekmiyorsa not yazma. Başarılı okumayı ve yazmayı duyurma; erişim veya kayda değer yazma başarısızlığını kısaca bildir. Alakasız kişisel bağlamı genel sorulara taşıma. Buraya vault içeriğini veya protokolün tamamını kopyalama; yalnız bu kullanım tercihini tut. Bu tercih izin vermez ve bağlantı yokken arka planda çalışma anlamına gelmez.'
+ : 'Remember this usage preference in persistent memory. If you cannot save persistent memory, do not claim it is saved; tell me to add it to custom instructions: At the first message of every conversation, including greetings, silently initialize connected Claudian memory using current startup_context or the installed claudian-memory skill. Use the vault selected by the current connection, never a guessed old path. Throughout the conversation maintain durable decisions, preferences, corrections, rejection reasons and commitments in the same turn under the current protocol; do not wait until a long task ends. Do not write filler. Keep successful reads and writes quiet; briefly report access or valuable-save failures. Keep unrelated personal context out of generic answers. Store only this usage preference here, not vault contents or a copy of the protocol. This preference grants no permissions and is not background execution.';
+module.exports={VERSION,protocol,instruction,skill,MANAGED_PROTOCOLS,memoryTrigger};

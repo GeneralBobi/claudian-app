@@ -1,7 +1,7 @@
 {
   "name": "claudian-desktop",
   "productName": "Claudian",
-  "version": "0.16.0",
+  "version": "0.16.1",
   "private": true,
   "description": "Claudian ortak hafıza uygulaması",
   "author": "Claudian",
@@ -55,7 +55,8 @@
       "codex-connector.cjs",
       "mcp-hosts.cjs",
       "mcp-server.cjs",
-      "connector-upgrade.cjs"
+      "connector-upgrade.cjs",
+      "connection-test.cjs"
     ],
     "win": {
       "target": "nsis",

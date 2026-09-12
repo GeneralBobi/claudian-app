@@ -269,8 +269,9 @@ test('the run-it-now failure tells the user what to do instead', () => {
 // Aynı yanıltıcı cümle iki yerdeydi: doğrulama yönergesinde ve ilk tarama yönergesinde.
 test('no prompt asks the user to invoke a capability by name', () => {
   const source = require('node:fs').readFileSync(path.join(__dirname, '..', 'scan.cjs'), 'utf8');
-  assert.doesNotMatch(source, /kurulu claudian-memory yeteneğini|installed claudian-memory skill/i,
-    'the skill loads from the host rule; asking for it by name sends people hunting for a command that does not exist');
+  assert.doesNotMatch(source, /type \/claudian|write \$claudian|\/claudian komutunu yaz/i,
+    'the generated AI instruction may name the skill but must not require the user to type a slash command');
+  assert.match(source,/deleted vault protocol copy is not an error/);
 });
 
 // -- 11. Erişilemez kalan ilk tarama ---------------------------------------

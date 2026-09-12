@@ -1,4 +1,4 @@
-# Connection coverage — 0.16.0
+# Connection coverage — 0.16.1
 
 Installation and actual conversation behavior are separate checks. Connections offers a file-access challenge; it is not a complete long-conversation acceptance test.
 
@@ -17,3 +17,5 @@ Claude Code and Codex acceptance explicitly supplied generated settings and inst
 Claude hooks can request a bounded retry for a missing review. Codex observes a missed final review without an automatic Stop retry, because that retry can create another user turn. Both record incomplete maintenance. MCP-only and file-only hosts do not have the same lifecycle hooks.
 
 Restart the selected AI application after setup. Review any host permission or trust request. Existing unrelated configuration and user rules are preserved. A conflicting same-name server is reported instead of overwritten. No account OAuth permission is obtained merely by editing local configuration.
+
+The connection test now uses host-scoped MCP test tools; the hidden-note boundary remains in place. A real Claude test read and submitted the challenge successfully. The provider-memory pointer is available under Connections, but saving it in a provider account is not automatically verified.

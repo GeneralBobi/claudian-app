@@ -25,7 +25,7 @@ exports.resolve=async (id,explicit)=>{
 };
 exports.prompt=profile=>profile.language==='tr'?`Seçili hafıza klasörü: ${profile.vault}
 
-Önce Claudian Home.md, Claudian Universal Protocol.md ve Claudian Record Guide.md dosyalarını oku.
+Önce startup_context veya kurulu claudian-memory skill’i ile güncel uygulama protokolünü yükle; giriş haritasını ve mevcut kullanıcı kısıtlarını oku. Vault protokol kopyası silinmişse geri oluşturma.
 
 Benim hakkımda zaten erişebildiğin bilgileri dikkatle gözden geçirmeni istiyorum. Yalnız bu oturumda gerçekten kullanılabilen hafızanı ve erişimine izin verdiğim bağlı kaynakları kullan. Önce hangi kaynaklara erişebildiğini kısaca belirt. Bir kaynak ek izin gerektiriyorsa veya kapsamı belirsizse okumadan önce sor. İlgisiz bilgisayar dosyalarını tarama; başka sağlayıcıların geçmiş sohbetlerine erişimin varmış gibi davranma. Faydalı bilgi yoksa en fazla üç odaklı soru sor ve yanıtımı bekle.
 
@@ -33,10 +33,10 @@ Kalıcı hedeflerimi, aktif projelerimi, kabul ettiğim kararları ve gerekçele
 
 Her konu için tek kanonik kayıt tut. Protokole göre ADD, UPDATE, INVALIDATE, DELETE veya NO_OP seç. Kaynağı, bilinen tarihleri ve belirsizliği koru. Ana harita ve ilgili notlar arasındaki bağlantıları düzenle; ilgisiz notları silme. Yazdıklarını doğrula. Bu başlangıç incelemesi sonunda gerçekten kullanılan kaynakları, değişen kayıtları ve kalan boşlukları kısaca özetle.
 
-Bu uygulamanın kalıcı hafıza özelliği varsa oraya yalnız şu kullanım bilgisini ekle: İlgili konuşmaların başında bu seçili vaultu sessizce protokolüne göre kullan ve slash komutu bekleme. Vaultun tamamını sağlayıcının hafızasına çoğaltma. Kalıcı hafıza yoksa bunu açıkça belirt; kurulu başlangıç talimatları giriş yolu olarak kalır.
+Bu uygulamanın kalıcı hafıza özelliği varsa oraya yalnız şu kullanım bilgisini ekle: Selamlaşma dahil her konuşmanın başında güncel bağlantının seçili vault’unu sessizce protokolüne göre kullan ve slash komutu bekleme. Vaultun tamamını sağlayıcının hafızasına çoğaltma. Kalıcı hafıza yoksa bunu açıkça belirt; kurulu başlangıç talimatları giriş yolu olarak kalır.
 
 Bu başlangıç incelemesinden sonra rutin hafıza bakımını sessiz yap. Bu, kullanıcının başlattığı bir oturumdur; sürekli çalışan arka plan ajanı değildir. Türkçe yanıt ver.`:`Selected memory folder: ${JSON.stringify(profile.vault)}.
-Read Claudian Home.md, Claudian Universal Protocol.md and Claudian Record Guide.md before working.
+Load the current application protocol using startup_context or the installed claudian-memory skill, then read the entry map and existing user constraints. A deleted vault protocol copy is not an error; do not recreate it.
 
 I want an initial, careful review of what you already know about me. Use only memories actually available to this session and connected sources I have authorized. First tell me briefly which sources you can access; if a source needs permission or its scope is unclear, ask before reading it. Do not scan unrelated computer files, invent access to earlier chats, or treat this request as access to other providers' accounts. If nothing useful is available, ask up to three focused questions and wait for my answers.
 
@@ -44,7 +44,7 @@ Look for durable goals, active projects, accepted decisions and their reasons, s
 
 Keep one canonical record per topic. Apply ADD, UPDATE, INVALIDATE, DELETE or NO_OP as appropriate, preserving source, known dates and uncertainty. Repair useful links to the home map and related notes. Do not delete unrelated notes. Verify your edits and give a brief completion summary of actual sources used, records updated and any gaps. Do not claim completion before writing.
 
-If this host offers persistent memory, remember only this usage pointer there: silently use this selected vault at conversation start for relevant context, maintaining it according to its protocol, and do not wait for a slash command. Do not duplicate the whole vault into provider memory. If persistent memory is unavailable, say so; the installed startup instructions remain the entry mechanism.
+If this host offers persistent memory, remember only this usage pointer there: silently use the currently connected vault at the start of every conversation, including greetings, maintaining it according to its protocol, and do not wait for a slash command. Do not duplicate the whole vault into provider memory. If persistent memory is unavailable, say so; the installed startup instructions remain the entry mechanism.
 
 After this initial review, keep routine memory maintenance quiet. This is a user-started session, not an always-running background agent.
 Respond in ${profile.language==='tr'?'Turkish':'English'}.`;
