@@ -11,6 +11,8 @@ const starter=require('./starter.cjs');
 // How each application reaches this memory, in its own words. A user who cannot see the
 // mechanism cannot tell a working connection from a decorative one.
 const MECHANISM={
+ gemini:{tr:'Gemini web içinde Spark özel uygulaması ve cihaz OAuth bağlantısı kullanılır. Gemini CLI veya Antigravity kanıtları bu bağlantıyı doğrulamaz. Spark yoksa yalnız elle paylaşılan bağlam kullanılabilir.',en:'Uses a Spark custom app and device OAuth in Gemini web. CLI or Antigravity receipts do not verify this connection. Without Spark, only manually shared context is available.'},
+ perplexity:{tr:'Perplexity özel uzak connector üzerinden OAuth ve Streamable HTTP kullanır. Hesap bağlantısı ve gerçek araç çağrısı ayrıca doğrulanır.',en:'Uses a private remote Perplexity connector with OAuth and Streamable HTTP. Account connection and actual tool calls require separate verification.'},
  'claude-code':{tr:'Yerel Claudian sunucusuna bağlanır ve yetenekleri adlarıyla çağırır. Başlangıç kuralı ve tur kancaları bu uygulamanın kendi ayar dosyasında durur; not klasörü erişimi de oradan verilir.',
                 en:'Connects to the local Claudian server and calls its capabilities by name. The startup rule and turn hooks live in this application’s own settings file, and folder access is granted there too.'},
  codex:{tr:'Yerel Claudian sunucusuna bağlanır. Not klasörü, sanal alanın yazılabilir kökleri arasına eklenir; tur kancaları uygulamanın kendi güven onayını bekler.',

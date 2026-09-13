@@ -69,7 +69,7 @@ const memoryTrigger=(language,options={})=>{
 // Surfaces that carry their own account memory. On these the pointer above is what makes the
 // model reach for Claudian at the first message; file-based hosts get the same effect from the
 // rule files setup writes, so nothing is offered there.
-const ACCOUNT_MEMORY=['chatgpt','claude-desktop'];
+const ACCOUNT_MEMORY=['chatgpt','claude-desktop','gemini','perplexity'];
 // The offer lives in the adapter note, one per application, so the user can read it and the
 // answer is remembered where the next conversation on that surface will look.
 const MEMORY_SECTION={tr:'Kalıcı hafıza',en:'Persistent memory'};

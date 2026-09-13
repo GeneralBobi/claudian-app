@@ -1,4 +1,4 @@
-# Connection coverage — 0.18.5
+# Connection coverage — 0.18.6
 
 Installation and actual conversation behavior are separate checks. Connections offers a file-access challenge; it is not a complete long-conversation acceptance test.
 
@@ -7,7 +7,7 @@ Installation and actual conversation behavior are separate checks. Connections o
 | Claude Code | Skill, startup rule, local MCP, conversation hooks | Controlled 20-turn CLI session passed |
 | Codex | Skill, global AGENTS block, local MCP, conversation hooks | Controlled 5-turn CLI session passed; hooks need host trust |
 | Claude Desktop | Local MCP configuration and generated .mcpb | Packaged extension read/write tests; native conversation acceptance pending |
-| Gemini CLI | Skill, context file, local MCP | Configuration tests; installed client returned UNSUPPORTED_CLIENT; account login alone is not proof |
+| Gemini CLI (legacy) | Preserved existing files; no new connections | Earlier local file receipts are not Gemini web acceptance |
 | Antigravity / CLI | Skill and context file | Configuration tests; real conversation acceptance pending |
 | ChatGPT | Hosted device relay, guided account OAuth | Live HTTPS OAuth/read/write/revoke passed with synthetic client; real account acceptance pending |
 
@@ -20,3 +20,20 @@ Cursor is no longer offered for new connections (13.09.2026). A Cursor connectio
 Restart the selected AI application after setup. Review any host permission or trust request. Existing unrelated configuration and user rules are preserved. A conflicting same-name server is reported instead of overwritten. No account OAuth permission is obtained merely by editing local configuration.
 
 The connection test now uses host-scoped MCP test tools; the hidden-note boundary remains in place. A real Claude test read and submitted the challenge successfully. The provider-memory pointer is available under Connections, but saving it in a provider account is not automatically verified.
+
+## 0.18.6 — Gemini web and Perplexity setup
+
+| Application | Setup | Acceptance boundary |
+| --- | --- | --- |
+| Gemini web | Spark custom app, device OAuth/DCR, Streamable HTTP | New identity `gemini`; no inherited Gemini CLI receipts. Google currently restricts custom apps to eligible personal accounts in the US, 18+, English, Spark access and Keep Activity on. Real account acceptance pending. |
+| Gemini without Spark | Copy guide and open Gemini website | Manual user-selected context only; no automatic local read/write and no verified connection claim. |
+| Perplexity | Private custom remote connector, OAuth/DCR, Streamable HTTP | Account custom-connector availability/admin permission required. Real account acceptance pending. |
+
+New web connection tests and first reviews require a receipt from the corresponding MCP route as well as the expected response; a vault response written by another local application is insufficient. This is not protection from a malicious local process with access to Claudian's own data directory.
+
+Sources checked 2026-09-14:
+- https://support.google.com/gemini/answer/17209137
+- https://support.google.com/gemini/answer/17094507
+- https://www.perplexity.ai/help-center/en/articles/13915507-adding-custom-remote-connectors
+
+Release authorized on 2026-09-14. Live AI/account acceptance tests remain deferred at the user’s request; setup support is not proof of account connectivity.

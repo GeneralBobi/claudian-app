@@ -152,8 +152,12 @@ async function start() {
     const exported=await require('./connector-package.cjs').write(target,{provider,url,language:profile.language});
     shell.showItemInFolder(exported.archive);return exported;
   });
+  handle('connector:gemini-guide',async()=>{
+    const prompt=require('./web-providers.cjs').geminiGuide();clipboard.writeText(prompt);
+    await shell.openExternal('https://gemini.google.com/app');return {prompt};
+  });
   const prepareProvider=async provider=>{
-    if(!['chatgpt','claude-desktop'].includes(provider))throw Error('Unknown provider');
+    if(!['chatgpt','claude-desktop','gemini','perplexity'].includes(provider))throw Error('Unknown provider');
     let status=remoteConnector.status();
     if(!status.enabled)status=await remoteConnector.start();
     const endpoint=status.urls?.[provider];
@@ -170,7 +174,7 @@ async function start() {
     const endpoint=await prepareProvider(provider);
     const prompt=require('./connector-package.cjs').setupHelp(provider,endpoint);
     clipboard.writeText(prompt);
-    await shell.openExternal(provider==='chatgpt'?'https://chatgpt.com/':'https://claude.ai/new');
+    await shell.openExternal(require('./web-providers.cjs').providers[provider]?.chat||(provider==='chatgpt'?'https://chatgpt.com/':'https://claude.ai/new'));
     return {prompt};
   });
   handle('memory:self-check', () => core.selfCheck());
@@ -192,6 +196,7 @@ async function start() {
       if(!exe||!/\.exe$/i.test(exe))throw Error('Codex desktop launcher was not found. Open Codex and paste the copied instruction.');
       await runFile(exe,['app',(await core.snapshot()).profile.vault],{windowsHide:true,timeout:15000});return true;
     }
+    if(require('./web-providers.cjs').isWeb(id)){await shell.openExternal(require('./web-providers.cjs').providers[id].chat);return true;}
     if(id==='chatgpt'){await shell.openExternal('https://chatgpt.com/');return true;}
     const local=process.env.LOCALAPPDATA||path.join(home,'AppData','Local');
     const candidates=['claude-code','claude-desktop'].includes(id)

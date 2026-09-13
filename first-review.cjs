@@ -40,17 +40,19 @@ exports.begin=async(dataDir,p,host)=>{
  const id=crypto.randomUUID(),nonce=crypto.randomBytes(16).toString('hex');
  const input=path.join(p.vault,`.claudian-review-${host}-${id}.md`),output=input.replace(/\.md$/,'-response.json');
  const receipt=JSON.stringify({request_id:id,value:nonce,status:'completed',summary:'Your actual sources, changes and remaining gaps'});
+ const web=require('./web-providers.cjs').isWeb(host);
  const prompt=require('./scan.cjs').prompt({...p,hosts:p.hosts.filter(h=>h.id===host)})+'\n\n'+
- `Return the review report to Claudian even when no notes changed. Use read_first_review and submit_first_review if available. Otherwise write the following JSON structure to ${output}:\n${receipt}\nReplace summary with your actual report. Use status completed when the review is finished (an empty vault is valid), needs_input if the review itself is blocked awaiting the user, or failed on an access/error failure. Do not claim success without doing the review. This receipt does not require inventing or changing user notes.`;
+ (web?'Use only Claudian MCP in this web conversation. Call read_first_review and submit_first_review to return your actual report, even when no notes changed. If tools are missing, stop and report that the connection is unavailable. Do not use local files or another AI application. Do not ask personal onboarding questions.':`Return the review report to Claudian even when no notes changed. Use read_first_review and submit_first_review if available. Otherwise write the following JSON structure to ${output}:\n${receipt}\nReplace summary with your actual report. Use status completed when the review is finished (an empty vault is valid), needs_input if the review itself is blocked awaiting the user, or failed on an access/error failure. Do not claim success without doing the review. This receipt does not require inventing or changing user notes.`);
  await ordinary(input);await fs.writeFile(input,prompt,{flag:'wx'});
  const r={id,nonce,host,vault:p.vault,protocol:p.protocolVersion,input,output,inputHash:digest(prompt),issuedAt:new Date().toISOString()};
  await save(dataDir,host,r);return {host,prompt,id};
 };
 exports.read=async(dataDir,vault,host)=>{const r=await active(dataDir,vault,host);return {request_id:r.id,value:r.nonce,instruction:await fs.readFile(r.input,'utf8')};};
-exports.submit=async(dataDir,vault,host,args)=>{if((await profileFor(dataDir,vault,host)).access!=='write')throw Error('This connection has read-only access.');const r=await active(dataDir,vault,host);report(args,r);await fs.writeFile(r.output,JSON.stringify(args),{flag:'wx'});return {submitted:true};};
+exports.submit=async(dataDir,vault,host,args)=>{if((await profileFor(dataDir,vault,host)).access!=='write')throw Error('This connection has read-only access.');const r=await active(dataDir,vault,host);report(args,r);await fs.writeFile(r.output,JSON.stringify(args),{flag:'wx'});if(require('./web-providers.cjs').isWeb(host)){r.mcpSubmitted=true;await save(dataDir,host,r);}return {submitted:true};};
 exports.status=async(dataDir,vault,host)=>{
  let r;try{r=await load(dataDir,vault,host);}catch(e){if(e.code==='ENOENT')return {status:'not_started'};if(/earlier configuration/.test(e.message))return {status:'stale'};throw e;}
  if(r.result)return r.result;
+ if(require('./web-providers.cjs').isWeb(host)&&!r.mcpSubmitted)return {status:Date.now()-Date.parse(r.issuedAt)>24*60*60*1000?'expired':'waiting',issuedAt:r.issuedAt};
  if(Date.now()-Date.parse(r.issuedAt)>24*60*60*1000)return {status:'expired'};
  try{
   await active(dataDir,vault,host);

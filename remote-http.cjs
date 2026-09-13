@@ -15,7 +15,7 @@ class RemoteHttp {
       if(url.origin!==new URL(this.auth.base).origin)return response({error:'invalid_origin'},400);
       if(req.method==='OPTIONS')return response('',204,{'access-control-allow-origin':'*','access-control-allow-methods':'GET, POST, OPTIONS','access-control-allow-headers':'authorization, content-type, mcp-protocol-version'});
       if(req.method==='GET'&&suffix==='/.well-known/oauth-authorization-server')return response(this.auth.metadata());
-      const metadata=/^\/\.well-known\/oauth-protected-resource\/(chatgpt|claude-desktop)$/.exec(suffix);
+      const metadata=/^\/\.well-known\/oauth-protected-resource\/(chatgpt|claude-desktop|gemini|perplexity)$/.exec(suffix);
       if(req.method==='GET'&&metadata)return response({resource:this.auth.resource(metadata[1]),authorization_servers:[this.auth.base],scopes_supported:['claudian.read','claudian.write'],bearer_methods_supported:['header'],resource_name:'Claudian'});
       if(req.method==='POST'&&suffix==='/oauth/register')return response(await this.auth.register(input(req)),201);
       if(req.method==='POST'&&suffix==='/oauth/token')return response(await this.auth.token(input(req)));

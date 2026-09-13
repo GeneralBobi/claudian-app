@@ -9,7 +9,8 @@ const VERSION = policy.VERSION;
 const HOSTS = {
   'claude-code': { label: 'Claude Code', parts: ['.claude', 'skills', 'claudian-memory'] },
   codex: { label: 'Codex', parts: ['.agents', 'skills', 'claudian-memory'] },
-  'gemini-cli': { label: 'Gemini CLI', parts: ['.agents', 'skills', 'claudian-memory'], detect: ['.gemini/settings.json'] },
+  gemini: {label:'Gemini',kind:'remote',detect:[]},
+  perplexity: {label:'Perplexity',kind:'remote',detect:[]},
   antigravity: { label: 'Antigravity', parts: ['.gemini', 'config', 'skills', 'claudian-memory'], detect: ['.gemini/antigravity', '.antigravity'] },
   'antigravity-cli': { label: 'Antigravity CLI', parts: ['.gemini', 'antigravity-cli', 'skills'], filename: 'claudian-memory.md', detect: ['.gemini/antigravity-cli'] },
   // MCP ile baglanan uygulamalar. Bunlar skill dosyasi okumaz; yetenekleri adlariyla
@@ -23,6 +24,7 @@ const HOSTS = {
 // definition stays so a connection made by an earlier version can still be repaired and
 // removed cleanly -- a retired host must never become a file the product can no longer find.
 const RETIRED = {
+  'gemini-cli': {label:'Gemini CLI (legacy)',parts:['.agents','skills','claudian-memory'],detect:['.gemini/settings.json'],retired:true},
   cursor: { label: 'Cursor', parts: ['.agents', 'skills', 'claudian-memory'], detect: ['.cursor'], retired: true },
 };
 const KNOWN = { ...HOSTS, ...RETIRED };
@@ -238,7 +240,7 @@ class MemorySetup {
         continue;
       }
       if (KNOWN[host].kind === 'remote') {
-        artifacts[host] = { access: { state: this.tunnelUrl?'manual':'unavailable', step: mcpHosts.chatgptStep(this.tunnelUrl, language), scope: access },
+        artifacts[host] = { access: { state: this.tunnelUrl?'manual':'unavailable', step: KNOWN[host].kind==='remote'?(language==='tr'?'Bağlantılar ekranından hesap bağlantısını tamamla.':'Complete account connection in the Connections screen.'):mcpHosts.chatgptStep(this.tunnelUrl, language), scope: access },
           server: mcpHosts.SERVER, capabilities: capabilityNames };
         continue;
       }
@@ -478,6 +480,7 @@ class MemorySetup {
     const mcp=profile.language==='tr'
       ? 'Claudian MCP araçları varsa önce read_connection_test çağır, dönen test_id ve dosyadan okuduğun doğrulama değerini submit_connection_test ile gönder. Gizli test dosyasını read_note veya write_note ile açmaya çalışma. Bu yalnız bağlantı testidir; kullanıcı hakkında kalıcı not üretme. MCP yoksa şu dosya testini kullan: '
       : 'If Claudian MCP tools are available, call read_connection_test, then submit_connection_test with the returned test_id and the verification value you read. Do not use read_note or write_note for the hidden test file. This is a connection test, not a durable fact about the user. If MCP is unavailable, use this file test: ';
+    if(require('./web-providers.cjs').isWeb(host))return {host,prompt:'Use this '+KNOWN[host].label+' conversation only. Call Claudian read_connection_test, then submit_connection_test with the returned test_id and value. If these tools are absent, stop and report that Claudian is not connected in this conversation. Do not use local files, another AI application, or claim success from this instruction. Do not create personal notes.'};
     return { prompt: mcp+say, host };
   }
   async verify(host) {
@@ -490,6 +493,10 @@ class MemorySetup {
     if (!await exists(c.output)) return { verified: false, message: 'AI henüz yanıt dosyasını oluşturmamış.' };
     if ((await fs.stat(c.output)).size > 256) return { verified: false, message: 'Test yanıtı beklenen biçimde değil.' };
     if ((await fs.readFile(c.output, 'utf8')).trim() !== c.nonce) return { verified: false, message: 'Yanıt eşleşmedi; AI içindeki testi yeniden çalıştırın.' };
+    if(require('./web-providers.cjs').isWeb(host)){
+      const receipt=await json(path.join(this.dataDir,'connection-receipts',path.basename(c.input)+'.json'));
+      if(receipt?.inputHash!==c.inputHash||receipt?.host!==host)return {verified:false,message:'Bu web bağlantısından MCP yanıtı bekleniyor; dosya yanıtı tek başına yeterli değil.'};
+    }
     h.status = 'verified'; h.verifiedAt = new Date().toISOString();
     h.verifiedProtocol = profile.protocolVersion; h.verifiedVault = profile.vault;
     await atomicJson(this.configFile, profile);

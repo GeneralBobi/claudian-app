@@ -73,7 +73,7 @@ module.exports = (Setup, {HOSTS, hash, assertOrdinaryPath, json, atomicJson, exi
     if (!profile) return [];
     return Promise.all(profile.hosts.map(async host => {
       if(HOSTS[host.id].kind==='remote'&&!this.tunnelUrl)return {id:host.id,label:host.label,files:[],
-        access:{state:'unavailable',scope:profile.access,step:require('./mcp-hosts.cjs').chatgptStep(null,profile.language)},
+        access:{state:'unavailable',scope:profile.access,step:profile.language==='tr'?'Bağlantılar ekranından hesap bağlantısını tamamla.':'Complete account connection in the Connections screen.'},
         artifacts:{},hookTrust:null,status:'attention'};
       // artifacts carries path entries plus an access descriptor; only paths are read.
       const {access = null, ...files} = await this.hostPaths(profile,host.id);

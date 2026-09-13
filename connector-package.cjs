@@ -86,13 +86,14 @@ module.exports.desktopStatus=async(home,dataDir,installation)=>{
 
 // Official Claude custom connector install link; it only prefills, never grants access.
 module.exports.providerLink=(provider,endpoint)=>{
+ if(require('./web-providers.cjs').isWeb(provider))return require('./web-providers.cjs').providers[provider].setup;
  if(provider==='chatgpt')return 'https://chatgpt.com/plugins';
  if(provider!=='claude-desktop')throw Error('Unknown provider');
  const url=new URL('https://claude.ai/customize/connectors');
  url.search=new URLSearchParams({modal:'add-custom-connector',connectorName:'Claudian',connectorUrl:endpoint}).toString();
  return url.href;
 };
-module.exports.setupHelp=(provider,endpoint)=>`Help me connect my Claudian memory to ${provider==='chatgpt'?'ChatGPT':'Claude'}. This is a setup task I requested.
+module.exports.setupHelp=(provider,endpoint)=>require('./web-providers.cjs').isWeb(provider)?require('./web-providers.cjs').guide(provider,endpoint):`Help me connect my Claudian memory to ${provider==='chatgpt'?'ChatGPT':'Claude'}. This is a setup task I requested.
 Name: Claudian — This device
 MCP server URL: ${endpoint}
 Authentication: OAuth (do not request or paste an API key).

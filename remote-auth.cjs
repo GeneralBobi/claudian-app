@@ -8,7 +8,7 @@ const path = require('node:path');
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const random = () => crypto.randomBytes(32).toString('base64url');
 const scopes = ['claudian.read', 'claudian.write'];
-const hosts = ['chatgpt', 'claude-desktop'];
+const hosts = ['chatgpt', 'claude-desktop', 'gemini', 'perplexity'];
 const fail = (message, status=400) => Object.assign(new Error(message), {status});
 
 class RemoteAuth {

@@ -1,7 +1,7 @@
 {
   "name": "claudian-desktop",
   "productName": "Claudian",
-  "version": "0.18.5",
+  "version": "0.18.6",
   "private": true,
   "description": "Claudian ortak hafıza uygulaması",
   "author": "Claudian",
@@ -66,7 +66,8 @@
       "remote-connector.cjs",
       "connector-package.cjs",
       "memory-capture.cjs",
-      "first-review.cjs"
+      "first-review.cjs",
+      "web-providers.cjs"
     ],
     "win": {
       "target": "nsis",
