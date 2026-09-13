@@ -65,7 +65,7 @@ async function writeDesktop(directory,options) {
 module.exports={entries,zip,write,desktopEntries,writeDesktop};
 
 // Only an enabled extension bound to this installation is current.
-exports.desktopStatus=async(home,dataDir)=>{
+module.exports.desktopStatus=async(home,dataDir)=>{
  const root=path.dirname(require('./mcp-hosts.cjs').configFile(home));
  const dirs=await fs.readdir(path.join(root,'Claude Extensions'),{withFileTypes:true}).catch(e=>{if(e.code==='ENOENT')return [];throw e;});
  for(const dir of dirs.filter(e=>e.isDirectory())){

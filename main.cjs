@@ -243,7 +243,7 @@ async function start() {
     if(!file.ok)throw new Error('The installer could not be downloaded.');
     const bytes=Buffer.from(await file.arrayBuffer());
     if(!bytes.length||(asset.size&&bytes.length!==asset.size))throw new Error('The download was incomplete; it was discarded.');
-    const sums=(release.assets||[]).find(a=>/^SHA256SUMS[-0-9.]*\.txt$/i.test(String(a.name||'')));
+    const sums=(release.assets||[]).find(a=>/^SHA256(?:SUMS)?[-0-9.]*\.txt$/i.test(String(a.name||'')));
     if(!sums)throw new Error('This release publishes no checksum; the installer was not run.');
     const sumsUrl=new URL(sums.browser_download_url);
     if(sumsUrl.protocol!=='https:'||!/(^|\.)github(usercontent)?\.com$/i.test(sumsUrl.hostname))throw new Error('Unexpected checksum location; nothing was run.');
