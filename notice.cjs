@@ -397,7 +397,8 @@ async function deliver({ vault, language = 'en', candidates, now = Date.now() })
 
 /** Giriş haritasının "Açık uçlar" bölümüne tek bir bağlantı ekler; varsa dokunmaz. */
 async function linkFromHome(vault, language, name) {
-  const home = path.join(vault, 'Claudian Home.md');
+  const {roles} = await require('./roles.cjs').resolve(vault);
+  const home = path.join(vault, roles.entry || 'Claudian Home.md');
   const text = await fs.readFile(home, 'utf8').catch(error => {
     if (error.code === 'ENOENT') return null;
     throw error;

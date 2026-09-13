@@ -9,16 +9,23 @@ const VERSION = policy.VERSION;
 const HOSTS = {
   'claude-code': { label: 'Claude Code', parts: ['.claude', 'skills', 'claudian-memory'] },
   codex: { label: 'Codex', parts: ['.agents', 'skills', 'claudian-memory'] },
-  cursor: { label: 'Cursor', parts: ['.agents', 'skills', 'claudian-memory'], detect: ['.cursor'] },
   'gemini-cli': { label: 'Gemini CLI', parts: ['.agents', 'skills', 'claudian-memory'], detect: ['.gemini/settings.json'] },
   antigravity: { label: 'Antigravity', parts: ['.gemini', 'config', 'skills', 'claudian-memory'], detect: ['.gemini/antigravity', '.antigravity'] },
   'antigravity-cli': { label: 'Antigravity CLI', parts: ['.gemini', 'antigravity-cli', 'skills'], filename: 'claudian-memory.md', detect: ['.gemini/antigravity-cli'] },
   // MCP ile baglanan uygulamalar. Bunlar skill dosyasi okumaz; yetenekleri adlariyla
   // cagirirlar. Ayrintili gerekce mcp-hosts.cjs basinda.
-  'claude-desktop': { label: 'Claude Desktop', kind: 'mcp', detect: ['AppData/Roaming/Claude'] },
+  'claude-desktop': { label: 'Claude', kind: 'mcp', detect: ['AppData/Roaming/Claude'] },
   // ChatGPT yerel surec baslatamaz; baglanti yalnizca genel bir HTTPS ucundan kurulur.
   chatgpt: { label: 'ChatGPT', kind: 'remote', detect: ['AppData/Roaming/ChatGPT', 'AppData/Local/Programs/ChatGPT'] },
 };
+// No longer offered for new connections. Cursor was removed on 13.09.2026: it is an editor, and
+// the product's list follows AI applications rather than every tool that can host one. The
+// definition stays so a connection made by an earlier version can still be repaired and
+// removed cleanly -- a retired host must never become a file the product can no longer find.
+const RETIRED = {
+  cursor: { label: 'Cursor', parts: ['.agents', 'skills', 'claudian-memory'], detect: ['.cursor'], retired: true },
+};
+const KNOWN = { ...HOSTS, ...RETIRED };
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const exists = async file => { try { await fs.lstat(file); return true; } catch (e) { if (e.code === 'ENOENT') return false; throw e; } };
 
@@ -52,8 +59,11 @@ function skill(vault, roles) {
 class MemorySetup {
   constructor({ home, dataDir, emit = () => {}, codexHome = path.join(home, '.codex'),
     launcher = process.execPath, mcpScript = path.join(__dirname, 'mcp-server.cjs'),
-    tunnelUrl = null }) {
+    tunnelUrl = null, legacy = false }) {
     this.home = home; this.dataDir = dataDir; this.emit = emit;
+    // Reproduces an installation made by a version that still offered a retired host. Only the
+    // tests use it, to prove such an installation can still be repaired and removed.
+    this.legacy = legacy;
     this.codexHome = codexHome;
     // MCP istemcisi sunucuyu bu ikiliyle baslatir. Testte degistirilebilir olmasi sart:
     // paketlenmemis bir kosuda process.execPath electron.exe'dir.
@@ -63,7 +73,16 @@ class MemorySetup {
   }
   async snapshot() {
     const profile = await json(this.configFile);
-    return { profile, running: this.running, events: this.events, version: VERSION,
+    // Whether the notes folder is actually there decides which screen is honest. A review
+    // screen that confirms a folder the user deleted reads as "you are set up" and hides the
+    // one question setup exists to ask.
+    const vaultMissing = Boolean(profile?.vault) && !await exists(profile.vault);
+    // The panel and the call that replaces a protocol must agree on what counts as a protocol
+    // conflict, or the panel offers a button whose only answer is "there is nothing to replace".
+    const conflicts = profile?.migration?.conflicts || [];
+    const protocolConflicts = profile ? require('./policy.cjs').protocolConflicts(profile.vault, conflicts) : [];
+    const connectionConflicts = conflicts.filter(file => !protocolConflicts.includes(file));
+    return { profile, vaultMissing, protocolConflicts, connectionConflicts, running: this.running, events: this.events, version: VERSION,
       hosts: await Promise.all(Object.entries(HOSTS).map(async ([id, h]) => ({ id, label: h.label,
         configurationFound: (await Promise.all((h.detect || (id === 'codex' ? [this.codexHome] : [h.parts[0]])).map(p => exists(path.resolve(this.home, p))))).some(Boolean),
         // MCP konaklarinin skill dosyasi yoktur; yoklugu bir eksiklik degil, bicimleri.
@@ -95,7 +114,7 @@ class MemorySetup {
     if (!input || typeof input.name !== 'string' || !input.name.trim() || input.name.length > 100 || /[\r\n\x00-\x1f]/.test(input.name)) throw new Error('Geçerli bir ad girin.');
     if (!['new', 'existing'].includes(input.mode) || !['obsidian', 'markdown'].includes(input.storage)) throw new Error('Not ortamını seçin.');
     if (typeof input.vault !== 'string' || !path.isAbsolute(input.vault) || input.vault.length > 500 || /[\x00-\x1f]/.test(input.vault)) throw new Error('Tam klasör yolu gerekli.');
-    if (!Array.isArray(input.hosts) || !input.hosts.length || input.hosts.some(x => typeof x !== 'string' || !Object.hasOwn(HOSTS, x)) || new Set(input.hosts).size !== input.hosts.length) throw new Error('En az bir desteklenen AI seçin.');
+    if (!Array.isArray(input.hosts) || !input.hosts.length || input.hosts.some(x => typeof x !== 'string' || !Object.hasOwn(this.legacy ? KNOWN : HOSTS, x)) || new Set(input.hosts).size !== input.hosts.length) throw new Error('En az bir desteklenen AI seçin.');
     const vault = path.resolve(input.vault);
     if (existingProfile && (vault !== existingProfile.vault || input.mode !== 'existing' || input.storage !== existingProfile.storage || input.name.trim() !== existingProfile.name)) throw new Error('Bağlantı eklerken mevcut not ortamı değiştirilemez.');
     if (existingProfile && input.hosts.some(id => existingProfile.hosts.some(h => h.id === id))) throw new Error('Bu AI bağlantısı zaten kurulu.');
@@ -112,19 +131,21 @@ class MemorySetup {
     // sessizce genisletmemeli.
     const access = existingProfile ? (existingProfile.access === 'read' ? 'read' : 'write')
       : (input.access === 'read' ? 'read' : 'write');
-    const language = input.language || existingProfile?.language || 'en';
+    // The installed profile's language wins over whatever the window happens to be showing.
+    // The interface starts in English and adopts the stored preference asynchronously, so a
+    // plan prepared before that resolved carried language:'en' into a Turkish installation.
+    const language = existingProfile?.language || input.language || 'en';
     if (!['en','tr'].includes(language)) throw new Error('Invalid language.');
     // One protocol file, one entry map. The earlier starter shipped Vault Protocol.md and
     // Claudian Universal Protocol.md byte-identical, plus three notes each claiming to be the
     // entry point; the agent had to pick between them at every session start.
-    const protocolNote = 'Claudian Universal Protocol.md';
+    const protocolNote = policy.PROTOCOL_NOTE(language);
     if (!existingProfile) {
       // Installing into a folder that already holds a protocol file used to skip it entirely,
       // so a vault carrying 2.0 stayed on 2.0 after a fresh install of 2.2 and only the
       // Settings > Update button ever fixed it. The protocol is a file this app manages: an
-      // install brings it current. The version that was there is kept beside it under its own
-      // name, because a protocol the user edited is not ours to discard silently.
-      const stamp = new Date().toISOString().slice(0, 10);
+      // install brings it current. A protocol the user edited is not ours to discard, so an
+      // edited one is left alone entirely rather than copied aside.
       const current = policy.protocol(language);
       for (const name of policy.MANAGED_PROTOCOLS) {
         const expected=policy.protocol(language,name);
@@ -135,31 +156,49 @@ class MemorySetup {
         const owned=existingProfile?.files?.find(f=>f.path===target);
         // A filename is not ownership. Preserve imported or user-edited protocols.
         if(!owned||owned.hash!==hash(onDisk))continue;
-        const kept = path.join(vault, `${path.basename(name, '.md')} (yours ${stamp}).md`);
-        if (!await exists(kept)) files.push({ path: kept, content: onDisk, type: 'note' });
+        // Past this guard the file is byte-for-byte what Claudian last wrote, so there is no
+        // user edit to preserve and a "(yours ...)" copy protects nothing. Writing one anyway
+        // turned every version bump and every language flip into two more protocol files in
+        // the vault; four of them were still sitting there on 12.09.2026.
         files.push({ path: target, content: expected, previous: onDisk, expectedHash: hash(onDisk), type: 'note', host: 'vault' });
       }
-      if (!await exists(path.join(vault,protocolNote))) files.push({ path: path.join(vault, protocolNote), content: current, type: 'note' });
+      // A folder that already carries a protocol note under any name Claudian has used keeps
+      // it. Adding a second one beside it is the "two active copies of one rule" the protocol
+      // itself forbids, and it is how a vault ends up with the agent arbitrating between them.
+      const {roles: existingRoles} = await require('./roles.cjs').resolve(vault);
+      if (!existingRoles.protocol && !await exists(path.join(vault,protocolNote))) files.push({ path: path.join(vault, protocolNote), content: current, type: 'note' });
     }
     const empty = !hasVault || (await fs.readdir(vault)).length === 0;
     if (!existingProfile) {
-      const skeleton = require('./welcome.cjs').skeleton(language, input.name.trim());
+      // Every selected application gets its own adapter note: the protocol is shared, the
+      // surface is not, and a user who cannot see how an application connects cannot tell a
+      // working connection from a decorative one.
+      const selected = [...new Set([...(existingProfile?.hosts || []).map(h => h.id), ...input.hosts])];
+      const skeleton = require('./welcome.cjs').skeleton(language, input.name.trim(), selected,
+        Object.fromEntries(selected.map(id => [id, KNOWN[id].label])));
       // An existing vault already has its own panels under its own names; adding ours beside
       // them would duplicate the role and split the open loops across two files.
-      if (input.mode === 'existing' && !empty) for (const file of ['Control Panel.md', 'Reminders.md']) delete skeleton[file];
+      // An existing vault may already hold these roles under its own names; adding ours beside
+      // them would duplicate the role and split the open loops across two files.
+      if (input.mode === 'existing' && !empty) {
+        const {roles: present} = await require('./roles.cjs').resolve(vault);
+        const starterNames = require('./welcome.cjs').names(language, input.name.trim());
+        for (const role of ['panel', 'reminders', 'protocol', 'entry', 'start']) {
+          if (present[role] && starterNames[role] && present[role] !== starterNames[role]) delete skeleton[starterNames[role]];
+        }
+      }
       for (const [file, content] of Object.entries(skeleton)) if (!await exists(path.join(vault,file))) files.push({path:path.join(vault,file),content,type:'note'});
       if(input.storage === 'obsidian' && !await exists(path.join(vault,'.obsidian','app.json'))) files.push({path:path.join(vault,'.obsidian','app.json'),content:'{}\n',type:'note'});
     }
-    const turkish = ['Start Here.md', 'Kontrol Paneli.md', 'Hatırlatıcılar.md', 'Vault Protokolü.md'];
-    const roles = input.mode === 'existing' && await exists(path.join(vault, 'Vault Protokolü.md')) ? turkish : ['Claudian Home.md'];
-    // Existing arbitrary Markdown vaults get a separate entry; no existing note is changed.
-    if (input.mode === 'existing' && !empty && !await exists(path.join(vault, roles[roles.length - 1])) && !await exists(path.join(vault, protocolNote))) {
-      const entry = path.join(vault, 'Claudian Memory Protocol.md');
-      if (await exists(entry) && !existingProfile) throw new Error('Claudian Memory Protocol.md zaten var; mevcut protokolü düzenlemeden önce bağlantı uyarlaması gerekiyor.');
-      if (!await exists(entry)) files.push({ path: entry, content: policy.protocol(language,'Claudian Memory Protocol.md'), type: 'note' });
-      roles.splice(0, roles.length, 'Claudian Memory Protocol.md');
-    }
-    if (!roles.includes('Claudian Home.md')) roles.push('Claudian Home.md');
+    // The skill names where to start reading. It resolves by role at run time, but the
+    // generated text still shows the current file names so a person can follow them.
+    const {roles: present} = await require('./roles.cjs').resolve(vault);
+    const starterNames = require('./welcome.cjs').names(language, input.name.trim());
+    const roles = ['entry', 'agreements', 'decisions', 'panel', 'reminders']
+      .map(role => present[role] || starterNames[role]).filter(Boolean);
+    // An existing arbitrary Markdown folder has no entry map of ours and none of its own; it
+    // gets one rather than having an unrelated note pressed into the part.
+    if (!roles.length) roles.push(starterNames.entry);
     const text = policy.skill(vault,roles,language);
     const artifacts = {};
     const adopted = [];
@@ -175,7 +214,7 @@ class MemorySetup {
     for (const host of input.hosts) {
       // MCP konaklari skill + baslangic kurali yolunu hic kullanmaz: tek ihtiyaclari
       // sunucuyu nasil baslatacaklarini soyleyen bir yapilandirma girdisi.
-      if (HOSTS[host].kind === 'mcp') {
+      if (KNOWN[host].kind === 'mcp') {
         const file = mcpHosts.configFile(this.home);
         await assertOrdinaryPath(file);
         const previous = await exists(file) ? await fs.readFile(file, 'utf8') : null;
@@ -190,18 +229,18 @@ class MemorySetup {
         }
         continue;
       }
-      if (HOSTS[host].kind === 'remote') {
+      if (KNOWN[host].kind === 'remote') {
         artifacts[host] = { access: { state: this.tunnelUrl?'manual':'unavailable', step: mcpHosts.chatgptStep(this.tunnelUrl, language), scope: access },
           server: mcpHosts.SERVER, capabilities: capabilityNames };
         continue;
       }
-      let target = path.join(this.home, ...HOSTS[host].parts, HOSTS[host].filename || 'SKILL.md');
+      let target = path.join(this.home, ...KNOWN[host].parts, KNOWN[host].filename || 'SKILL.md');
       await assertOrdinaryPath(target);
       let reuseSkill = await reusable(target);
       if (await exists(target) && !reuseSkill) {
-        target = HOSTS[host].filename ? path.join(path.dirname(target), "claudian-memory-bridge.md") : path.join(path.dirname(path.dirname(target)), "claudian-memory-bridge", "SKILL.md");
+        target = KNOWN[host].filename ? path.join(path.dirname(target), "claudian-memory-bridge.md") : path.join(path.dirname(path.dirname(target)), "claudian-memory-bridge", "SKILL.md");
         await assertOrdinaryPath(target); reuseSkill = await reusable(target);
-        if(await exists(target)&&!reuseSkill)throw new Error(`${HOSTS[host].label}: Claudian bridge dosyası zaten var; mevcut dosyayı inceleyin.`);
+        if(await exists(target)&&!reuseSkill)throw new Error(`${KNOWN[host].label}: Claudian bridge dosyası zaten var; mevcut dosyayı inceleyin.`);
       }
       if (!reuseSkill && !files.some(f => f.path === target)) files.push({ path: target, content: target.includes("claudian-memory-bridge") ? text.replace("name: claudian-memory", "name: claudian-memory-bridge") : text, type: 'skill', host });
       const instruction = policy.instruction(target,vault,language);
@@ -271,7 +310,7 @@ class MemorySetup {
         const old=await exists(hookFile)?await fs.readFile(hookFile,'utf8'):null;
         const hook=connector.hooks(old,{exe:this.launcher,script:path.join(path.dirname(this.mcpScript),'memory-hook.cjs'),dataDir:this.dataDir});
         if(hook.content!==old)files.push({path:hookFile,content:hook.content,previous:old,expectedHash:old===null?null:hash(old),type:'hooks',host});
-        Object.assign(artifacts[host],{config:file,hooks:hookFile,hookCommand:hook.command,hookTrust:'requires-host-review',server:'claudian',capabilities:capabilityNames});
+        Object.assign(artifacts[host],{config:file,mcpEntry:entry,hooks:hookFile,hookCommand:hook.command,hookTrust:'requires-host-review',server:'claudian',capabilities:capabilityNames});
       }
       if (host === 'claude-code') {
         const lifecycle=require('./claude-lifecycle.cjs');
@@ -308,7 +347,7 @@ class MemorySetup {
       // The old wording -- "changed by the user" -- named the wrong culprit and said nothing
       // about what to do. The file is simply one we did not write, and until 0.12.1 it was
       // often a husk this app left behind on removal. Say what was found and what fixes it.
-      if (['claude-code', 'cursor'].includes(host) && previous !== null) throw new Error(`${HOSTS[host].label}: başlangıç kuralı dosyasında Claudian'a ait olmayan bir içerik var, bu yüzden dosyaya dokunulmadı. İçeriği sana aitse koru; değilse dosyayı sil ve kurulumu tekrar başlat: ${rulePath}`);
+      if (['claude-code', 'cursor'].includes(host) && previous !== null) throw new Error(`${KNOWN[host].label}: başlangıç kuralı dosyasında Claudian'a ait olmayan bir içerik var, bu yüzden dosyaya dokunulmadı. İçeriği sana aitse koru; değilse dosyayı sil ve kurulumu tekrar başlat: ${rulePath}`);
       if (rulePath.startsWith(path.join(this.home, '.gemini') + path.sep) && (previous || '').length + rule.length > 12000) throw new Error('Google başlangıç talimatı 12000 karakter sınırını aşıyor; mevcut dosya korundu.');
       if (previous !== null && Buffer.byteLength(previous + rule) > 24000) throw new Error('Global talimat dosyası çok büyük; otomatik kural eklenmedi.');
       files.push({ path: rulePath, content: header + (previous || '') + rule, previous, expectedHash: previous === null ? null : hash(previous), type: 'rule', host });
@@ -324,7 +363,12 @@ class MemorySetup {
     return { ...plan, files: files.map(({ content, previous, expectedHash, ...file }) => ({ ...file, operation: previous != null ? 'append' : 'create' })) };
   }
   cancel() { this.cancelled = true; }
-  async install(id) {
+  // Consent is a condition of installing, not a sentence on a screen. The interface used to
+  // describe what was about to be granted and then install it on any click; a user who had not
+  // agreed to anything ended up with a memory server, a startup rule and a folder permission
+  // inside six AI applications. Refused here, so no interface change can bypass it.
+  async install(id, consent) {
+    if (consent !== true) throw new Error('Bu izinleri onaylamadan bağlantı kurulmaz.');
     if (this.running || !this.pending || id !== this.pending.id) throw new Error('Kurulum önizlemesini yeniden oluşturun.');
     const plan = this.pending; this.pending = null; this.running = true; this.cancelled = false; this.events = [];
     const created = []; const begun = Date.now(); const stageStarts = {}; let log;
@@ -373,7 +417,7 @@ class MemorySetup {
           } else await fs.writeFile(file.path, file.content, { flag: 'wx' });
           created.push({ path: file.path, hash: hash(file.content), backup, type: file.type, host: file.host });
           await send(type === 'skill' ? 'skills' : 'notes', 'running', type === 'skill'
-            ? { skill: `${HOSTS[file.host].label} skill'i yazıldı.`, rule: `${HOSTS[file.host].label} başlangıç kuralı yazıldı.`, grant: `${HOSTS[file.host].label} not klasörü erişimi verildi.`, mcp: `${HOSTS[file.host].label} hafıza bağlantısı kuruldu.`, hooks: `${HOSTS[file.host].label} tur denetimi kuruldu; uygulama içindeki güven onayı bekleniyor.` }[file.type]
+            ? { skill: `${KNOWN[file.host].label} skill'i yazıldı.`, rule: `${KNOWN[file.host].label} başlangıç kuralı yazıldı.`, grant: `${KNOWN[file.host].label} not klasörü erişimi verildi.`, mcp: `${KNOWN[file.host].label} hafıza bağlantısı kuruldu.`, hooks: `${KNOWN[file.host].label} tur denetimi kuruldu; uygulama içindeki güven onayı bekleniyor.` }[file.type]
             : `${path.basename(file.path)} hazır.`);
         }
         check();
@@ -383,8 +427,12 @@ class MemorySetup {
       for (const file of created) if (hash(await fs.readFile(file.path)) !== file.hash) throw new Error('Dosya doğrulaması başarısız.');
       await send('verify', 'done', 'Dosya bütünlüğü doğrulandı. AI içinden erişim ayrıca doğrulanacak.');
       const profile = { name: plan.name, vault: plan.vault, storage: plan.storage, language: plan.language, access: plan.access, protocolVersion: VERSION,
-        installedAt: plan.existingProfile?.installedAt || new Date().toISOString(), hosts: [...(plan.existingProfile?.hosts || []), ...plan.hosts.map(id => ({ id, label: HOSTS[id].label, status: 'configured', artifacts: plan.artifacts[id] }))],
-        files: [...(plan.existingProfile?.files || []), ...(plan.adopted||[]).filter(a=>!(plan.existingProfile?.files||[]).some(f=>f.path===a.path)), ...created], mode: 'memory', companion: 'under-construction' };
+        installedAt: plan.existingProfile?.installedAt || new Date().toISOString(), hosts: [...(plan.existingProfile?.hosts || []), ...plan.hosts.map(id => ({ id, label: KNOWN[id].label, status: 'configured', artifacts: plan.artifacts[id] }))],
+        files: [...(plan.existingProfile?.files || []), ...(plan.adopted||[]).filter(a=>!(plan.existingProfile?.files||[]).some(f=>f.path===a.path)), ...created], mode: 'memory', companion: 'under-construction',
+        // What was granted, when, to which applications and at which protocol version. A
+        // permission the user cannot look up afterwards is not a permission they gave.
+        grants: [...(plan.existingProfile?.grants || []), { at: new Date().toISOString(), scope: plan.access, hosts: plan.hosts,
+          protocolVersion: VERSION, capabilities: (plan.capabilities || []).filter(c => c.enabled).map(c => c.name) }] };
       check();
       await atomicJson(this.configFile, profile);
       // Profile is the commit point. No rollback may occur after it is durable.
@@ -455,6 +503,6 @@ class MemorySetup {
     return notes.sort((a, b) => b.modified.localeCompare(a.modified)).slice(0, 30);
   }
 }
-module.exports = { MemorySetup, HOSTS, VERSION, hash, assertOrdinaryPath };
-require('./management.cjs')(MemorySetup, {HOSTS, hash, assertOrdinaryPath, json, atomicJson, exists});
+module.exports = { MemorySetup, HOSTS, RETIRED, KNOWN, VERSION, hash, assertOrdinaryPath };
+require('./management.cjs')(MemorySetup, {HOSTS: KNOWN, hash, assertOrdinaryPath, json, atomicJson, exists});
 require('./upgrade.cjs')(MemorySetup, {hash,assertOrdinaryPath,json,atomicJson});

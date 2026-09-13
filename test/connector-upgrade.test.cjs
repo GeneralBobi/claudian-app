@@ -6,7 +6,7 @@ test('legacy Claude install gains MCP and turn checks without discarding user se
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'claudian-connector-upgrade-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
  const home=path.join(root,'home');await fs.mkdir(home);
  const core=new MemorySetup({home,dataDir:path.join(root,'data')});
- await core.install((await core.prepare({name:'Deniz',vault:path.join(root,'vault'),mode:'new',storage:'markdown',hosts:['claude-code'],language:'en',access:'read'})).id);
+ await core.install((await core.prepare({name:'Deniz',vault:path.join(root,'vault'),mode:'new',storage:'markdown',hosts:['claude-code'],language:'en',access:'read'})).id,true);
  const profile=(await core.snapshot()).profile,host=profile.hosts[0],settings=host.artifacts.hooks,mcpFile=host.artifacts.config;
  const config=JSON.parse(await fs.readFile(settings,'utf8'));delete config.hooks;config.permissions.allow=[];config.userPreference='keep me';
  await fs.writeFile(settings,JSON.stringify(config));await fs.unlink(mcpFile);
@@ -24,7 +24,7 @@ test('legacy Claude install gains MCP and turn checks without discarding user se
 test('an unrelated same-name MCP server makes migration report conflict and preserves it',async t=>{
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'claudian-mcp-conflict-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
  await fs.mkdir(path.join(root,'home'));const core=new MemorySetup({home:path.join(root,'home'),dataDir:path.join(root,'data')});
- await core.install((await core.prepare({name:'Deniz',vault:path.join(root,'vault'),mode:'new',storage:'markdown',hosts:['claude-code'],language:'en'})).id);
+ await core.install((await core.prepare({name:'Deniz',vault:path.join(root,'vault'),mode:'new',storage:'markdown',hosts:['claude-code'],language:'en'})).id,true);
  const file=path.join(root,'home','.claude.json'),changed=JSON.stringify({mcpServers:{claudian:{command:'my-own-server'}}});await fs.writeFile(file,changed);
  const result=await core.upgrade();assert.ok(result.conflicts.length);assert.equal(await fs.readFile(file,'utf8'),changed);
  await assert.rejects(core.removeHost('claude-code'),/changed/);assert.equal(await fs.readFile(file,'utf8'),changed);

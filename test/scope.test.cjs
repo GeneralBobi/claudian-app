@@ -60,3 +60,31 @@ test('Claude Code receives exactly the scope it was given', async () => {
   assert.equal(JSON.parse(narrow.content).permissions.allow.length, 1);
   assert.equal(JSON.parse(wide.content).permissions.allow.length, 3);
 });
+
+// PowerShell ends a single-quoted string on the typographic quotes as well as on U+0027.
+// Turkish is full of them -- "skill'i", "AI'ın" -- so an instruction carrying one closed its own
+// string mid-sentence and PowerShell parsed the rest as code. The user saw "Missing argument in
+// parameter list" and no AI ever opened. Measured 13.09.2026 against the real parser.
+test('an instruction carrying a typographic apostrophe still parses as one string', () => {
+  const quote = s => "'" + String(s).replace(/['\u2018\u2019\u201A\u201B]/g, m => m + m) + "'";
+  for (const sample of ["skill’i ile güncel", "AI’ın okuduğu", "it's fine", "‘quoted’", "plain"]) {
+    const wrapped = quote(sample);
+    // Every quote inside the body is doubled, which is how PowerShell escapes one, so the only
+    // odd-length run of quotes is the pair that opens and closes the string.
+    const body = wrapped.slice(1, -1);
+    for (const run of body.match(/['\u2018\u2019\u201A\u201B]+/g) || []) {
+      assert.equal(run.length % 2, 0, 'an unescaped quote in ' + JSON.stringify(sample) + ' would end the string');
+    }
+  }
+});
+
+// The instruction the launcher actually sends carries these characters, so the guard is checked
+// against the real text rather than a sample.
+test('the generated review instruction survives quoting', () => {
+  const scan = require('../scan.cjs');
+  const profile = {vault: 'C:/tmp', language: 'tr', hosts: [{id: 'claude-code', label: 'Claude Code', artifacts: {skill: 'S'}}]};
+  const prompt = scan.prompt(profile);
+  assert.match(prompt, /['\u2019]/, 'the Turkish instruction does carry an apostrophe');
+  const quoted = "'" + prompt.replace(/['\u2018\u2019\u201A\u201B]/g, m => m + m) + "'";
+  for (const run of quoted.slice(1, -1).match(/['\u2018\u2019\u201A\u201B]+/g) || []) assert.equal(run.length % 2, 0);
+});

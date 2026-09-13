@@ -1,4 +1,4 @@
-# Connection coverage — 0.16.1
+# Connection coverage — 0.17.0
 
 Installation and actual conversation behavior are separate checks. Connections offers a file-access challenge; it is not a complete long-conversation acceptance test.
 
@@ -7,7 +7,6 @@ Installation and actual conversation behavior are separate checks. Connections o
 | Claude Code | Skill, startup rule, local MCP, conversation hooks | Controlled 20-turn CLI session passed |
 | Codex | Skill, global AGENTS block, local MCP, conversation hooks | Controlled 5-turn CLI session passed; hooks need host trust |
 | Claude Desktop | Local MCP configuration | Configuration tests; native conversation acceptance pending |
-| Cursor | Skill, always-on rule, local MCP | Configuration tests; native conversation acceptance pending |
 | Gemini CLI | Skill, context file, local MCP | Configuration tests; real conversation acceptance pending |
 | Antigravity / CLI | Skill and context file | Configuration tests; real conversation acceptance pending |
 | ChatGPT | No working general-user remote connector | Managed relay pending; shown as unavailable |
@@ -15,6 +14,8 @@ Installation and actual conversation behavior are separate checks. Connections o
 Claude Code and Codex acceptance explicitly supplied generated settings and instructions in isolated synthetic vaults. Codex hook trust was explicitly enabled for that controlled fixture. Neither result proves that a freshly installed native host automatically activates the connection.
 
 Claude hooks can request a bounded retry for a missing review. Codex observes a missed final review without an automatic Stop retry, because that retry can create another user turn. Both record incomplete maintenance. MCP-only and file-only hosts do not have the same lifecycle hooks.
+
+Cursor is no longer offered for new connections (13.09.2026). A Cursor connection made by an earlier version can still be repaired and removed from Connections.
 
 Restart the selected AI application after setup. Review any host permission or trust request. Existing unrelated configuration and user rules are preserved. A conflicting same-name server is reported instead of overwritten. No account OAuth permission is obtained merely by editing local configuration.
 

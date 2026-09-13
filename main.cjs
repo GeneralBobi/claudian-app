@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, session, clipboard, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, session, clipboard, Notification, safeStorage } = require('electron');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const fs = require('node:fs/promises');
@@ -10,18 +10,44 @@ const {execFile,spawn}=require('node:child_process');
 const runFile=require('node:util').promisify(execFile);
 const welcome=require('./welcome.cjs');
 const smoke = process.argv.includes('--smoke');
+// Uninstalling the program used to leave everything it had written: the profile, and the
+// skill, startup rule, MCP entry and hook it put inside each AI application. A reinstall then
+// found a profile, opened the review screen instead of setup, and pointed at a notes folder
+// the user had already deleted -- so the wizard never asked where notes should live and no
+// vault was ever created. Measured 12.09.2026 on a clean reinstall. The uninstaller now runs
+// this first: every connection is withdrawn the same way the panel withdraws one, and only
+// then is the application's own state removed. Notes are never touched.
+const purge = process.argv.includes('--purge');
 const acceptanceRoot=process.env.CLAUDIAN_ACCEPTANCE_ROOT;
 if(acceptanceRoot && (!path.isAbsolute(acceptanceRoot)||!require('node:fs').existsSync(path.join(acceptanceRoot,'.claudian-acceptance'))))throw Error('Acceptance mode requires an explicit marked test directory.');
 if (smoke) app.setPath('userData', require('node:fs').mkdtempSync(path.join(os.tmpdir(), 'claudian-smoke-profile-')));
 if (smoke) app.disableHardwareAcceleration();
 const origin = 'claudian://app';
-let win, core, migrationError='', setupReview=false, installStamp='';
+let win, core, remoteConnector, migrationError='', setupReview=false, installStamp='';
 protocol.registerSchemesAsPrivileged([{ scheme: 'claudian', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 if (!smoke) app.setPath('userData', acceptanceRoot?path.join(acceptanceRoot,'data'):path.join(app.getPath('appData'), 'Claudian Desktop'));
-if (!app.requestSingleInstanceLock({ smoke })) { app.quit(); }
+if (purge) app.whenReady().then(purgeInstallation).then(() => app.exit(0)).catch(error => { console.error(error); app.exit(1); });
+else if (!app.requestSingleInstanceLock({ smoke })) { app.quit(); }
 else {
   app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } });
   app.whenReady().then(start).catch(error => { console.error(error); app.exit(1); });
+}
+// Runs with no window, from the uninstaller. Each failure is reported and the next connection
+// is still attempted: a single unreachable file must not leave the other five installed.
+async function purgeInstallation() {
+  const dataDir = app.getPath('userData');
+  const home = acceptanceRoot ? path.join(acceptanceRoot, 'home') : os.homedir();
+  const setup = new MemorySetup({ home, dataDir, codexHome: !acceptanceRoot && process.env.CODEX_HOME ? process.env.CODEX_HOME : path.join(home, '.codex') });
+  const profile = await setup.snapshot().then(s => s.profile).catch(() => null);
+  for (const host of profile?.hosts || []) {
+    // Uninstalling is not the moment to refuse over a file that drifted: the user asked for
+    // this to be gone. Originals are copied into the removal journal before anything changes.
+    try { await setup.removeHost(host.id, {force: true}); console.log('removed ' + host.id); }
+    catch (error) { console.error('could not remove ' + host.id + ': ' + error.message); }
+  }
+  // The notes folder is the user's, so it stays. Only what this application wrote about
+  // itself is removed, and only after the connections above are gone.
+  await fs.rm(dataDir, { recursive: true, force: true });
 }
 async function start() {
   let home = acceptanceRoot?path.join(acceptanceRoot,'home'):os.homedir();
@@ -45,18 +71,29 @@ async function start() {
   } });
   try {
     const preferencesFile=path.join(app.getPath('userData'),'preferences.json');
-    let selectedLanguage;
-    if(!smoke){
-      const marker=path.join(path.dirname(process.resourcesPath),'install-language.txt');
-      try { selectedLanguage=(await fs.readFile(marker,'utf8')).trim()==='1055'?'tr':'en'; } catch(error) { if(error.code!=='ENOENT')throw error; }
+    const installedLanguage=(await core.snapshot()).profile?.language;
+    let selectedLanguage=installedLanguage;
+    // An installed profile's language belongs to the notes on disk, so nothing here may
+    // change it. The NSIS marker records which language the INSTALLER ran in, and it
+    // reached the profile on every launch: a reinstall in the other language flipped
+    // profile.language, upgrade() rewrote every managed protocol file in that language and
+    // kept the previous one as a "(yours ...)" copy, and the next run did the reverse.
+    // Measured 12.09.2026 on a real vault: 18 notes, 11 of them protocol files, two
+    // languages, both stamp formats present. The marker now only seeds a first install.
+    if(!selectedLanguage){
+      if(!smoke){
+        const marker=path.join(path.dirname(process.resourcesPath),'install-language.txt');
+        try { selectedLanguage=(await fs.readFile(marker,'utf8')).trim()==='1055'?'tr':'en'; } catch(error) { if(error.code!=='ENOENT')throw error; }
+      }
+      if(!selectedLanguage)try { selectedLanguage=(JSON.parse(await fs.readFile(preferencesFile,'utf8'))).language; } catch(error) { if(error.code!=='ENOENT')throw error; }
+      // The diagnostic run must not depend on the developer's OS locale: on a Turkish machine
+      // the smoke test started in tr and failed its first assertion, so the panel path was
+      // never actually exercised here. Smoke starts from en and switches languages itself.
+      selectedLanguage=selectedLanguage||(smoke?'en':((app.getLocale()||'').toLowerCase().startsWith('tr')?'tr':'en'));
     }
-    if(!selectedLanguage)try { selectedLanguage=(JSON.parse(await fs.readFile(preferencesFile,'utf8'))).language; } catch(error) { if(error.code!=='ENOENT')throw error; }
-    // The diagnostic run must not depend on the developer's OS locale: on a Turkish machine
-    // the smoke test started in tr and failed its first assertion, so the panel path was
-    // never actually exercised here. Smoke starts from en and switches languages itself.
-    selectedLanguage=selectedLanguage||(smoke?'en':((app.getLocale()||'').toLowerCase().startsWith('tr')?'tr':'en'));
     const languageChanged=await core.useLanguage(selectedLanguage);
     if(languageChanged||(await core.snapshot()).profile?.protocolVersion !== require('./policy.cjs').VERSION) await core.upgrade();
+    await core.sweepResidue();
   } catch(error) { migrationError=error.message; }
   const installed = Boolean((await core.snapshot()).profile);
   installStamp = app.getVersion()+':'+await fs.readFile(path.join(path.dirname(process.resourcesPath),'install-session.txt'),'utf8').catch(e=>{if(e.code==='ENOENT')return 'legacy';throw e;});
@@ -79,8 +116,8 @@ async function start() {
   }
   require('./companion-bridge.cjs').attach(handle,session);
   handle('app:snapshot', async () => ({...await core.snapshot(),appVersion:app.getVersion(),migrationError,setupReview}));
-  handle('setup:review', async hosts => {
-    const result=await require('./setup-review.cjs').apply(core,hosts);
+  handle('setup:review', async (hosts, consent, withdraw) => {
+    const result=await require('./setup-review.cjs').apply(core,hosts,consent,withdraw);
     return result;
   });
   handle('setup:review-done', async () => {
@@ -89,6 +126,27 @@ async function start() {
 
   handle('app:preferences', language => core.preferences(language));
   handle('memory:connections', () => core.connections());
+  remoteConnector = await new (require('./remote-connector.cjs').RemoteConnector)({dataDir:core.dataDir,profile:async()=>(await core.snapshot()).profile,safeStorage}).load();
+  handle('connector:status',()=>remoteConnector.status());
+  handle('connector:start',url=>remoteConnector.start(url));
+  handle('connector:stop',()=>remoteConnector.stop());
+  handle('connector:approve',(id,allowed)=>remoteConnector.approve(id,allowed===true));
+  handle('connector:revoke',id=>remoteConnector.revoke(id));
+  handle('connector:export',async provider=>{
+    const status=remoteConnector.status(),url=status.urls[provider];
+    if(!url)throw Error('Start the device connection before exporting its plugin.');
+    const profile=(await core.snapshot()).profile;
+    const result=await dialog.showOpenDialog(win,{title:'Save Claudian plugin',properties:['openDirectory','createDirectory']});
+    if(result.canceled)return null;
+    const target=result.filePaths[0];await assertOrdinaryPath(target);
+    const exported=await require('./connector-package.cjs').write(target,{provider,url,language:profile.language});
+    shell.showItemInFolder(exported.archive);return exported;
+  });
+  handle('connector:provider',async provider=>{
+    const url={chatgpt:'https://chatgpt.com/plugins','claude-desktop':'https://claude.ai/customize/connectors'}[provider];
+    if(!url)throw Error('Unknown provider');await shell.openExternal(url);return true;
+  });
+  handle('memory:self-check', () => core.selfCheck());
   const scanPaths=new Map();
   handle('memory:choose-cli', async id=>{
     if(!['codex','claude-code'].includes(id))throw new Error('This host does not support direct launch yet.');
@@ -110,7 +168,14 @@ async function start() {
     const profile=(await core.snapshot()).profile;if(!profile)throw new Error('Memory is not configured.');
     return require('./scan.cjs').launch(profile,id,prompt,scanPaths.get(id));
   });
-  handle('memory:trigger', async () => require('./policy.cjs').memoryTrigger((await core.preferences()).language));
+  // Generated for the connection it is meant for: the sentence has to be true on that surface,
+  // and it has to name the folder that was actually selected.
+  handle('memory:trigger', async host => {
+    const profile = (await core.snapshot()).profile;
+    const connection = profile?.hosts.find(h => h.id === host);
+    return require('./policy.cjs').memoryTrigger(profile?.language || (await core.preferences()).language,
+      {vault: profile?.vault, server: connection?.artifacts?.server});
+  });
   handle('memory:repair', host => core.upgrade(host));
   const RELEASES='https://api.github.com/repos/GeneralBobi/claudian-app/releases/latest';
   handle('app:updates', async () => {
@@ -206,7 +271,17 @@ async function start() {
     return result.canceled ? null : result.filePaths[0];
   });
   handle('setup:prepare', input => core.prepare(input));
-  handle('setup:install', id => core.install(id));
+  handle('setup:install', async (id, consent) => {
+    const profile = await core.install(id, consent);
+    // A setup that just finished is not a previous installation to review. Without this the
+    // next launch opened "we found settings from your previous installation" straight after
+    // the wizard, and applying there ran an install with no grant attached -- so the screen
+    // answered "nothing is connected without approving these permissions" on a setup the user
+    // had just approved. Measured 13.09.2026 on a first run.
+    await require('./setup-review.cjs').acknowledge(core.dataDir, installStamp);
+    setupReview = false;
+    return profile;
+  });
   handle('setup:cancel', () => core.cancel());
   handle('memory:activity', () => core.activity());
   // Serialize profile mutations; concurrent tests must not lose another host's state.

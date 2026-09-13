@@ -14,7 +14,7 @@ async function fixture(t) {
   t.after(() => fs.rm(root, {recursive: true, force: true}));
   const home = path.join(root, 'home');
   await fs.mkdir(home);
-  const core = new MemorySetup({home, dataDir: path.join(root, 'data')});
+  const core = new MemorySetup({legacy:true, home, dataDir: path.join(root, 'data')});
   return {root, home, core,
     input: {name: 'Deniz', vault: path.join(root, 'Notlar'), mode: 'new', storage: 'markdown', hosts: ['claude-code']}};
 }
@@ -43,11 +43,11 @@ test('the Obsidian registry key survives JS string parsing', async () => {
 test('installing into an existing vault preserves its unowned protocol and supplies the application protocol', async t => {
   const {core, input} = await fixture(t);
   await fs.mkdir(input.vault, {recursive: true});
-  const target = path.join(input.vault, 'Claudian Universal Protocol.md');
+  const target = path.join(input.vault, 'Vault Protocol.md');
   await fs.writeFile(target, '# Old protocol\n\nVersion 2.0 text that is not current.\n');
   await fs.writeFile(path.join(input.vault, 'Bir notum.md'), 'Kendi notum.\n');
 
-  await core.install((await core.prepare({...input, mode: 'existing'})).id);
+  await core.install((await core.prepare({...input, mode: 'existing'})).id,true);
 
   assert.equal(await fs.readFile(target, 'utf8'), '# Old protocol\n\nVersion 2.0 text that is not current.\n', 'an imported protocol is user content');
   const kept = (await fs.readdir(input.vault)).filter(name => name.includes('(yours '));
@@ -65,7 +65,7 @@ test('installing into an existing vault preserves its unowned protocol and suppl
 // do not hide it.
 test('a deleted notes folder is reported, not crashed on and not hidden', async t => {
   const {core, input} = await fixture(t);
-  await core.install((await core.prepare(input)).id);
+  await core.install((await core.prepare(input)).id,true);
   await fs.rm(input.vault, {recursive: true, force: true});
 
   assert.deepEqual(await core.activity(), [], 'activity must not throw ENOENT');
@@ -80,7 +80,7 @@ test('a deleted notes folder is reported, not crashed on and not hidden', async 
 // or deleted folder left the app stuck on a path that no longer existed.
 test('the notes folder can be moved, taking access and files with it', async t => {
   const {core, home, root, input} = await fixture(t);
-  await core.install((await core.prepare(input)).id);
+  await core.install((await core.prepare(input)).id,true);
   const settings = path.join(home, '.claude', 'settings.json');
   assert.match(await fs.readFile(settings, 'utf8'), /Notlar/, 'the first folder was granted');
 
@@ -92,7 +92,7 @@ test('the notes folder can be moved, taking access and files with it', async t =
   const granted = await fs.readFile(settings, 'utf8');
   assert.match(granted, /Baska Yer/, 'the new folder is readable');
   assert.ok(!/Notlar/.test(granted), 'the old grant is withdrawn rather than left behind');
-  assert.ok(await fs.readFile(path.join(next, 'Claudian Universal Protocol.md'), 'utf8'),
+  assert.ok(await fs.readFile(path.join(next, 'Vault Protocol.md'), 'utf8'),
     'the protocol is rebuilt at the new location');
   assert.match(await fs.readFile(path.join(home, '.claude', 'skills', 'claudian-memory', 'SKILL.md'), 'utf8'),
     /Baska Yer/, 'the skill points at the new folder');
@@ -100,10 +100,10 @@ test('the notes folder can be moved, taking access and files with it', async t =
 
 test('a deleted notes folder can be created again through the same call', async t => {
   const {core, input} = await fixture(t);
-  await core.install((await core.prepare(input)).id);
+  await core.install((await core.prepare(input)).id,true);
   await fs.rm(input.vault, {recursive: true, force: true});
   await core.relocate(input.vault);
-  assert.ok((await fs.readdir(input.vault)).includes('Claudian Universal Protocol.md'));
+  assert.ok((await fs.readdir(input.vault)).includes('Vault Protocol.md'));
   assert.equal((await core.health()).vaultMissing, false);
 });
 
@@ -115,7 +115,7 @@ test('a deleted notes folder can be created again through the same call', async 
 test('removing a connection deletes the rule this app created, so setup can run again', async t => {
   const {core, home, root, input} = await fixture(t);
   const cursorRule = path.join(home, '.cursor', 'rules', 'claudian-memory.mdc');
-  await core.install((await core.prepare({...input, hosts: ['cursor']})).id);
+  await core.install((await core.prepare({...input, hosts: ['cursor']})).id,true);
   assert.ok(await fs.readFile(cursorRule, 'utf8'), 'the rule was created by this install');
 
   // The husk was only written when upgrade actually rewrote the rule, which is what happens
@@ -161,7 +161,7 @@ test('the missing-folder row outranks the write probe that the same absence brea
 
 test('a missing folder is named, not reported as a failed write to a temp file', async t => {
   const {core, input} = await fixture(t);
-  await core.install((await core.prepare(input)).id);
+  await core.install((await core.prepare(input)).id,true);
   await fs.rm(input.vault, {recursive: true, force: true});
 
   const failure = await core.checkFiles().then(() => null, error => error);
@@ -180,7 +180,7 @@ test('a missing folder is named, not reported as a failed write to a temp file',
 // kendisi sağlam (gerçek bir oturum testi geçirdi), kopan şey akıştı.
 test('the app waits for the answer itself and says what is happening', async t => {
   const {core, input} = await fixture(t);
-  await core.install((await core.prepare(input)).id);
+  await core.install((await core.prepare(input)).id,true);
   const {output, nonce} = (await core.snapshot()).profile.hosts[0].challenge
     || (await core.challenge('claude-code'), (await core.snapshot()).profile.hosts[0].challenge);
 
@@ -197,7 +197,7 @@ test('the app waits for the answer itself and says what is happening', async t =
 
 test('an answer that never arrives is explained, not blamed on a missing file', async t => {
   const {core, input} = await fixture(t);
-  await core.install((await core.prepare(input)).id);
+  await core.install((await core.prepare(input)).id,true);
   await core.challenge('claude-code');
 
   const seen = [];
@@ -213,7 +213,7 @@ test('an answer that never arrives is explained, not blamed on a missing file', 
 // Regression scenario using synthetic data.
 test('the verification instruction names no capability to invoke', async t => {
   const {core, input} = await fixture(t);
-  await core.install((await core.prepare(input)).id);
+  await core.install((await core.prepare(input)).id,true);
   const {prompt} = await core.challenge('claude-code');
 
   assert.doesNotMatch(prompt, /skill|yetenek|capability/i,
@@ -229,7 +229,7 @@ test('the verification instruction follows the vault language', async t => {
   const {core, root, home} = await fixture(t);
   const english = {name: 'Deniz', vault: path.join(root, 'Notes'), mode: 'new',
     storage: 'markdown', hosts: ['claude-code'], language: 'en'};
-  await core.install((await core.prepare(english)).id);
+  await core.install((await core.prepare(english)).id,true);
   const {prompt} = await core.challenge('claude-code');
   assert.match(prompt, /Read .* and write the verification value/,
     'an English install was being handed a Turkish sentence: ' + prompt);

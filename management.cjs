@@ -11,10 +11,15 @@ module.exports = (Setup, {HOSTS, hash, assertOrdinaryPath, json, atomicJson, exi
     }
     return await json(file, {language:'en'});
   };
-  Setup.prototype.useLanguage = async function(language) {
+  Setup.prototype.useLanguage = async function(language, options={}) {
     if (!['en','tr'].includes(language)) throw new Error('Invalid language.');
-    await this.preferences(language);
     const profile = await json(this.configFile);
+    // Changing an installed profile's language rewrites every managed protocol file in the
+    // vault, so it is an explicit decision, never a side effect of how the installer or the
+    // operating system happened to be set. Callers without `explicit` are told the profile's
+    // own language instead, and the interface preference follows the notes.
+    if (profile && profile.language !== language && !options.explicit) { await this.preferences(profile.language); return false; }
+    await this.preferences(language);
     if (!profile || profile.language === language) return false;
     await atomicJson(this.configFile, {...profile, language});
     return true;
@@ -76,6 +81,68 @@ module.exports = (Setup, {HOSTS, hash, assertOrdinaryPath, json, atomicJson, exi
       return {id:host.id,label:host.label,files:details,access,artifacts:host.artifacts||{},hookTrust:host.artifacts?.hookTrust||null,status:details.length>0 && details.every(f=>f.status==='ready') ? 'ready' : 'attention'};
     }));
   };
+  // The application checks its own work instead of asking the user to go and check it. Three
+  // of the four layers need no AI open: the files, the folder permission, and whether the
+  // server the host will launch actually starts and answers. Only the fourth -- whether the
+  // model uses any of it -- still needs a real conversation. A quiet pass says nothing; only
+  // a failure speaks, because a check that reports success on every launch trains the user to
+  // stop reading it.
+  Setup.prototype.selfCheck = async function() {
+    const profile = await json(this.configFile);
+    if (!profile) return {checkedAt: null, connections: []};
+    const probe = require('./probe.cjs');
+    const seen = new Map();
+    // Not every file Claudian writes to is a file Claudian owns. A startup rule lives as a
+    // marked block inside a file the user may also write in; a configuration lives inside one
+    // the AI application rewrites whenever it saves a setting. Comparing whole-file hashes
+    // reported six of eight connections broken on a machine where nothing was wrong -- and a
+    // check that cries wolf is worth less than no check. What matters per kind:
+    //
+    //   skill   a file entirely ours            → the bytes must match
+    //   rule    our block inside a shared file  → the block is present, once, and points here
+    //   config  the host's own file             → our entry is still in it
+    //   hooks   the host's own file             → our command is still in it
+    const state = async (file, host) => {
+      const body = await fs.readFile(file.path, 'utf8').catch(e => { if (e.code === 'ENOENT') return null; throw e; });
+      if (body === null) return 'missing';
+      if (file.kind === 'skill') return profile.files.find(f => f.path === file.path)?.hash === hash(body) ? 'ready' : 'changed';
+      if (file.kind === 'rule') {
+        const start = '<!-- claudian:memory:start -->', end = '<!-- claudian:memory:end -->';
+        if (body.split(start).length !== 2 || body.split(end).length !== 2 || body.indexOf(end) < body.indexOf(start)) return 'changed';
+        return body.slice(body.indexOf(start), body.indexOf(end)).includes(JSON.stringify(profile.vault)) ? 'ready' : 'changed';
+      }
+      // Look inside the structure, not at the raw text. A Windows command is full of
+      // backslashes, and JSON doubles every one of them on the way to disk, so a substring
+      // search over the file never matches and a clean install reports itself broken.
+      if (file.kind === 'hooks' && host?.artifacts?.hookCommand) {
+        let config; try { config = JSON.parse(body); } catch { return 'changed'; }
+        const commands = Object.values(config.hooks || {}).flat()
+          .flatMap(group => (group && group.hooks) || []).map(entry => entry && entry.command);
+        return commands.includes(host.artifacts.hookCommand) ? 'ready' : 'changed';
+      }
+      return /claudian/i.test(body) ? 'ready' : 'changed';
+    };
+    const connections = await Promise.all((await this.connections()).map(async connection => {
+      const host = profile.hosts.find(h => h.id === connection.id);
+      const states = await Promise.all(connection.files.map(file => state(file, host)));
+      const files = states.some(s => s !== 'ready') ? 'broken' : (states.length ? 'ready' : 'unknown');
+      const access = connection.access?.state === 'granted' ? 'ready' : connection.access?.state === 'manual' ? 'manual' : connection.access?.state === 'unavailable' ? 'unavailable' : 'unknown';
+      const entry = connection.artifacts?.mcpEntry;
+      let server = {state: 'unknown', detail: 'this connection reads files and has no local server'};
+      if (entry?.command) {
+        // Every host points at the same executable and script, so one spawn answers for all
+        // of them unless the scope differs. Probing six times would be six identical runs.
+        const key = JSON.stringify([entry.command, entry.args, entry.env?.CLAUDIAN_DATA]);
+        if (!seen.has(key)) seen.set(key, probe.server(entry, connection.id));
+        server = await seen.get(key);
+      }
+      const failing = [files === 'broken' && 'files', access === 'unavailable' && 'access', server.state === 'broken' && 'server'].filter(Boolean);
+      // Naming the file that failed is the difference between a warning and an instruction.
+      const fileStates = connection.files.map((file, index) => ({kind: file.kind, path: file.path, state: states[index]}));
+      return {...connection, checks: {files, access, server}, fileStates, failing};
+    }));
+    return {checkedAt: new Date().toISOString(), connections};
+  };
   // "Files are installed" and "the model actually reads them" are different claims.
   // Installation is observable; model behaviour is only observable through a real
   // read/write round trip, and that proof goes stale when the protocol changes.
@@ -96,10 +163,7 @@ module.exports = (Setup, {HOSTS, hash, assertOrdinaryPath, json, atomicJson, exi
     const profile = await json(this.configFile);
     if (!profile) throw new Error('Memory is not configured.');
     const policy = require('./policy.cjs');
-    const targets = (profile.migration?.conflicts || []).filter(file => {
-      const rel = path.relative(profile.vault, file);
-      return rel && !rel.startsWith('..' + path.sep) && !path.isAbsolute(rel) && MANAGED_PROTOCOLS.includes(path.basename(file));
-    });
+    const targets = require('./policy.cjs').protocolConflicts(profile.vault, profile.migration?.conflicts);
     if (!targets.length) throw new Error('There is no protocol file waiting to be replaced.');
     this.running = true;
     const replaced = [];
@@ -111,19 +175,71 @@ module.exports = (Setup, {HOSTS, hash, assertOrdinaryPath, json, atomicJson, exi
         await assertOrdinaryPath(file);
         const before = await fs.readFile(file, 'utf8').catch(e => { if (e.code === 'ENOENT') return null; throw e; });
         if (before === expected) continue;
-        if (before !== null) {
-          const kept = path.join(path.dirname(file), `${path.basename(file, '.md')} (yours ${stamp}).md`);
+        // The copy exists to protect an edit the user made. When the file still matches what
+        // Claudian recorded writing, there is no such edit, and keeping a copy only adds a
+        // second protocol note to a vault whose protocol forbids exactly that.
+        const mine = before !== null && updated.get(file)?.hash === hash(before);
+        let kept = null;
+        if (before !== null && !mine) {
+          kept = path.join(path.dirname(file), `${path.basename(file, '.md')} (yours ${stamp}).md`);
           await assertOrdinaryPath(kept);
           await fs.writeFile(kept, before, { flag: 'wx' });
-          replaced.push({ file, kept });
         }
+        replaced.push({ file, kept });
         await fs.writeFile(file, expected);
         updated.set(file, { ...updated.get(file), path: file, type: 'note', hash: hash(expected), backup: updated.get(file)?.backup ?? null });
       }
       const remaining=(profile.migration?.conflicts||[]).filter(file=>!targets.includes(file));
       await atomicJson(this.configFile, { ...profile, files: [...updated.values()], protocolVersion: remaining.length?profile.protocolVersion:policy.VERSION, migration: { target: policy.VERSION, conflicts: remaining, backup: profile.migration?.backup ?? null } });
-      return { replaced: replaced.length, kept: replaced.map(r => path.basename(r.kept)) };
+      return { replaced: replaced.length, kept: replaced.filter(r => r.kept).map(r => path.basename(r.kept)) };
     } finally { this.running = false; }
+  };
+  // Claudian's own working files do not belong in the user's notes folder. Verification
+  // challenges and pre-write copies were only hidden from the in-app list, never collected,
+  // so they kept accumulating where the user actually looks -- Explorer, git, Obsidian's file
+  // recovery. Measured 12.09.2026: four stale challenges and two .bak copies in a vault whose
+  // residue had been cleaned by hand that same morning. Cleaning by hand is not a mechanism.
+  //
+  // Only files matching the exact shapes this application generates are touched, only in the
+  // vault root, and a live challenge is left alone. Nothing is deleted: residue moves under
+  // the application's own removals folder, so a mistake here stays recoverable.
+  const RESIDUE = [/^\.claudian-check-[a-z-]+-[a-f0-9-]{36}(-response)?\.md$/, /\.md\.claudian-\d{10,}\.bak$/];
+  Setup.prototype.sweepResidue = async function() {
+    const profile = await json(this.configFile);
+    if (!profile?.vault) return [];
+    const live = new Set();
+    for (const host of profile.hosts || []) for (const key of ['input','output']) if (host.challenge?.[key]) live.add(path.basename(host.challenge[key]));
+    const owned = new Set((profile.files || []).map(f => f.path));
+    let entries;
+    try { entries = await fs.readdir(profile.vault, {withFileTypes:true}); }
+    catch (error) { if (['ENOENT','EPERM','EACCES'].includes(error.code)) return []; throw error; }
+    const found = entries.filter(e => e.isFile() && RESIDUE.some(re => re.test(e.name)) && !live.has(e.name) && !owned.has(path.join(profile.vault, e.name)));
+    // A "(yours ...)" copy earns its place only by holding an edit the user made. The ones
+    // this application produced hold text it wrote itself, in the other language or a previous
+    // run, and the protocol they contain is the same protocol that forbids two active copies of
+    // one rule. Those are collected; anything that does not match text Claudian can generate is
+    // an actual user version and is left exactly where it is.
+    const generated = new Set(), policy = require('./policy.cjs');
+    for (const name of MANAGED_PROTOCOLS) for (const language of ['en','tr']) generated.add(hash(policy.protocol(language, name)));
+    for (const entry of entries) {
+      if (!entry.isFile() || !/ \(yours \d{4}-\d{2}-\d{2}[^)]*\)\.md$/.test(entry.name)) continue;
+      const file = path.join(profile.vault, entry.name);
+      const body = await fs.readFile(file, 'utf8').catch(() => null);
+      if (body !== null && generated.has(hash(body))) found.push(entry);
+    }
+    if (!found.length) return [];
+    const bin = path.join(this.dataDir, 'removals', 'residue-' + new Date().toISOString().slice(0,10));
+    await fs.mkdir(bin, {recursive:true});
+    const swept = [];
+    for (const entry of found) {
+      const from = path.join(profile.vault, entry.name);
+      try {
+        await assertOrdinaryPath(from);
+        await fs.rename(from, path.join(bin, Date.now() + '-' + entry.name));
+        swept.push(entry.name);
+      } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    }
+    return swept;
   };
   Setup.prototype.health = async function() {
     const profile = await json(this.configFile);
@@ -286,7 +402,7 @@ module.exports = (Setup, {HOSTS, hash, assertOrdinaryPath, json, atomicJson, exi
     } finally { if (created && await fs.readFile(probe,'utf8').catch(()=>null) === token) await fs.unlink(probe); }
     return {vault:'ready',connections:await this.connections()};
   };
-  Setup.prototype.removeHost = async function(id) {
+  Setup.prototype.removeHost = async function(id, options = {}) {
     if (this.running) throw new Error('Please wait for the current operation.');
     this.running = true;
     const changed = [];
@@ -351,9 +467,30 @@ module.exports = (Setup, {HOSTS, hash, assertOrdinaryPath, json, atomicJson, exi
           if (file.backup) { await assertOrdinaryPath(file.backup); after = await fs.readFile(file.backup,'utf8'); }
         } else {
           const start = '<!-- claudian:memory:start -->', end = '<!-- claudian:memory:end -->';
-          if (before.split(start).length !== 2 || before.split(end).length !== 2 || before.indexOf(end) < before.indexOf(start)) throw new Error('A connection file was modified. Review its configuration before removing it.');
+          const unreadable = before.split(start).length !== 2 || before.split(end).length !== 2 || before.indexOf(end) < before.indexOf(start);
+          // Refusing here is right when the user is withdrawing ONE connection from a working
+          // installation: a file we no longer recognise is one to leave alone and look at.
+          //
+          // It is wrong when everything is being removed. Measured 13.09.2026: an uninstall
+          // left four skill files and a rule behind on a real machine, because those files had
+          // drifted and each removal threw. The user had asked for the product to be gone and
+          // it stayed. When `force` is set, a file this app created is removed outright and a
+          // shared file keeps everything outside our markers -- and the original is copied into
+          // the removal journal first, so nothing is destroyed either way.
+          if (unreadable && !options.force) throw new Error('A connection file was modified. Review its configuration before removing it.');
+          if (unreadable) {
+            // A file this app created outright goes; a file that pre-existed keeps everything,
+            // because without our markers there is no safe way to tell ours from theirs.
+            if (!file.backup) changes.push({path: file.path, before, after: null});
+            continue;
+          }
           after = before.replace(/\r?\n?<!-- claudian:memory:start -->[\s\S]*?<!-- claudian:memory:end -->\r?\n?/, '');
-          // No unrelated edits are discarded, even when this leaves an empty dedicated rule.
+          // No unrelated edits are discarded. But a rule file this app created, holding nothing
+          // besides the front matter it opened with, must not survive as a husk: the next
+          // install finds a startup rule without a Claudian marker, refuses to continue, and
+          // blames the user for a file we left behind. Measured 12.09.2026 --
+          // ~/.claude/rules/claudian-memory.md, 0 bytes, from an earlier removal.
+          if (file.type === 'rule' && !file.backup && !after.replace(/^﻿?---[\s\S]*?\n---[ \t]*\r?\n?/, '').trim()) after = null;
         }
         changes.push({path:file.path,before,after});
       }

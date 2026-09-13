@@ -128,12 +128,12 @@ test('claudian.noticed carries the reasoning, not just a title', async t => {
   const folder = await vault(t, {});
   const notice = async () => ({missing: false, candidates: [{
     title: 'Dayanağı değişmiş olabilir', why: '9 gün önce değişti',
-    evidence: ['Control Panel.md', 'Claudian Decisions.md'], producer: 'düşen dayanak',
+    evidence: ['Control Panel.md', 'Decisions.md'], producer: 'düşen dayanak',
   }]});
   const reply = await call('noticed', {}, tools(folder, 'read', notice));
   const said = reply.result.content[0].text;
   assert.match(said, /neden: 9 gün önce/);
-  assert.match(said, /kanıt: Control Panel\.md \| Claudian Decisions\.md/);
+  assert.match(said, /kanıt: Control Panel\.md \| Decisions\.md/);
 });
 
 test('a missing folder is reported rather than thrown', async t => {

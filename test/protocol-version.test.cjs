@@ -15,9 +15,9 @@ async function installed(t) {
   t.after(() => fs.rm(root, {recursive: true, force: true}));
   const home = path.join(root, 'home');
   await fs.mkdir(home);
-  const core = new MemorySetup({home, dataDir: path.join(root, 'data')});
+  const core = new MemorySetup({legacy:true, home, dataDir: path.join(root, 'data')});
   const vault = path.join(root, 'Notes');
-  await core.install((await core.prepare({name: 'Deniz', vault, mode: 'new', storage: 'markdown', hosts: ['claude-code'], language: 'en'})).id);
+  await core.install((await core.prepare({name: 'Deniz', vault, mode: 'new', storage: 'markdown', hosts: ['claude-code'], language: 'en'})).id,true);
   return {core, vault, config: path.join(root, 'data', 'profile.json')};
 }
 
@@ -25,7 +25,7 @@ const readProfile = async config => JSON.parse(await fs.readFile(config, 'utf8')
 
 test('a genuinely old install is brought up to date', async t => {
   const {core, vault, config} = await installed(t);
-  const note = path.join(vault, 'Claudian Universal Protocol.md');
+  const note = path.join(vault, 'Vault Protocol.md');
   const stale = '# Claudian Universal Memory Protocol\n\nVersion: 2.0.0\n\nAn older, shorter protocol.\n';
   await fs.writeFile(note, stale);
   const profile = await readProfile(config);
@@ -43,7 +43,7 @@ test('a genuinely old install is brought up to date', async t => {
 
 test('a protocol note left behind keeps the recorded version behind with it', async t => {
   const {core, vault, config} = await installed(t);
-  const note = path.join(vault, 'Claudian Universal Protocol.md');
+  const note = path.join(vault, 'Vault Protocol.md');
   // Edited by the user, so ownership no longer matches and the upgrade must not overwrite it.
   await fs.writeFile(note, '# My own protocol\n\nVersion: 2.0.0\n');
   const profile = await readProfile(config);
@@ -60,7 +60,7 @@ test('a protocol note left behind keeps the recorded version behind with it', as
 
 test('the conflict can be resolved without losing the user version', async t => {
   const {core, vault, config} = await installed(t);
-  const note = path.join(vault, 'Claudian Universal Protocol.md');
+  const note = path.join(vault, 'Vault Protocol.md');
   await fs.writeFile(note, '# My own protocol\n\nVersion: 2.0.0\n');
   const profile = await readProfile(config);
   profile.protocolVersion = '2.0.0';
@@ -81,7 +81,7 @@ test('the conflict can be resolved without losing the user version', async t => 
 
 test('adopting never touches a protocol note Claudian did not install', async t => {
   const {core, vault, config} = await installed(t);
-  const mine = path.join(vault, 'Vault Protokolü.md');
+  const mine = path.join(vault, 'Kendi Protokolüm.md');
   await fs.writeFile(mine, 'Kendi protokolüm\n');
   const profile = await readProfile(config);
   profile.migration = {target: policy.VERSION, conflicts: [mine], backup: null};
@@ -126,10 +126,34 @@ test('both protocols say constraints are loaded rather than selected', () => {
   const policy = require('../policy.cjs');
   assert.match(policy.protocol('tr'), /Kısıtlar seçilmez, yüklenir/);
   assert.match(policy.protocol('en'), /Constraints are loaded, not chosen/);
+  // 2.7.0: constraints are named by role rather than by filename, because a note the user
+  // renamed or translated must still be found. Naming files here was what made a rename
+  // silently disconnect the memory.
   for (const language of ['en', 'tr']) {
     const text = policy.protocol(language);
-    assert.match(text, /Claudian Decisions\.md/, `${language}: names the decisions note`);
-    assert.match(text, /Claudian Working agreements\.md/, `${language}: names the agreements note`);
+    assert.match(text, /claudian_role/, `${language}: names the role field`);
+    for (const role of ['entry', 'protocol', 'panel', 'reminders', 'agreements', 'decisions', 'adapter']) {
+      assert.match(text, new RegExp('`' + role), `${language}: declares the ${role} role`);
+    }
+  }
+});
+
+// The universal layer is measured against the personal vault it came from: every rule that
+// vault relies on has to survive the move, stripped of anything personal.
+test('the protocol carries the rules the reference vault depends on', () => {
+  const policy = require('../policy.cjs');
+  const required = {
+    tr: [/Bu hafıza ne içindir/, /Ajan sürekliliği/, /Bağlı araçlardan gelen bilgi/, /Bulgu yazılır, yorum sorulur/,
+         /`tür` değerleri kapalı bir listedir/, /Yapı — harita, nöron, bağlantı/, /İkame sessizce yapılmaz/,
+         /Yetenek yüzeye bağlıdır/, /Kullanıcının adımı/, /üç paragrafa çıkarsa/],
+    en: [/What this memory is for/, /Agent continuity/, /Information arriving through connected tools/,
+         /The finding is written; the interpretation is asked/, /`type` is a closed list/,
+         /Structure — map, neuron, link/, /Substitution is never silent/, /A capability belongs to a surface/,
+         /The user's step/, /grows to three paragraphs/],
+  };
+  for (const [language, patterns] of Object.entries(required)) {
+    const text = policy.protocol(language);
+    for (const pattern of patterns) assert.match(text, pattern, `${language}: ${pattern}`);
   }
 });
 

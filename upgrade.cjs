@@ -7,16 +7,31 @@ module.exports=(Setup,{hash,assertOrdinaryPath,json,atomicJson})=>{
   try{
    const profile=await json(this.configFile);if(!profile)return {changed:0,conflicts:[]};
    if(repairHost&&!profile.hosts.some(h=>h.id===repairHost))throw new Error('Connection not found.');
-   const desired=new Map(),conflicts=[],roles=['Claudian Home.md'],updatedHosts=new Map(profile.hosts.map(h=>[h.id,h]));
+   const desired=new Map(),conflicts=[],updatedHosts=new Map(profile.hosts.map(h=>[h.id,h]));
+   // The reading order the skill prints is resolved from the vault, not assumed: the user may
+   // have renamed any of these, and the role is what actually addresses them.
+   const {roles:present}=await require('./roles.cjs').resolve(profile.vault);
+   const starterNames=require('./welcome.cjs').names(profile.language,profile.name);
+   const roles=['entry','agreements','decisions','panel','reminders'].map(r=>present[r]||starterNames[r]).filter(Boolean);
    const add=(file,content,kind,force=false)=>desired.set(file,{path:file,content,kind,force});
    if(!repairHost){
-    add(path.join(profile.vault,'Claudian Universal Protocol.md'),policy.protocol(profile.language),'note');
-    // Starter content belongs to the user after setup. Upgrades only fill missing notes.
-    for(const [name,content] of Object.entries(require('./welcome.cjs').skeleton(profile.language,profile.name))){
+    // The protocol is only installed under its current name when nothing already plays that
+    // part. A vault written by an earlier version carries it under an older name; writing a
+    // second one beside it is exactly the "two active copies of one rule" that protocol bans.
+    if(!present.protocol)add(path.join(profile.vault,policy.PROTOCOL_NOTE(profile.language)),policy.protocol(profile.language),'note');
+    else add(path.join(profile.vault,present.protocol),policy.protocol(profile.language),'note');
+    // Starter content belongs to the user after setup. Upgrades only fill missing notes -- and
+    // a note is missing only when its ROLE is unfilled. Checking the filename instead is how an
+    // upgrade would hand a vault a second entry map, a second panel and a second set of
+    // agreements the first time this product renamed anything.
+    const byName=require('./welcome.cjs').names(profile.language,profile.name);
+    const filled=new Set(Object.entries(byName).filter(([role])=>present[role]).map(([,file])=>file));
+    for(const [name,content] of Object.entries(require('./welcome.cjs').skeleton(profile.language,profile.name,profile.hosts.map(h=>h.id),Object.fromEntries(profile.hosts.map(h=>[h.id,h.label]))))){
+      if(filled.has(name))continue;
       const file=path.join(profile.vault,name);await assertOrdinaryPath(file);
       try{await fs.access(file);}catch(e){if(e.code!=='ENOENT')throw e;add(file,content,'note');}
     }
-    for(const name of policy.MANAGED_PROTOCOLS.filter(n=>n!=='Claudian Universal Protocol.md'))if(profile.files.some(f=>f.path===path.join(profile.vault,name)))add(path.join(profile.vault,name),policy.protocol(profile.language,name),'note');
+    for(const name of policy.MANAGED_PROTOCOLS.filter(n=>n!==policy.PROTOCOL_NOTE(profile.language)))if(profile.files.some(f=>f.path===path.join(profile.vault,name)))add(path.join(profile.vault,name),policy.protocol(profile.language,name),'note');
    }
    for(const host of profile.hosts.filter(h=>!repairHost||h.id===repairHost)){
     const files=await this.hostPaths(profile,host.id);

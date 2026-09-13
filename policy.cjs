@@ -1,11 +1,17 @@
 'use strict';
 const fs=require('node:fs');const path=require('node:path');
-const VERSION='2.6.1';
+const VERSION='2.8.0';
 // Surum dosyanin basliginda {{VERSION}} olarak durur ve burada yerine konur; boylece
 // policy.cjs ile metin birbirinden ayrilamaz.
-const protocol=(language,name='Claudian Universal Protocol.md')=>name!=='Claudian Universal Protocol.md'
- ? `---\nclaudian_protocol: ${VERSION}\n---\n# ${name.slice(0,-3)}\n\n${language==='tr'?'Bu eski ad yalnızca yönlendirmedir. Güncel ve tek protokol:':'This legacy name is a redirect. The single current protocol is:'} [[Claudian Universal Protocol]].\n`
- : fs.readFileSync(path.join(__dirname,'policies',language==='tr'?'protocol-tr.md':'protocol-en.md'),'utf8').split('{{VERSION}}').join(VERSION);
+// The protocol lives under a name in the user's own language, beside their other notes,
+// because the vault is theirs. Every other name this product has used stays in the managed
+// list below as a redirect, so a vault created by an earlier version keeps working.
+const PROTOCOL_NOTE=language=>language==='tr'?'Vault Protokolü.md':'Vault Protocol.md';
+const protocol=(language,name)=>{
+ const canonical=PROTOCOL_NOTE(language);
+ if(name&&name!==canonical)return `---\nclaudian_protocol: ${VERSION}\nclaudian_role: protocol-redirect\n---\n# ${name.slice(0,-3)}\n\n${language==='tr'?'Bu eski ad yalnızca yönlendirmedir. Güncel ve tek protokol:':'This legacy name is a redirect. The single current protocol is:'} [[${canonical.slice(0,-3)}]].\n`;
+ return fs.readFileSync(path.join(__dirname,'policies',language==='tr'?'protocol-tr.md':'protocol-en.md'),'utf8').split('{{VERSION}}').join(VERSION);
+};
 const instruction=(target,vault,language)=>language==='tr'
  ? `Her yeni konuşmanın başında ${JSON.stringify(target)} konumundaki claudian-memory skill'ini sessizce oku. ${JSON.stringify(vault)} seçili hafızadır. Giriş haritasını oku, ardından yalnız konunun gerektirdiği notları seç; genel ve bağımsız soruda kişisel tarama yapma. Slash komutu bekleme.
 
@@ -23,8 +29,64 @@ const skill=(vault,roles,language)=>fs.readFileSync(path.join(__dirname,'policie
 // The protocol files this app owns. Three names because vaults created by earlier
 // versions carry the older ones; all three are kept current, and nothing outside this
 // list is ever replaced. The list lived in three files and drifted between them.
-const MANAGED_PROTOCOLS=['Claudian Universal Protocol.md','Vault Protocol.md','Claudian Memory Protocol.md'];
-const memoryTrigger=language=>language==='tr'
- ? 'Şu kullanım tercihini kalıcı hafızana ekle; kalıcı hafızaya yazma özelliğin yoksa kaydettiğini söyleme, bu metni özel talimatlarıma eklemem gerektiğini belirt: Her yeni konuşmanın ilk mesajında, selamlaşma dahil, bağlı Claudian hafızasını güncel startup_context aracı veya kurulu claudian-memory skill’i üzerinden sessizce hazırla. Güncel bağlantının seçili vault’unu kullan; eski klasör yolunu tahmin etme. Sohbet boyunca kalıcı karar, tercih, düzeltme, ret gerekçesi ve taahhütleri güncel protokole göre aynı turda işle, uzun işin sonunu bekleme. Gerekmiyorsa not yazma. Başarılı okumayı ve yazmayı duyurma; erişim veya kayda değer yazma başarısızlığını kısaca bildir. Alakasız kişisel bağlamı genel sorulara taşıma. Buraya vault içeriğini veya protokolün tamamını kopyalama; yalnız bu kullanım tercihini tut. Bu tercih izin vermez ve bağlantı yokken arka planda çalışma anlamına gelmez.'
- : 'Remember this usage preference in persistent memory. If you cannot save persistent memory, do not claim it is saved; tell me to add it to custom instructions: At the first message of every conversation, including greetings, silently initialize connected Claudian memory using current startup_context or the installed claudian-memory skill. Use the vault selected by the current connection, never a guessed old path. Throughout the conversation maintain durable decisions, preferences, corrections, rejection reasons and commitments in the same turn under the current protocol; do not wait until a long task ends. Do not write filler. Keep successful reads and writes quiet; briefly report access or valuable-save failures. Keep unrelated personal context out of generic answers. Store only this usage preference here, not vault contents or a copy of the protocol. This preference grants no permissions and is not background execution.';
-module.exports={VERSION,protocol,instruction,skill,MANAGED_PROTOCOLS,memoryTrigger};
+const MANAGED_PROTOCOLS=['Vault Protocol.md','Vault Protokolü.md','Claudian Universal Protocol.md','Claudian Memory Protocol.md'];
+// One definition of "this conflict is a protocol note inside the vault", shared by the screen
+// that offers to replace it and the call that performs the replacement. They had drifted: a
+// conflict in an AI application's own rule file still produced the "Install the current
+// protocol" button, and pressing it answered "There is no protocol file waiting to be
+// replaced" -- on a first installation, which made the whole setup look broken.
+const protocolConflicts=(vault,conflicts)=>(conflicts||[]).filter(file=>{
+ if(typeof vault!=='string'||typeof file!=='string')return false;
+ const rel=path.relative(vault,file);
+ return Boolean(rel)&&!rel.startsWith('..'+path.sep)&&!path.isAbsolute(rel)&&MANAGED_PROTOCOLS.includes(path.basename(file));
+});
+// A connector delivers capabilities. It does not decide that the model reaches for them at the
+// first message of a conversation, and on the surfaces that have their own persistent memory
+// that decision is what actually carries the behaviour. The clearest working example was never
+// the skill file: it was a short entry sitting in the provider's own memory, naming the trigger,
+// the folder and the silence rule. This is that entry, generated for the connection that was
+// just made, so the user can paste it once and stop re-explaining Claudian to the same model.
+//
+// It is a preference, never a permission. It cannot grant folder access and does not mean
+// anything runs while no conversation is open.
+const memoryTrigger=(language,options={})=>{
+ const tr=language==='tr';
+ const vault=options.vault?(tr?` Seçili hafıza klasörü: ${options.vault}. Başka bir klasör tahmin etme.`:` The selected memory folder is ${options.vault}. Never guess another one.`):'';
+ // How this surface actually reaches the memory, so the sentence is true on it.
+ const named=options.server?`"${options.server}"`:'Claudian';
+ const head=tr
+  ? 'Şu kullanım tercihini kalıcı hafızana ekle. Aynısı zaten hafızandaysa ikinci kez ekleme. Yazamıyorsan kaydettiğini söyleme; özel talimatlarıma eklemem gerektiğini belirt.\n\n'
+  : 'Save this usage preference to your persistent memory. If the same preference is already there, do not add it twice. If you cannot, do not claim you saved it; tell me to add it to my custom instructions.\n\n';
+ // Account memory follows the user to every device, including ones where the connection was
+ // never added. The two cases are kept apart on purpose: a tool that fails is reported, a tool
+ // that is simply absent on this surface is not -- otherwise every phone conversation opens
+ // with an apology.
+ const body=tr
+  ? `— Claudian ortak hafıza —\n\nBu sohbette ${named} araçları varsa, ilk mesaj ne olursa olsun (selamlaşma ve tek satırlık soru dahil) önce startup_context çağır ve dönen talimatlara uy; "bu sohbet iş mi" diye önce karar verme. Araç yoksa ve kurulu claudian-memory skill'i varsa onu uygula.${vault}\n\nAraç çağrısı hata verirse bunu aynı yanıtta tek satırla söyle. Araç bu yüzeyde hiç yoksa hiçbir şey söyleme.\n\nHazırlık ve başarılı kayıt sessizdir: "hafızanı okudum", "bunu kaydediyorum", "kaydedildi" deme. Yazılmamışı yazılmış gibi sunma.\n\nSohbet boyunca kalıcı bilgiyi aynı turda işle: tercih ve bağlamıyla hoşnutluk, karar, düzeltme, ret gerekçesi, tarihli yükümlülük, bir notla çelişen söz. Gerek yoksa yazma; kota yoktur. Buraya not içeriği veya protokol kopyalama. Bu tercih izin vermez, arka planda çalışma anlamına gelmez.`
+  : `— Claudian shared memory —\n\nWhen ${named} tools are available in this conversation, call startup_context at the first message whatever it is (a greeting or a one-line question counts) and follow what it returns; do not first decide whether the conversation is "work". If the tools are absent and the claudian-memory skill is installed, apply the skill.${vault}\n\nIf a tool call fails, say so in one line in that same reply. If the tools do not exist on this surface at all, say nothing.\n\nPreparation and successful saves are silent: never say "I read your memory", "I am saving this", "saved". Never present an unsaved item as saved.\n\nThroughout the conversation handle durable information in the same turn: a preference, including satisfaction read in its context; a decision, correction or rejection reason; a dated obligation; something that contradicts a note. When there is nothing, write nothing; there is no quota. Do not copy notes or the protocol here. This preference grants no permission and is not background execution.`;
+ return head+body;
+};
+// Surfaces that carry their own account memory. On these the pointer above is what makes the
+// model reach for Claudian at the first message; file-based hosts get the same effect from the
+// rule files setup writes, so nothing is offered there.
+const ACCOUNT_MEMORY=['chatgpt','claude-desktop'];
+// The offer lives in the adapter note, one per application, so the user can read it and the
+// answer is remembered where the next conversation on that surface will look.
+const MEMORY_SECTION={tr:'Kalıcı hafıza',en:'Persistent memory'};
+const MEMORY_STATE={tr:{not_offered:'teklif edilmedi',accepted:'kabul edildi',declined:'reddedildi'},en:{not_offered:'not offered',accepted:'accepted',declined:'declined'}};
+const memorySection=(language,label)=>{
+ const tr=language==='tr';
+ return tr
+  ? `## ${MEMORY_SECTION.tr}\n\n${label} uygulamasının kendi hesap hafızası var. Aşağıdaki kısa yönerge oraya bir kez eklendiğinde, ${label} her sohbetin ilk mesajında bu hafızaya kendiliğinden uzanır — telefonda da, bağlantı çalıştığı sürece.\n\nDurum: ${MEMORY_STATE.tr.not_offered}\n\n**Ajan için.** Durum "${MEMORY_STATE.tr.not_offered}" ise, bu yüzeydeki ilk uygun anda yönergeyi kullanıcıya bir kez göster ve kalıcı hafızana eklemek için onayını iste. Onay gelirse ekle; aynısı hafızanda zaten varsa ekleme. Cevabı bu satırda \`Durum: ${MEMORY_STATE.tr.accepted}\` ya da \`Durum: ${MEMORY_STATE.tr.declined}\` olarak işle ve bir daha teklif etme. Bu yüzeyde hafızaya yazamıyorsan bunu söyle ve kullanıcının ayarlara yapıştırmasını öner.\n\n\`\`\`text\n${memoryTrigger('tr')}\n\`\`\`\n`
+  : `## ${MEMORY_SECTION.en}\n\n${label} has its own account memory. Once the short instruction below is added there, ${label} reaches for this memory at the first message of every conversation — on the phone too, while the connection works.\n\nState: ${MEMORY_STATE.en.not_offered}\n\n**For the agent.** If the state is "${MEMORY_STATE.en.not_offered}", show the instruction to the user once, at the first suitable moment on this surface, and ask for consent to add it to your persistent memory. If they agree, add it; if the same instruction is already in your memory, do not add it again. Record the answer on this line as \`State: ${MEMORY_STATE.en.accepted}\` or \`State: ${MEMORY_STATE.en.declined}\` and never offer it again. If this surface cannot write to its memory, say so and suggest pasting it into settings.\n\n\`\`\`text\n${memoryTrigger('en')}\n\`\`\`\n`;
+};
+// Reads the offer state back from an adapter note. A note without the section has never been
+// offered; the section may be written in either language whatever the profile says today.
+const memoryState=body=>{
+ const match=/^(?:Durum|State):\s*(.+?)\s*$/m.exec(String(body||'').split(/^##\s+(?:Kalıcı hafıza|Persistent memory)\s*$/m)[1]||'');
+ if(!match)return {state:'not_offered',section:false};
+ const value=match[1].replace(/`/g,'').toLocaleLowerCase('tr');
+ for(const lang of ['tr','en'])for(const [state,label] of Object.entries(MEMORY_STATE[lang]))if(value===label)return {state,section:true};
+ return {state:'not_offered',section:true};
+};
+module.exports={VERSION,protocol,instruction,skill,MANAGED_PROTOCOLS,PROTOCOL_NOTE,protocolConflicts,memoryTrigger,ACCOUNT_MEMORY,memorySection,memoryState};

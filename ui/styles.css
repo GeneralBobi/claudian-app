@@ -66,3 +66,38 @@ textarea{width:100%;box-sizing:border-box;resize:vertical;background:var(--bg);c
 
 /* Compact operations: status first, configuration on demand. */
 .connection{padding:24px 0}.connection>.row{align-items:baseline;margin-bottom:12px}.connection>.row>div{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}.connection strong{font-size:15px}.connection .badge{margin-left:0;color:var(--muted)}.connection>.config-file{display:flex;align-items:baseline;gap:8px 16px;flex-wrap:wrap;font-size:12px;padding:8px 0}.connection>.config-file>p{flex-basis:100%;font-size:12px;margin:0}.connection>.config-file>span:first-child{color:var(--text)}.connection>.verify-row>button{margin-left:auto}.connection>details{margin:12px 0 0}.connection>details>summary{font-size:12px;padding:5px 0}.connection .access-manual{margin-bottom:12px;padding-left:12px}.connection details .config-file{border-bottom:1px solid var(--line);font-size:12px}.connection details .config-file button{margin:6px 6px 0 0}.connection .usage{margin:8px 0;padding:12px}.connection details p{font-size:12px}.folder-choice{margin:10px 0 16px}input::placeholder{color:var(--muted)}.actions{flex-wrap:wrap}.health-row span{text-transform:none;letter-spacing:0}nav{gap:2px}nav button{padding:10px 12px}nav .development-label{display:inline;font-size:11px}nav button{white-space:nowrap}@media(max-width:620px){header{padding:20px}main{padding:20px}nav{padding:12px 12px 0;flex-wrap:wrap}.grid{grid-template-columns:1fr;gap:0}[data-surface="setup"] .actions{padding:12px 20px}.connection>.verify-row>button{margin-left:0}.connection>.row>div{gap:4px 12px}}
+
+/* The grant screen. A permission request reads as one card, not a vertical stack: what is
+   being granted on the left, what it means on the right, their headings on the same line. The
+   affirmative control sits inside the card so the act and its terms are never separated. */
+.grant{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:22px 22px 18px;margin:4px 0 0}
+.grant h1{margin:0 0 8px}
+.grant .lead{max-width:68ch;margin:0 0 22px}
+.grant-body{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 22px;align-items:start;
+ border-top:1px solid var(--line);padding-top:18px}
+.grant-col>h2{font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:0 0 14px}
+.grant-col+.grant-col{border-left:1px solid var(--line);padding-left:22px}
+.grant-facts{margin:0 0 16px;display:grid;grid-template-columns:auto minmax(0,1fr);gap:7px 14px;font-size:12px}
+.grant-facts dt{color:var(--muted)}
+.grant-facts dd{margin:0;overflow-wrap:anywhere}
+.grant-col h3{font-size:12px;margin:16px 0 0;display:flex;align-items:baseline;gap:8px}
+.grant-col .note{font-size:11px;line-height:1.8;margin:14px 0 0}
+.grant-col p{margin:0 0 4px}
+.scope-choice{border:0;padding:0;margin:0;display:grid;gap:12px}
+.scope-choice .check{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:start;gap:10px;margin:0;
+ padding:12px 14px;border:1px solid var(--line);border-radius:8px;font-size:12px;line-height:1.65;cursor:pointer}
+.scope-choice .check:hover{border-color:#3a3a44}
+.scope-choice .check:has(input:checked){border-color:var(--orange);background:#1c1c21}
+.scope-choice input{accent-color:var(--orange);margin-top:2px}
+.scope-choice strong{display:block;color:var(--text);font-weight:600;margin-bottom:3px}
+.scope-choice span{color:var(--muted)}
+.grant-confirm{display:flex;align-items:center;gap:10px;margin:22px 0 0;padding:14px 16px;
+ border:1px solid var(--line);border-radius:8px;font-size:12px;color:var(--text);cursor:pointer}
+.grant-confirm:has(input:checked){border-color:var(--orange)}
+.badge.muted{color:var(--muted)}
+[data-check="broken"]>span:first-child{color:var(--orange)}
+[data-check="broken"] p{color:var(--text)}
+@media(max-width:600px){
+ .grant-body{grid-template-columns:minmax(0,1fr);gap:26px}
+ .grant-col+.grant-col{border-left:0;padding-left:0;border-top:1px solid var(--line);padding-top:20px}
+}

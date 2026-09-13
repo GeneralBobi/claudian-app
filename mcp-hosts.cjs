@@ -19,9 +19,9 @@ function mcpGrant(previous, entry) {
   let config = {};
   if (previous !== null && previous.trim()) {
     try { config = JSON.parse(previous); }
-    catch { throw new Error('Claude Desktop yapilandirmasi okunamadi; dosya korundu. Gecerli JSON oldugunu dogrulayin.'); }
+    catch { throw new Error('Claude yapilandirmasi okunamadi; dosya korundu. Gecerli JSON oldugunu dogrulayin.'); }
     if (!config || typeof config !== 'object' || Array.isArray(config)) {
-      throw new Error('Claude Desktop yapilandirmasi beklenen bicimde degil; dosya korundu.');
+      throw new Error('Claude yapilandirmasi beklenen bicimde degil; dosya korundu.');
     }
   }
   const servers = config.mcpServers && typeof config.mcpServers === 'object' && !Array.isArray(config.mcpServers)

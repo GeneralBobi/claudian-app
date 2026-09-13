@@ -54,10 +54,21 @@ exports.launch=async(profile,id,prompt,executablePath)=>{
  if(!profile.hosts.some(h=>h.id===id))throw new Error('This AI connection is not configured.');
  if(typeof prompt!=='string'||!prompt.trim()||prompt.length>8000)throw new Error('Invalid scan message.');
  const executable=await exports.resolve(id,executablePath);if(!executable)throw new Error('No CLI was found for this application. Paste the instruction into it instead.');
- const quote=s=>"'"+s.replace(/'/g,"''")+"'";
+ // PowerShell ends a single-quoted string on the typographic quotes too, not only on U+0027.
+ // Turkish text is full of them -- "skill'i", "AI'ın" -- so a prompt carrying one closed its
+ // own string mid-sentence and everything after it was parsed as code. Measured 13.09.2026:
+ // "Missing argument in parameter list" at the first semicolon after the apostrophe, on a
+ // machine where the same launcher had always worked in English. Every quote the tokenizer
+ // accepts is doubled, which is how PowerShell escapes them.
+ const quote=s=>"'"+String(s).replace(/['‘’‚‛]/g,m=>m+m)+"'";
  const script=`Set-Location -LiteralPath ${quote(profile.vault)}\n& ${quote(executable)} ${quote(prompt)}\n`;
  // No shell interpolation of user text; PowerShell literals double embedded quotes.
- const child=spawn('powershell.exe',['-NoProfile','-NoExit','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],{detached:true,stdio:'ignore',windowsHide:false});
- await new Promise((resolve,reject)=>{child.once('spawn',resolve);child.once('error',reject);});child.unref();
- return {launched:true};
+ // A GUI Electron parent cannot provide an interactive console through ignored stdio.
+ // Ask Windows to create a visible console, and wait for that launcher to report errors.
+ const encoded=Buffer.from(script,'utf16le').toString('base64');
+ const launch=`$ErrorActionPreference='Stop'; $session=Start-Process -FilePath powershell.exe -ArgumentList @('-NoProfile','-NoExit','-EncodedCommand','${encoded}') -WindowStyle Normal -PassThru; $session.Id`;
+ const result=await run('powershell.exe',['-NoProfile','-EncodedCommand',Buffer.from(launch,'utf16le').toString('base64')],{windowsHide:true,timeout:15000});
+ const pid=Number(result.stdout.trim());
+ if(!Number.isSafeInteger(pid)||pid<=0)throw Error('AI terminal could not be opened. Copy the instruction into your AI instead.');
+ return {launched:true,pid};
 };

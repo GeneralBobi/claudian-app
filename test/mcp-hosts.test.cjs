@@ -75,7 +75,7 @@ test('installing an MCP host writes a connection and no skill files', async t =>
     launcher: 'C:/App/Claudian.exe', mcpScript: 'C:/App/mcp-server.cjs'});
   const input = {name: 'Deniz', vault: path.join(root, 'notes'), mode: 'new',
     storage: 'obsidian', hosts: ['claude-desktop'], language: 'en', access: 'write'};
-  const profile = await core.install((await core.prepare(input)).id);
+  const profile = await core.install((await core.prepare(input)).id,true);
 
   const written = profile.files.map(f => f.path);
   assert.ok(written.some(p => p.endsWith('claude_desktop_config.json')), written.join(' | '));
@@ -114,7 +114,7 @@ test('upgrading a setup that includes an MCP connection does not throw', async t
     launcher: 'C:/App/Claudian.exe', mcpScript: 'C:/App/mcp-server.cjs'});
   await core.install((await core.prepare({name: 'Deniz', vault: path.join(root, 'notes'),
     mode: 'new', storage: 'obsidian', hosts: ['codex', 'claude-desktop'],
-    language: 'tr', access: 'write'})).id);
+    language: 'tr', access: 'write'})).id,true);
 
   const rebuilt = await core.upgrade();
   assert.ok(rebuilt, 'yükseltme MCP bağlantısı yüzünden patlamamalı');

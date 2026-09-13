@@ -34,7 +34,7 @@ test('a due date interrupts, a stale project does not', async t => {
   const spot = await place(t, {
     'Reminders.md': note('ajanda', day(30), '- [ ] **Garanti başvurusu** · **13 Eylül 2026**'),
     'Sera.md': note('proje', day(99), 'Yarım.'),
-    'Claudian Home.md': note('giriş', day(1), '[[Sera]] [[Sera]] [[Sera]]'),
+    '00 - Deniz (Hub).md': note('giriş', day(1), '[[Sera]] [[Sera]] [[Sera]]'),
   });
   const sent = [];
   const out = await tick({...spot, language: 'tr', now: NOW, notify: e => sent.push(e)});
@@ -90,7 +90,7 @@ test('a missing folder ends the tick quietly', async t => {
 });
 
 test('nothing to notice sends nothing', async t => {
-  const spot = await place(t, {'Claudian Home.md': note('giriş', day(1), 'Boş.')});
+  const spot = await place(t, {'00 - Deniz (Hub).md': note('giriş', day(1), 'Boş.')});
   const sent = [];
   const out = await tick({...spot, language: 'tr', now: NOW, notify: e => sent.push(e)});
   assert.equal(sent.length, 0);

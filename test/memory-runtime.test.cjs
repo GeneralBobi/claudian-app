@@ -59,10 +59,10 @@ test('review rejects fabricated receipts, stale turns and a different host',asyn
 });
 test('startup returns constraints and open loops, and marks large required notes explicitly',async t=>{
  const {vault}=await fixture(t);
- for(const name of ['Claudian Home.md','Claudian Decisions.md','Claudian Working agreements.md','Control Panel.md','Reminders.md','Claudian Universal Protocol.md'])await fs.writeFile(path.join(vault,name),name==='Claudian Decisions.md'?'x'.repeat(12001):'Content of '+name);
+ for(const name of ['00 - Deniz (Hub).md','Decisions.md','Working Agreements.md','Control Panel.md','Reminders.md','Vault Protocol.md'])await fs.writeFile(path.join(vault,name),name==='Decisions.md'?'x'.repeat(12001):'Content of '+name);
  const context=await runtime.context(vault);
  assert.equal(context.notes.length,5);
- assert.equal(context.notes.find(n=>n.note==='Claudian Decisions.md').requiresFullRead,true);
+ assert.equal(context.notes.find(n=>n.note==='Decisions.md').requiresFullRead,true);
  assert.equal(context.notes.find(n=>n.note==='Reminders.md').body,'Content of Reminders.md');
  assert.deepEqual(context.missing,[]);
 });
@@ -81,8 +81,8 @@ test('deleting the vault protocol leaves an application protocol and keeps perso
  assert.equal(context.protocol.source,'application');assert.match(context.protocol.body,/INVALIDATE/);
  assert.equal(context.vaultProtocol,null);
  assert.equal(await fs.readFile(path.join(vault,'My decisions.md'),'utf8'),'My private decision');
- await assert.rejects(fs.access(path.join(vault,'Claudian Universal Protocol.md')));
- const customized='My additional privacy constraint';await fs.writeFile(path.join(vault,'Claudian Universal Protocol.md'),customized);
+ await assert.rejects(fs.access(path.join(vault,'Vault Protocol.md')));
+ const customized='My additional privacy constraint';await fs.writeFile(path.join(vault,'Vault Protocol.md'),customized);
  const next=await runtime.context(vault);assert.equal(next.vaultProtocol.body,customized);
  assert.equal(next.protocol.source,'application');
 });

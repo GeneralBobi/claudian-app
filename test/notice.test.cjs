@@ -104,7 +104,7 @@ test('a closed item is not raised', async t => {
 test('a thing mentioned once is not a stale project', async t => {
   const place = await vault(t, {
     'Kısa Film.md': note('proje', day(120), 'Bir kez aklıma geldi.'),
-    'Claudian Home.md': note('giriş', day(1), '[[Kısa Film]]'),
+    '00 - Deniz (Hub).md': note('giriş', day(1), '[[Kısa Film]]'),
   });
   const out = await run(place);
   assert.equal(out.candidates.length, 0);
@@ -114,9 +114,9 @@ test('a thing mentioned once is not a stale project', async t => {
 test('a project that is linked and untouched is raised, as a hypothesis', async t => {
   const place = await vault(t, {
     'Sera.md': note('proje', day(41), 'Kablolama yarım.'),
-    'Claudian Home.md': note('giriş', day(1), '[[Sera]]'),
+    '00 - Deniz (Hub).md': note('giriş', day(1), '[[Sera]]'),
     'Control Panel.md': note('ajanda', day(1), 'Bak: [[Sera]]'),
-    'Claudian Lessons.md': note('nöron', day(1), 'Ders: [[Sera]]'),
+    'Lessons.md': note('nöron', day(1), 'Ders: [[Sera]]'),
   });
   const out = await run(place);
   assert.equal(out.candidates.length, 1);
@@ -130,7 +130,7 @@ test('a project that is linked and untouched is raised, as a hypothesis', async 
 // değil, katmanın bu şekli görüp görmediği.
 test('an approach recorded as rejected, now active again, is raised with its reason', async t => {
   const place = await vault(t, {
-    'Claudian Decisions.md': note('nöron', day(30),
+    'Decisions.md': note('nöron', day(30),
       '## Sulama yöntemi\n\n- **Aktif:** damla sulama\n- **Reddedilen:** yağmurlama — yaprakları küflendirdi'),
     'Atölye.md': note('nöron', day(6), '## Sulama yöntemi\n\n- **Aktif:** yağmurlama'),
   });
@@ -144,7 +144,7 @@ test('an approach recorded as rejected, now active again, is raised with its rea
 
 test('two active decisions on one topic are raised as a conflict', async t => {
   const place = await vault(t, {
-    'Claudian Decisions.md': note('nöron', day(30), '## Editör\n\n- **Aktif:** Vim'),
+    'Decisions.md': note('nöron', day(30), '## Editör\n\n- **Aktif:** Vim'),
     'Notlar.md': note('nöron', day(6), '## Editör\n\n- **Aktif:** VS Code'),
   });
   const out = await run(place);
@@ -163,7 +163,7 @@ test('a missing folder is reported, not thrown', async t => {
 
 // ── Bedel ──────────────────────────────────────────────────────────────────
 test('looking costs nothing but reading files', async t => {
-  const place = await vault(t, {'Claudian Home.md': note('giriş', day(1), 'Boş.')});
+  const place = await vault(t, {'00 - Deniz (Hub).md': note('giriş', day(1), 'Boş.')});
   const before = process.env.ANTHROPIC_API_KEY;
   delete process.env.ANTHROPIC_API_KEY;
   try {
@@ -175,12 +175,12 @@ test('looking costs nothing but reading files', async t => {
 // Regression scenario using synthetic data.
 test('a date many notes share is a bulk edit, not a signal', async t => {
   const stamp = day(40);
-  const notes = {'Claudian Home.md': note('giriş', day(1), '')};
+  const notes = {'00 - Deniz (Hub).md': note('giriş', day(1), '')};
   // Dört proje aynı tarihi taşıyor ve hepsi bolca anılıyor.
   for (const name of ['Bir', 'İki', 'Üç', 'Dört']) {
     notes[`${name}.md`] = note('proje', stamp, 'İçerik.');
-    notes['Claudian Home.md'] = note('giriş', day(1),
-      Object.keys(notes).filter(n => n !== 'Claudian Home.md').map(n => `[[${n.replace('.md', '')}]] [[${n.replace('.md', '')}]] [[${n.replace('.md', '')}]]`).join('\n'));
+    notes['00 - Deniz (Hub).md'] = note('giriş', day(1),
+      Object.keys(notes).filter(n => n !== '00 - Deniz (Hub).md').map(n => `[[${n.replace('.md', '')}]] [[${n.replace('.md', '')}]] [[${n.replace('.md', '')}]]`).join('\n'));
   }
   const place = await vault(t, notes);
   const out = await run(place);
@@ -191,7 +191,7 @@ test('a date many notes share is a bulk edit, not a signal', async t => {
 test('a lone old date is still a signal', async t => {
   const place = await vault(t, {
     'Yalnız.md': note('proje', day(99), 'İçerik.'),
-    'Claudian Home.md': note('giriş', day(1), '[[Yalnız]] [[Yalnız]] [[Yalnız]]'),
+    '00 - Deniz (Hub).md': note('giriş', day(1), '[[Yalnız]] [[Yalnız]] [[Yalnız]]'),
   });
   const out = await run(place);
   assert.equal(out.candidates.length, 1, 'kendi başına duran eski bir tarih hâlâ ölçülebilir');
@@ -232,7 +232,7 @@ test('an approximate date that has passed is not called overdue', async t => {
 test('an item standing on a decision that changed after it is raised', async t => {
   const place = await vault(t, {
     'Control Panel.md': note('ajanda', day(24), '- [ ] **Sunum aracı taslağını gönder**'),
-    'Claudian Decisions.md': note('nöron', day(9),
+    'Decisions.md': note('nöron', day(9),
       '## Sunum aracı\n\n- **Aktif:** kaydırak yerine tek sayfa PDF'),
   });
   const out = await run(place);
@@ -246,7 +246,7 @@ test('an item standing on a decision that changed after it is raised', async t =
 test('a decision older than the item it supports is not a fallen basis', async t => {
   const place = await vault(t, {
     'Control Panel.md': note('ajanda', day(5), '- [ ] **Sunum aracı taslağını gönder**'),
-    'Claudian Decisions.md': note('nöron', day(40), '## Sunum aracı\n\n- **Aktif:** tek sayfa PDF'),
+    'Decisions.md': note('nöron', day(40), '## Sunum aracı\n\n- **Aktif:** tek sayfa PDF'),
   });
   const out = await run(place);
   assert.equal(out.candidates.find(c => c.producer === 'düşen dayanak'), undefined);
@@ -256,7 +256,7 @@ test('a decision older than the item it supports is not a fallen basis', async t
 test('an item that does not name the decision is left alone', async t => {
   const place = await vault(t, {
     'Control Panel.md': note('ajanda', day(24), '- [ ] **Komşuya kopya anahtar ver**'),
-    'Claudian Decisions.md': note('nöron', day(9), '## Sunum aracı\n\n- **Aktif:** tek sayfa PDF'),
+    'Decisions.md': note('nöron', day(9), '## Sunum aracı\n\n- **Aktif:** tek sayfa PDF'),
   });
   const out = await run(place);
   assert.equal(out.candidates.find(c => c.producer === 'düşen dayanak'), undefined,
@@ -328,7 +328,7 @@ test('every written line carries why it is there', async t => {
 
 test('an empty result does not create the note, but does clear an existing one', async t => {
   const {deliver} = require('../notice.cjs');
-  const place = await vault(t, {'Claudian Home.md': note('giriş', day(1), 'Boş.')});
+  const place = await vault(t, {'00 - Deniz (Hub).md': note('giriş', day(1), 'Boş.')});
 
   const first = await deliver({vault: place.folder, language: 'tr', candidates: [], now: NOW});
   assert.equal(first.changed, false);
@@ -351,7 +351,7 @@ test('an empty result does not create the note, but does clear an existing one',
 test('two producers about one item yield one candidate', async t => {
   const place = await vault(t, {
     'Control Panel.md': note('ajanda', day(24), '- [ ] **Sunum aracı taslağını gönder**'),
-    'Claudian Decisions.md': note('nöron', day(9), '## Sunum aracı\n\n- **Aktif:** tek sayfa PDF'),
+    'Decisions.md': note('nöron', day(9), '## Sunum aracı\n\n- **Aktif:** tek sayfa PDF'),
   });
   const out = await run(place);
   const about = out.candidates.filter(c => /Sunum aracı taslağını/.test(c.title));
@@ -367,7 +367,7 @@ test('two producers about one item yield one candidate', async t => {
 test('the candidate that crosses notes wins over the one already visible in a panel', async t => {
   const place = await vault(t, {
     'Control Panel.md': note('ajanda', day(24), '- [ ] **Sunum aracı taslağını gönder**'),
-    'Claudian Decisions.md': note('nöron', day(9), '## Sunum aracı\n\n- **Aktif:** tek sayfa PDF'),
+    'Decisions.md': note('nöron', day(9), '## Sunum aracı\n\n- **Aktif:** tek sayfa PDF'),
   });
   const out = await run(place);
   const kept = out.candidates.find(c => /Sunum aracı taslağını/.test(c.title));
@@ -395,13 +395,13 @@ test('informativeness does not override a genuinely urgent single-note item', ()
 test('the first time it writes, it links itself from the entry map', async t => {
   const {deliver} = require('../notice.cjs');
   const place = await vault(t, {
-    'Claudian Home.md': note('giriş', day(1), '# Hafıza\n\n## Açık uçlar\n\n[[Control Panel|Açık konular]]\n\n## Nöronlar\n'),
+    '00 - Deniz (Hub).md': note('giriş', day(1), '# Hafıza\n\n## Açık uçlar\n\n[[Control Panel|Açık konular]]\n\n## Nöronlar\n'),
     'Reminders.md': note('ajanda', day(30), '- [ ] **Kalem** · **13 Eylül 2026**'),
   });
   const out = await run(place);
   await deliver({vault: place.folder, language: 'tr', candidates: out.candidates, now: NOW});
 
-  const home = await fs.readFile(path.join(place.folder, 'Claudian Home.md'), 'utf8');
+  const home = await fs.readFile(path.join(place.folder, '00 - Deniz (Hub).md'), 'utf8');
   assert.match(home, /\[\[Claudian Fark ettikleri\|/, 'harita nota bağlanır');
   assert.match(home, /Claudian Fark ettikleri\|.*\] · \[\[Control Panel/,
     'var olan bağlantıların yanına girer, kendi satırını açmaz');
@@ -410,14 +410,14 @@ test('the first time it writes, it links itself from the entry map', async t => 
 test('the link is offered once, not restored after the user removes it', async t => {
   const {deliver} = require('../notice.cjs');
   const place = await vault(t, {
-    'Claudian Home.md': note('giriş', day(1), '# Hafıza\n\n## Açık uçlar\n\n[[Control Panel|Açık konular]]\n'),
+    '00 - Deniz (Hub).md': note('giriş', day(1), '# Hafıza\n\n## Açık uçlar\n\n[[Control Panel|Açık konular]]\n'),
     'Reminders.md': note('ajanda', day(30), '- [ ] **Kalem** · **13 Eylül 2026**'),
   });
   const out = await run(place);
   await deliver({vault: place.folder, language: 'tr', candidates: out.candidates, now: NOW});
 
   // Kullanıcı bağlantıyı siliyor.
-  const home = path.join(place.folder, 'Claudian Home.md');
+  const home = path.join(place.folder, '00 - Deniz (Hub).md');
   const cleaned = (await fs.readFile(home, 'utf8')).replace(/\[\[Claudian Fark ettikleri\|[^\]]*\]\] · /, '');
   await fs.writeFile(home, cleaned);
 
