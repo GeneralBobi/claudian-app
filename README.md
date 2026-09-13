@@ -2,9 +2,9 @@
 
 A Windows application for a local, user-owned Markdown memory shared by AI tools.
 
-**Preview 0.17.0 — protocol 2.8.0.** The companion and managed ChatGPT relay are not ready. This release improves local memory maintenance; it is not a guarantee that every AI host will automatically use memory.
+**Preview 0.18.0 — protocol 2.8.0.** The companion is under construction. A hosted device relay is available for account connectors; native account acceptance remains host-specific. This release improves local memory maintenance; it is not a guarantee that every AI host will automatically use memory.
 
-[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/download/v0.17.0/Claudian-Setup-0.17.0.exe) · [Website](https://claudian.app) · [Connection coverage](COMPATIBILITY.md)
+[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/download/v0.18.0/Claudian-Setup-0.18.0.exe) · [Website](https://claudian.app) · [Connection coverage](COMPATIBILITY.md)
 
 ## Setup and updates
 
@@ -22,7 +22,7 @@ These controls verify writes and observed checks, not the model's semantic judgm
 
 ## Validation
 
-217 unit tests and the Electron setup smoke test pass. Controlled real-model tests passed 20 Claude Code turns and 5 Codex turns, checking final notes, cancellation, preferences, no-op turns and quiet maintenance. These sessions explicitly supplied generated instructions and connector configuration in synthetic vaults. They do not establish automatic activation in all native apps. See acceptance/ for sanitized evidence.
+224 unit tests and the Electron setup smoke test pass. Controlled real-model tests passed 20 Claude Code turns and 5 Codex turns, checking final notes, cancellation, preferences, no-op turns and quiet maintenance. These sessions explicitly supplied generated instructions and connector configuration in synthetic vaults. They do not establish automatic activation in all native apps. See acceptance/ for sanitized evidence.
 
 ## Development
 
@@ -42,3 +42,9 @@ The installer is unsigned. Production signing and Windows VM install/uninstall c
 This public repository excludes personal vaults, credentials and the separate legacy backend. Third-party font licenses are included; an application redistribution license has not yet been assigned.
 
 The connection test now uses host-scoped MCP test tools; the hidden-note boundary remains in place. A real Claude test read and submitted the challenge successfully. The provider-memory pointer is available under Connections, but saving it in a provider account is not automatically verified.
+
+## 0.18 connection experience
+
+AI tools appear in a compact status grid. Selecting a tool opens its setup and verification dialog. Read/write proof and first-review receipts are separate and persist across restarts. A simple acknowledgement is never counted as proof. Instructions no longer force a response language. Windows launchers use an instruction file to preserve paths with spaces and smart quotes.
+
+The deployed relay passed HTTPS OAuth, authenticated read/write and revocation acceptance with a synthetic client. This is service evidence, not a claim that every provider account or mobile surface is verified.

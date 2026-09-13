@@ -114,11 +114,15 @@ async function capture(vault, args, actor = 'unknown', language = 'en') {
   const note = resolved[kind.role];
   if (!note) throw Error(`No note in this memory holds the "${kind.role}" role. Add the line to the most relevant existing note with append_note, or create the note with write_note.`);
   const current = await store.read(vault, note);
-  if (normal(current.body).includes(normal(text))) {
+  const vaultLanguage = /^(tür|güncellenme):/m.test(current.body) ? 'tr' : /^(type|updated):/m.test(current.body) ? 'en' : language;
+  const block = entry({...args, text}, vaultLanguage);
+  // Compare complete active entries, not substrings of prose, quotes or retired tasks.
+  // The date is part of a commitment's identity; an identically named later event is new.
+  const identity = line => normal(line.replace(/ · (?:açıldı|opened): \d{4}-\d{2}-\d{2}$/, ''));
+  if (current.body.split(/\r?\n/).some(line => identity(line) === identity(block.split('\n')[0]))) {
     return {status: 'duplicate', note, guidance: 'The same line already exists. Nothing was written; if something changed, update that line with patch_note.'};
   }
-  const vaultLanguage = /^(tür|güncellenme):/m.test(current.body) ? 'tr' : /^(type|updated):/m.test(current.body) ? 'en' : language;
-  const after = refreshUpdated(place(current.body, args.kind, entry({...args, text}, vaultLanguage), vaultLanguage));
+  const after = refreshUpdated(place(current.body, args.kind, block, vaultLanguage));
   const receipt = await store.mutate(vault, {note, operation: 'patch', expected_sha256: current.sha256, old_text: current.body, new_text: after,
     reason: oneLine(args.reason) || `capture:${args.kind}`}, actor);
   return {status: 'written', note, kind: args.kind, receipt: receipt.id};

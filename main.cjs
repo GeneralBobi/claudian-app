@@ -128,6 +128,16 @@ async function start() {
   handle('memory:connections', () => core.connections());
   remoteConnector = await new (require('./remote-connector.cjs').RemoteConnector)({dataDir:core.dataDir,profile:async()=>(await core.snapshot()).profile,safeStorage}).load();
   handle('connector:status',()=>remoteConnector.status());
+  handle('connector:desktop-install',async()=>{
+    const profile=(await core.snapshot()).profile;
+    if(!profile?.hosts.some(h=>h.id==='claude-desktop'))throw Error('Select Claude in Claudian connections first.');
+    await fs.access(profile.vault);
+    const result=await require('./connector-package.cjs').writeDesktop(path.join(core.dataDir,'extensions'),{
+      launcher:core.launcher,mcpScript:core.mcpScript,dataDir:core.dataDir,language:profile.language});
+    const error=await shell.openPath(result.archive);
+    if(error){shell.showItemInFolder(result.archive);throw Error('Open this .mcpb file from Claude Desktop settings: '+error);}
+    return {opened:true,archive:result.archive};
+  });
   handle('connector:start',url=>remoteConnector.start(url));
   handle('connector:stop',()=>remoteConnector.stop());
   handle('connector:approve',(id,allowed)=>remoteConnector.approve(id,allowed===true));
@@ -159,7 +169,25 @@ async function start() {
     const host=require('./core.cjs').HOSTS[id];if(!host)throw new Error('Unknown connection.');
     const target=path.join(home,...host.parts,host.filename||'SKILL.md');await assertOrdinaryPath(target);shell.showItemInFolder(target);
   });
-  handle('memory:open-app',async id=>{const relative={'antigravity':'antigravity/Antigravity.exe','cursor':'cursor/Cursor.exe'}[id];if(!relative)throw Error('No desktop launch adapter.');const file=path.join(process.env.LOCALAPPDATA||path.join(home,'AppData','Local'),'Programs',relative);await fs.access(file);const message=await shell.openPath(file);if(message)throw Error(message);return true;});
+  handle('memory:open-app',async id=>{
+    if(id==='codex'){
+      const exe=await require('./scan.cjs').resolve(id);
+      if(!exe||!/\.exe$/i.test(exe))throw Error('Codex desktop launcher was not found. Open Codex and paste the copied instruction.');
+      await runFile(exe,['app',(await core.snapshot()).profile.vault],{windowsHide:true,timeout:15000});return true;
+    }
+    if(id==='chatgpt'){await shell.openExternal('https://chatgpt.com/');return true;}
+    const local=process.env.LOCALAPPDATA||path.join(home,'AppData','Local');
+    const candidates=['claude-code','claude-desktop'].includes(id)
+      ?[path.join(local,'AnthropicClaude','claude.exe'),path.join(local,'Programs','Claude','Claude.exe')]
+      :[path.join(local,'Programs',{'antigravity':'antigravity/Antigravity.exe','antigravity-cli':'antigravity/Antigravity.exe','cursor':'cursor/Cursor.exe'}[id]||'unavailable')];
+    if(['claude-code','claude-desktop'].includes(id)){
+      const command="Get-AppxPackage -Name Claude | Select-Object -First 1 -ExpandProperty InstallLocation";
+      const result=await runFile('powershell.exe',['-NoProfile','-EncodedCommand',Buffer.from(command,'utf16le').toString('base64')],{windowsHide:true,timeout:10000}).catch(()=>({stdout:''}));
+      const location=result.stdout.trim();if(path.isAbsolute(location))candidates.push(path.join(location,'app','Claude.exe'));
+    }
+    for(const file of candidates){try{await fs.access(file);}catch{continue;}const message=await shell.openPath(file);if(message)throw Error(message);return true;}
+    throw Error('The desktop application was not found. Open it manually and paste the copied instruction.');
+  });
   handle('memory:scan-preview', async language => {
     const profile=(await core.snapshot()).profile;if(!profile)throw new Error('Memory is not configured.');
     const scan=require('./scan.cjs');return {prompt:scan.prompt({...profile,language:language==='tr'?'tr':'en'}),hosts:await Promise.all(profile.hosts.map(async h=>({...h,available:!!await scan.resolve(h.id,scanPaths.get(h.id))})))};
@@ -167,6 +195,16 @@ async function start() {
   handle('memory:scan-send', async (id,prompt) => {
     const profile=(await core.snapshot()).profile;if(!profile)throw new Error('Memory is not configured.');
     return require('./scan.cjs').launch(profile,id,prompt,scanPaths.get(id));
+  });
+  handle('memory:review-start',async id=>{
+    const profile=(await core.snapshot()).profile;
+    const host=(await core.health()).hosts.find(h=>h.id===id);
+    if(host?.state!=='verified')throw Error('Verify this connection before starting its review.');
+    return require('./first-review.cjs').begin(core.dataDir,profile,id);
+  });
+  handle('memory:review-status',async id=>{
+    const profile=(await core.snapshot()).profile;
+    return require('./first-review.cjs').status(core.dataDir,profile.vault,id);
   });
   // Generated for the connection it is meant for: the sentence has to be true on that surface,
   // and it has to name the folder that was actually selected.

@@ -48,7 +48,15 @@ async function atomicJson(file, value) {
   await assertOrdinaryPath(file);
   await fs.mkdir(path.dirname(file), { recursive: true });
   const temp = `${file}.${crypto.randomUUID()}.tmp`;
-  try { await fs.writeFile(temp, JSON.stringify(value, null, 2) + '\n', { flag: 'wx' }); await fs.rename(temp, file); }
+  try {
+    await fs.writeFile(temp, JSON.stringify(value, null, 2) + '\n', { flag: 'wx' });
+    // Windows readers and antivirus can briefly hold the destination open.
+    // Keep atomic replacement: never delete the user's profile to make it work.
+    for(let attempt=0;;attempt++){
+      try{await fs.rename(temp,file);break;}
+      catch(e){if(process.platform!=='win32'||!['EPERM','EBUSY','EACCES'].includes(e.code)||attempt>=6)throw e;await new Promise(r=>setTimeout(r,30*(attempt+1)));await assertOrdinaryPath(file);}
+    }
+  }
   finally { await fs.rm(temp, { force: true }); }
 }
 
@@ -496,7 +504,7 @@ class MemorySetup {
     const entries = await fs.readdir(profile.vault, { withFileTypes: true })
       .catch(e => { if (e.code === 'ENOENT' || e.code === 'ENOTDIR') return null; throw e; });
     if (entries === null) return [];
-    const notes = await Promise.all(entries.filter(e => e.isFile() && e.name.endsWith('.md') && !e.name.startsWith('.claudian-check')).map(async e => {
+    const notes = await Promise.all(entries.filter(e => e.isFile() && e.name.endsWith('.md') && !e.name.startsWith('.claudian-')).map(async e => {
       const stat = await fs.stat(path.join(profile.vault, e.name));
       return { name: e.name, modified: stat.mtime.toISOString(), size: stat.size };
     }));

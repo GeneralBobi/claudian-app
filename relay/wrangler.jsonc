@@ -1,0 +1,10 @@
+{
+  "name": "claudian-device-relay",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-09-01",
+  "workers_dev": true,
+  "observability": {"enabled": false},
+  "durable_objects": {"bindings": [{"name":"DEVICES","class_name":"ClaudianDevice"}]},
+  "migrations": [{"tag":"v1","new_sqlite_classes":["ClaudianDevice"]}],
+  "ratelimits": [{"name":"CONNECTION_LIMIT","namespace_id":"2001","simple":{"limit":240,"period":60}}]
+}

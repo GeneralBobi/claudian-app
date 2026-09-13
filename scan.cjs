@@ -35,7 +35,7 @@ Her konu için tek kanonik kayıt tut. Protokole göre ADD, UPDATE, INVALIDATE, 
 
 Bu uygulamanın kalıcı hafıza özelliği varsa oraya yalnız şu kullanım bilgisini ekle: Selamlaşma dahil her konuşmanın başında güncel bağlantının seçili vault’unu sessizce protokolüne göre kullan ve slash komutu bekleme. Vaultun tamamını sağlayıcının hafızasına çoğaltma. Kalıcı hafıza yoksa bunu açıkça belirt; kurulu başlangıç talimatları giriş yolu olarak kalır.
 
-Bu başlangıç incelemesinden sonra rutin hafıza bakımını sessiz yap. Bu, kullanıcının başlattığı bir oturumdur; sürekli çalışan arka plan ajanı değildir. Türkçe yanıt ver.`:`Selected memory folder: ${JSON.stringify(profile.vault)}.
+Bu başlangıç incelemesinden sonra rutin hafıza bakımını sessiz yap. Bu, kullanıcının başlattığı bir oturumdur; sürekli çalışan arka plan ajanı değildir.`:`Selected memory folder: ${JSON.stringify(profile.vault)}.
 Load the current application protocol using startup_context or the installed claudian-memory skill, then read the entry map and existing user constraints. A deleted vault protocol copy is not an error; do not recreate it.
 
 I want an initial, careful review of what you already know about me. Use only memories actually available to this session and connected sources I have authorized. First tell me briefly which sources you can access; if a source needs permission or its scope is unclear, ask before reading it. Do not scan unrelated computer files, invent access to earlier chats, or treat this request as access to other providers' accounts. If nothing useful is available, ask up to three focused questions and wait for my answers.
@@ -47,8 +47,13 @@ Keep one canonical record per topic. Apply ADD, UPDATE, INVALIDATE, DELETE or NO
 If this host offers persistent memory, remember only this usage pointer there: silently use the currently connected vault at the start of every conversation, including greetings, maintaining it according to its protocol, and do not wait for a slash command. Do not duplicate the whole vault into provider memory. If persistent memory is unavailable, say so; the installed startup instructions remain the entry mechanism.
 
 After this initial review, keep routine memory maintenance quiet. This is a user-started session, not an always-running background agent.
-Respond in ${profile.language==='tr'?'Turkish':'English'}.`;
+`;
 const basePrompt=exports.prompt;
+exports.commandScript=(vault,executable,instruction,id)=>{
+ const quote=s=>"'"+String(s).replace(/['‘’‚‛]/g,m=>m+m)+"'";
+ const argument='Read '+path.basename(instruction)+' and follow its instructions.';
+ return `Set-Location -LiteralPath ${quote(vault)}\n& ${quote(executable)} ${id==='gemini-cli'?'-i ':''}${quote(argument)}\n`;
+};
 exports.prompt=profile=>basePrompt(profile)+'\n\n'+(profile.language==='tr'?'Uygulamanın yönettiği gerçek başlangıç dosyaları (kendi AI bağlantının dosyasını kullan):':'Actual application-managed entry files (use your own host entry):')+'\n'+(profile.hosts||[]).filter(h=>h.artifacts?.skill).map(h=>(h.label||h.id)+': '+h.artifacts.skill).join('\n');
 exports.launch=async(profile,id,prompt,executablePath)=>{
  if(!profile.hosts.some(h=>h.id===id))throw new Error('This AI connection is not configured.');
@@ -61,7 +66,11 @@ exports.launch=async(profile,id,prompt,executablePath)=>{
  // machine where the same launcher had always worked in English. Every quote the tokenizer
  // accepts is doubled, which is how PowerShell escapes them.
  const quote=s=>"'"+String(s).replace(/['‘’‚‛]/g,m=>m+m)+"'";
- const script=`Set-Location -LiteralPath ${quote(profile.vault)}\n& ${quote(executable)} ${quote(prompt)}\n`;
+ // A short ASCII-only argument avoids Windows PowerShell 5.1 re-quoting embedded
+ // double quotes and npm .cmd reparsing. The full instruction remains in UTF-8.
+ const instruction=path.join(profile.vault,`.claudian-session-${require('node:crypto').randomUUID()}.md`);
+ await fs.writeFile(instruction,prompt,{flag:'wx'});
+ const script=exports.commandScript(profile.vault,executable,instruction,id);
  // No shell interpolation of user text; PowerShell literals double embedded quotes.
  // A GUI Electron parent cannot provide an interactive console through ignored stdio.
  // Ask Windows to create a visible console, and wait for that launcher to report errors.

@@ -7,6 +7,7 @@ const invoke = async (channel, ...args) => {
 };
 contextBridge.exposeInMainWorld('claudian', {
   connectorStatus: () => invoke('connector:status'),
+  connectorDesktopInstall: () => invoke('connector:desktop-install'),
   connectorStart: url => invoke('connector:start',url),
   connectorStop: () => invoke('connector:stop'),
   connectorApprove: (id,allowed) => invoke('connector:approve',id,allowed),
@@ -16,6 +17,8 @@ contextBridge.exposeInMainWorld('claudian', {
   obsidianInstalled: () => invoke('app:obsidian-installed'),
   downloadObsidian: () => invoke('app:download-obsidian'),
   scanPreview: language => invoke('memory:scan-preview',language),
+  reviewStart: id => invoke('memory:review-start',id),
+  reviewStatus: id => invoke('memory:review-status',id),
   chooseCli: id => invoke('memory:choose-cli',id),
   existingSkill: id => invoke('memory:existing-skill',id),
   scanSend: (id,prompt) => invoke('memory:scan-send',id,prompt),

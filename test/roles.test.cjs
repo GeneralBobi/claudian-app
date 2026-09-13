@@ -55,6 +55,24 @@ test('a declared role outranks any name',async t=>{
  assert.equal((await roles.resolve(vault)).roles.panel,'Açık Konular.md');
 });
 
+test('nested existing role notes are read, written and preserved during upgrade',async t=>{
+ const root=await temp(t),home=path.join(root,'home');await fs.mkdir(home);
+ const vault=path.join(root,'notes'),core=new MemorySetup({home,dataDir:path.join(root,'data')});
+ await core.install((await core.prepare({name:'Deniz',vault,mode:'new',storage:'markdown',hosts:['claude-code'],language:'en'})).id,true);
+ await fs.mkdir(path.join(vault,'Personal'));
+ const old='Working Agreements.md',nested='Personal/How we work.md';
+ await fs.rename(path.join(vault,old),path.join(vault,nested));
+ await fs.appendFile(path.join(vault,nested),'\nKeep appointments in local time.\n');
+ const context=await require('../memory-runtime.cjs').context(vault,'','write','en','claude-code');
+ assert.ok(context.notes.some(n=>n.note===nested&&n.body.includes('local time')));
+ const result=await require('../memory-capture.cjs').capture(vault,{kind:'agreement',text:'Show the reason for a recommendation'},'claude-code','en');
+ assert.equal(result.note,nested);
+ const before=await fs.readFile(path.join(vault,nested),'utf8');
+ await core.upgrade();
+ assert.equal(await fs.readFile(path.join(vault,nested),'utf8'),before);
+ await assert.rejects(fs.access(path.join(vault,old)),{code:'ENOENT'});
+});
+
 test('a folder that is not there resolves to nothing rather than throwing',async t=>{
  const root=await temp(t);
  assert.deepEqual(await roles.resolve(path.join(root,'gone')),{roles:{},adapters:{}});

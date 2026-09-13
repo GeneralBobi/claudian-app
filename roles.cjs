@@ -61,9 +61,11 @@ const declared = async file => {
 async function resolve(vault) {
   const roles = {}, adapters = {};
   let entries = [];
-  try { entries = await fs.readdir(vault, {withFileTypes: true}); }
+  try { entries = await require('./memory-store.cjs').list(vault); }
   catch (error) { if (['ENOENT', 'EPERM', 'EACCES', 'ENOTDIR'].includes(error.code)) return {roles, adapters}; throw error; }
-  const files = entries.filter(e => e.isFile() && e.name.endsWith('.md') && !e.name.startsWith('.')).map(e => e.name);
+  // Role notes may live in any ordinary subfolder. Use the same protected-path
+  // boundary as read/search, so moving a note does not disconnect its role.
+  const files = entries.map(e => e.note);
 
   for (const name of files) {
     const role = await declared(path.join(vault, name));

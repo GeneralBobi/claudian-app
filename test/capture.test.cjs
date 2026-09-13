@@ -65,6 +65,20 @@ test('the same line is not written twice, a commitment without a date is refused
   await assert.rejects(capture(dir, {kind: 'mood', text: 'Tired'}, 'codex', 'en'), /kind must be/);
 });
 
+test('different dates, negated substrings and completed tasks are not duplicate facts', async t => {
+  const dir = await vault(t, 'en');
+  const event = {kind: 'commitment', text: 'Dentist', date: '2026-09-19'};
+  assert.equal((await capture(dir, event, 'codex', 'en')).status, 'written');
+  assert.equal((await capture(dir, {...event, date: '2026-10-19'}, 'codex', 'en')).status, 'written');
+  assert.equal((await capture(dir, event, 'codex', 'en')).status, 'duplicate');
+  await assert.rejects(capture(dir, {...event, date: '2026-02-30'}, 'codex', 'en'), /real calendar day/);
+  await capture(dir, {kind: 'preference', text: 'Does not like coffee'}, 'codex', 'en');
+  assert.equal((await capture(dir, {kind: 'preference', text: 'Like coffee'}, 'codex', 'en')).status, 'written');
+  const note = path.join(dir, 'Reminders.md');
+  await fs.writeFile(note, (await fs.readFile(note, 'utf8')).replaceAll('- [ ]', '- [x]'));
+  assert.equal((await capture(dir, event, 'codex', 'en')).status, 'written');
+});
+
 test('a renamed role note is still found, and a missing one is named instead of guessed', async t => {
   const dir = await vault(t, 'en');
   await fs.rename(path.join(dir, 'About Me.md'), path.join(dir, 'Who I Am.md'));

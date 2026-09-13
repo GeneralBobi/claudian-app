@@ -248,7 +248,7 @@ module.exports = (Setup, {HOSTS, hash, assertOrdinaryPath, json, atomicJson, exi
     let vaultMissing = false;
     try {
       for (const entry of await fs.readdir(profile.vault, {withFileTypes:true})) {
-        if (!entry.isFile() || !entry.name.endsWith('.md') || entry.name.startsWith('.claudian-check')) continue;
+        if (!entry.isFile() || !entry.name.endsWith('.md') || entry.name.startsWith('.claudian-')) continue;
         const at = (await fs.stat(path.join(profile.vault, entry.name))).mtime.toISOString();
         if (!lastChange || at > lastChange.at) lastChange = {at, name: entry.name};
       }

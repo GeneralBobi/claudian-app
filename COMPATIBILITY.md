@@ -1,4 +1,4 @@
-# Connection coverage — 0.17.0
+# Connection coverage — 0.18.0
 
 Installation and actual conversation behavior are separate checks. Connections offers a file-access challenge; it is not a complete long-conversation acceptance test.
 
@@ -6,10 +6,10 @@ Installation and actual conversation behavior are separate checks. Connections o
 | --- | --- | --- |
 | Claude Code | Skill, startup rule, local MCP, conversation hooks | Controlled 20-turn CLI session passed |
 | Codex | Skill, global AGENTS block, local MCP, conversation hooks | Controlled 5-turn CLI session passed; hooks need host trust |
-| Claude Desktop | Local MCP configuration | Configuration tests; native conversation acceptance pending |
-| Gemini CLI | Skill, context file, local MCP | Configuration tests; real conversation acceptance pending |
+| Claude Desktop | Local MCP configuration and generated .mcpb | Packaged extension read/write tests; native conversation acceptance pending |
+| Gemini CLI | Skill, context file, local MCP | Configuration tests; installed client returned UNSUPPORTED_CLIENT; account login alone is not proof |
 | Antigravity / CLI | Skill and context file | Configuration tests; real conversation acceptance pending |
-| ChatGPT | No working general-user remote connector | Managed relay pending; shown as unavailable |
+| ChatGPT | Hosted device relay, guided account OAuth | Live HTTPS OAuth/read/write/revoke passed with synthetic client; real account acceptance pending |
 
 Claude Code and Codex acceptance explicitly supplied generated settings and instructions in isolated synthetic vaults. Codex hook trust was explicitly enabled for that controlled fixture. Neither result proves that a freshly installed native host automatically activates the connection.
 
