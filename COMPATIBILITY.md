@@ -1,4 +1,4 @@
-# Connection coverage — 0.18.0
+# Connection coverage — 0.18.1
 
 Installation and actual conversation behavior are separate checks. Connections offers a file-access challenge; it is not a complete long-conversation acceptance test.
 

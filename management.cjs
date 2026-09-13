@@ -48,6 +48,26 @@ module.exports = (Setup, {HOSTS, hash, assertOrdinaryPath, json, atomicJson, exi
     }
     return {skill,rule};
   };
+    const connectionFileState = async (profile, file, host) => {
+      const body = await fs.readFile(file.path, 'utf8').catch(e => { if (e.code === 'ENOENT') return null; throw e; });
+      if (body === null) return 'missing';
+      if (file.kind === 'skill') return profile.files.find(f => f.path === file.path)?.hash === hash(body) ? 'ready' : 'changed';
+      if (file.kind === 'rule') {
+        const start = '<!-- claudian:memory:start -->', end = '<!-- claudian:memory:end -->';
+        if (body.split(start).length !== 2 || body.split(end).length !== 2 || body.indexOf(end) < body.indexOf(start)) return 'changed';
+        return body.slice(body.indexOf(start), body.indexOf(end)).includes(JSON.stringify(profile.vault)) ? 'ready' : 'changed';
+      }
+      // Look inside the structure, not at the raw text. A Windows command is full of
+      // backslashes, and JSON doubles every one of them on the way to disk, so a substring
+      // search over the file never matches and a clean install reports itself broken.
+      if (file.kind === 'hooks' && host?.artifacts?.hookCommand) {
+        let config; try { config = JSON.parse(body); } catch { return 'changed'; }
+        const commands = Object.values(config.hooks || {}).flat()
+          .flatMap(group => (group && group.hooks) || []).map(entry => entry && entry.command);
+        return commands.includes(host.artifacts.hookCommand) ? 'ready' : 'changed';
+      }
+      return /claudian/i.test(body) ? 'ready' : 'changed';
+    };
   Setup.prototype.connections = async function() {
     const profile = await json(this.configFile);
     if (!profile) return [];
@@ -65,7 +85,7 @@ module.exports = (Setup, {HOSTS, hash, assertOrdinaryPath, json, atomicJson, exi
           await assertOrdinaryPath(file);
           const content = await fs.readFile(file);
           const owned = profile.files.find(f=>f.path===file);
-          status = owned?.hash === hash(content) ? 'ready' : 'changed';
+          status = await connectionFileState(profile,{kind,path:file},host);
         } catch (e) { if (e.code !== 'ENOENT') status = 'unreadable'; }
         details.push({kind,path:file,status});
       }
@@ -74,7 +94,7 @@ module.exports = (Setup, {HOSTS, hash, assertOrdinaryPath, json, atomicJson, exi
         try {
           await assertOrdinaryPath(access.file);
           const content=await fs.readFile(access.file);
-          status=profile.files.find(f=>f.path===access.file)?.hash===hash(content)?'ready':'changed';
+          status=await connectionFileState(profile,{kind:'config',path:access.file},host);
         } catch(e) { if(e.code!=='ENOENT')status='unreadable'; }
         details.push({kind:'config',path:access.file,status});
       }
@@ -102,29 +122,10 @@ module.exports = (Setup, {HOSTS, hash, assertOrdinaryPath, json, atomicJson, exi
     //   rule    our block inside a shared file  → the block is present, once, and points here
     //   config  the host's own file             → our entry is still in it
     //   hooks   the host's own file             → our command is still in it
-    const state = async (file, host) => {
-      const body = await fs.readFile(file.path, 'utf8').catch(e => { if (e.code === 'ENOENT') return null; throw e; });
-      if (body === null) return 'missing';
-      if (file.kind === 'skill') return profile.files.find(f => f.path === file.path)?.hash === hash(body) ? 'ready' : 'changed';
-      if (file.kind === 'rule') {
-        const start = '<!-- claudian:memory:start -->', end = '<!-- claudian:memory:end -->';
-        if (body.split(start).length !== 2 || body.split(end).length !== 2 || body.indexOf(end) < body.indexOf(start)) return 'changed';
-        return body.slice(body.indexOf(start), body.indexOf(end)).includes(JSON.stringify(profile.vault)) ? 'ready' : 'changed';
-      }
-      // Look inside the structure, not at the raw text. A Windows command is full of
-      // backslashes, and JSON doubles every one of them on the way to disk, so a substring
-      // search over the file never matches and a clean install reports itself broken.
-      if (file.kind === 'hooks' && host?.artifacts?.hookCommand) {
-        let config; try { config = JSON.parse(body); } catch { return 'changed'; }
-        const commands = Object.values(config.hooks || {}).flat()
-          .flatMap(group => (group && group.hooks) || []).map(entry => entry && entry.command);
-        return commands.includes(host.artifacts.hookCommand) ? 'ready' : 'changed';
-      }
-      return /claudian/i.test(body) ? 'ready' : 'changed';
-    };
+
     const connections = await Promise.all((await this.connections()).map(async connection => {
       const host = profile.hosts.find(h => h.id === connection.id);
-      const states = await Promise.all(connection.files.map(file => state(file, host)));
+      const states = await Promise.all(connection.files.map(file => connectionFileState(profile, file, host)));
       const files = states.some(s => s !== 'ready') ? 'broken' : (states.length ? 'ready' : 'unknown');
       const access = connection.access?.state === 'granted' ? 'ready' : connection.access?.state === 'manual' ? 'manual' : connection.access?.state === 'unavailable' ? 'unavailable' : 'unknown';
       const entry = connection.artifacts?.mcpEntry;

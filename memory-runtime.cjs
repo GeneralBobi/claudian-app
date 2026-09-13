@@ -72,7 +72,7 @@ async function load(dataDir,session) {
 async function save(dataDir,state) {
   const file=sessionFile(dataDir,state.session);await store.ordinary(file);await fs.mkdir(path.dirname(file),{recursive:true});
   const temp=file+'.'+require('node:crypto').randomUUID()+'.tmp';
-  try{await fs.writeFile(temp,JSON.stringify(state,null,2)+'\n',{flag:'wx'});await fs.rename(temp,file);}finally{await fs.unlink(temp).catch(()=>{});}
+  try{await fs.writeFile(temp,JSON.stringify(state,null,2)+'\n',{flag:'wx'});for(let attempt=0;;attempt++){try{await fs.rename(temp,file);break;}catch(e){if(process.platform!=='win32'||!['EPERM','EBUSY','EACCES'].includes(e.code)||attempt>=5)throw e;await new Promise(r=>setTimeout(r,30*(attempt+1)));}}}finally{await fs.unlink(temp).catch(()=>{});}
 }
 async function begin(dataDir,session,host) {
   const state=await load(dataDir,session);

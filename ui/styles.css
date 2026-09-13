@@ -123,3 +123,4 @@ textarea{width:100%;box-sizing:border-box;resize:vertical;background:var(--bg);c
 @keyframes connection-enter{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){#connection-dialog[open]{animation:none}.connection-tile{transition:none}}
 @media(max-width:480px){.connection-grid{grid-template-columns:1fr}#connection-dialog{width:calc(100vw - 20px);max-height:calc(100vh - 20px)}.connection-dialog-header{padding:16px}.connection-dialog-body{padding:0 16px 16px}}
+.connection-steps [data-complete="true"]{color:#7fb069}.connection-steps [data-complete="true"] .step-symbol{background:#7fb069;border-color:#7fb069;color:#0e0e10}.connection-tile[data-state=complete] .tile-mark{background:#7fb069}.verify-row[data-state=verified]>.badge{color:#7fb069}

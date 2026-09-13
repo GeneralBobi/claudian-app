@@ -13,8 +13,8 @@ function connectionSteps(h){
  const info=healthData?.hosts?.find(x=>x.id===h.id),review=reviewResults[h.id];
  return `<ol class="connection-steps" aria-label="${t('Connection progress','Bağlantı ilerlemesi')}">${[[h.status==='ready',t('Files ready','Dosyalar hazır')],[info?.state==='verified',t('AI read/write','AI okuma/yazma')],[review?.status==='completed',t('First review','İlk tarama')]].map(([done,label],i)=>`<li data-complete="${done===true}"><span class="step-symbol">${done?checkIcon:i+1}</span>${label}</li>`).join('')}</ol>`;
 }
-function appActions(h,copyAction){
- return `${btn('Copy instruction','Yönergeyi kopyala',copyAction)}${['codex','claude-code','claude-desktop','chatgpt','antigravity','antigravity-cli','cursor'].includes(h.id)?btn('Copy and open app','Kopyala ve uygulamayı aç','open-in-ai',true,`data-host="${h.id}" data-copy="${copyAction}"`):''}`;
+function appActions(h,copyAction,done=false){
+ return `${btn('Copy instruction','Yönergeyi kopyala',copyAction)}${['codex','claude-code','claude-desktop','chatgpt','antigravity','antigravity-cli','cursor'].includes(h.id)?btn('Copy and open app','Kopyala ve uygulamayı aç','open-in-ai',!done&&!cliReady[h.id],`data-host="${h.id}" data-copy="${copyAction}"`):''}`;
 }
 const remoteHost=h=>['chatgpt','claude-desktop'].includes(h.id);
 function remoteStatusBody(){
@@ -117,13 +117,13 @@ function firstScanRow(h){
  if(!info||info.state!=='verified')return '';
  const open=firstScan&&firstScan.host===h.id,r=reviewResults[h.id];
  const labels={completed:t('Review completed','Tarama tamamlandı'),needs_input:t('Your answer is needed','Yanıtın gerekiyor'),failed:t('Review failed','Tarama başarısız'),waiting:t('Waiting for the AI report','AI raporu bekleniyor'),expired:t('Review expired; start again','Tarama süresi doldu; yeniden başlat'),invalid:t('Report could not be verified','Rapor doğrulanamadı'),stale:t('Configuration changed; review again','Yapılandırma değişti; yeniden tara')};
- return `<div class="config-file verify-row" data-state="first-scan"><span>${t('First review','İlk tarama')}</span>`
+ return `<div class="config-file verify-row" data-state="${r?.status==='completed'?'verified':'first-scan'}"><span>${t('First review','İlk tarama')}</span>`
   +`<span class="badge" role="status">${esc(labels[r?.status]||t('Not started','Başlatılmadı'))}${r?.receivedAt?' · '+esc(new Date(r.receivedAt).toLocaleString()):''}</span>${r?.summary?`<details class="review-report"><summary>${t('Read the AI report','AI raporunu oku')}</summary><pre>${esc(r.summary)}</pre><p>${t('Report returned by the AI for this review.','Bu tarama için AI tarafından döndürülen rapor.')}</p></details>`:''}`
   +(open?`<pre class="prompt">${esc(firstScan.prompt)}</pre><div class="toolbar">`
-     +(cliReady[h.id]?btn('Run in terminal','Terminalde çalıştır','run-scan',false,`data-host="${h.id}"`)
-                     :'')+appActions(h,'copy-scan')
+     +(cliReady[h.id]?btn('Run in terminal','Terminalde çalıştır','run-scan',r?.status!=='completed',`data-host="${h.id}"`)
+                     :'')+appActions(h,'copy-scan',r?.status==='completed')
      +btn('Close','Kapat','scan-close')+`</div>${notice?`<p role="status">${esc(notice)}</p>`:''}`
-    :btn(r?.status==='completed'?'Review again':'Start the first review',r?.status==='completed'?'Yeniden tara':'İlk taramayı başlat','scan-open',false,`data-host="${h.id}"`))
+    :btn(r?.status==='completed'?'Review again':'Start the first review',r?.status==='completed'?'Yeniden tara':'İlk taramayı başlat','scan-open',r?.status!=='completed',`data-host="${h.id}"`))
   +'</div>';
 }
 function maintenanceRow(info){
@@ -171,7 +171,7 @@ function verifyRow(h){
  const when=info?.verifiedAt?` · ${new Date(info.verifiedAt).toLocaleString(language==='tr'?'tr-TR':'en-GB')}`:'';
  const open=challenge&&challenge.host===h.id;
  return maintenanceRow(info)+`<div class="config-file verify-row" data-state="${state}"><span>${t('File access test','Dosya erişim testi')}</span><span class="badge">${esc(label)}${esc(when)}</span>
-  ${open?`${h.id==='gemini-cli'?`<p class="health-warn">${t('Google browser sign-in is not the memory test. Return to the terminal; if it stays on Get started, retry sign-in there. If it reports UNSUPPORTED_CLIENT, this account cannot use that CLI; use Antigravity or a provider-supported authentication method.','Google tarayıcı girişi hafıza testi değildir. Terminale dön; Get started ekranında kalırsa girişi oradan yeniden dene. UNSUPPORTED_CLIENT hatası varsa bu hesap o CLI’ı kullanamıyor; Antigravity veya sağlayıcının desteklediği bir giriş yöntemi gerekir.')}</p>`:''}<p>${cliReady[h.id]?t('Run the test in your AI application. Approve its permission request if shown, then return here for the result.','Testi AI uygulamanda çalıştır. İzin sorarsa inceleyip onayla; sonuç burada beklenecek.'):t('Paste this into ','Şuraya yapıştır: ')+esc(h.label)+t('. The answer is awaited here; nothing else to press. There is no slash or @ command for this — the memory loads by itself at the start of a conversation.','. Yanıt burada bekleniyor, başka bir şeye basman gerekmiyor. Bunun için bir slash veya @ komutu yok — hafıza konuşmanın başında kendiliğinden yükleniyor.')}</p><pre class="prompt">${esc(challenge.prompt)}</pre><div class="toolbar">${cliReady[h.id]?btn('Run in terminal','Terminalde çalıştır','run-challenge',false,`data-host="${h.id}"`):''}${appActions(h,'copy-challenge')}${btn('Cancel','Vazgeç','challenge-close')}</div>${verifyStatus()}`
+  ${open?`${h.id==='gemini-cli'?`<p class="health-warn">${t('Google browser sign-in is not the memory test. Return to the terminal; if it stays on Get started, retry sign-in there. If it reports UNSUPPORTED_CLIENT, this account cannot use that CLI; use Antigravity or a provider-supported authentication method.','Google tarayıcı girişi hafıza testi değildir. Terminale dön; Get started ekranında kalırsa girişi oradan yeniden dene. UNSUPPORTED_CLIENT hatası varsa bu hesap o CLI’ı kullanamıyor; Antigravity veya sağlayıcının desteklediği bir giriş yöntemi gerekir.')}</p>`:''}<p>${cliReady[h.id]?t('Run the test in your AI application. Approve its permission request if shown, then return here for the result.','Testi AI uygulamanda çalıştır. İzin sorarsa inceleyip onayla; sonuç burada beklenecek.'):t('Paste this into ','Şuraya yapıştır: ')+esc(h.label)+t('. The answer is awaited here; nothing else to press. There is no slash or @ command for this — the memory loads by itself at the start of a conversation.','. Yanıt burada bekleniyor, başka bir şeye basman gerekmiyor. Bunun için bir slash veya @ komutu yok — hafıza konuşmanın başında kendiliğinden yükleniyor.')}</p><pre class="prompt">${esc(challenge.prompt)}</pre><div class="toolbar">${cliReady[h.id]?btn('Run in terminal','Terminalde çalıştır','run-challenge',state!=='verified',`data-host="${h.id}"`):''}${appActions(h,'copy-challenge',state==='verified')}${btn('Cancel','Vazgeç','challenge-close')}</div>${verifyStatus()}`
        :btn('Verify in the AI','AI içinde doğrula','challenge-start',state!=='verified',`data-host="${h.id}"`)}</div>`;
 }
 function accessRow(h){

@@ -49,6 +49,8 @@ async function run(event,dataDir,profile,host='claude-code'){
 if(require.main===module){
   let input='';process.stdin.setEncoding('utf8');process.stdin.on('data',s=>input+=s);
   process.stdin.on('end',async()=>{try{
+    if(!input.trim()){process.stdout.write('{}');return;}
+    input=input.replace(/^\uFEFF/,'');
     const dir=process.argv[2];const profile=JSON.parse(await fs.readFile(require('node:path').join(dir,'profile.json'),'utf8'));
     process.stdout.write(JSON.stringify(await run(JSON.parse(input),dir,profile,process.argv[3]||'claude-code')));
   }catch(e){process.stderr.write('Claudian maintenance hook failed: '+e.message+'\n');process.exitCode=1;}});
