@@ -6,6 +6,7 @@ const invoke = async (channel, ...args) => {
   return result.value;
 };
 contextBridge.exposeInMainWorld('claudian', {
+  geminiLogin: () => invoke('memory:gemini-login'),
   connectorStatus: () => invoke('connector:status'),
   connectorDesktopInstall: () => invoke('connector:desktop-install'),
   connectorStart: url => invoke('connector:start',url),

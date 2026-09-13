@@ -63,3 +63,20 @@ async function writeDesktop(directory,options) {
   return {archive,files:Object.keys(files)};
 }
 module.exports={entries,zip,write,desktopEntries,writeDesktop};
+
+// Only an enabled extension bound to this installation is current.
+exports.desktopStatus=async(home,dataDir)=>{
+ const root=path.dirname(require('./mcp-hosts.cjs').configFile(home));
+ const dirs=await fs.readdir(path.join(root,'Claude Extensions'),{withFileTypes:true}).catch(e=>{if(e.code==='ENOENT')return [];throw e;});
+ for(const dir of dirs.filter(e=>e.isDirectory())){
+  const base=path.join(root,'Claude Extensions',dir.name);
+  try{
+   const manifest=JSON.parse(await fs.readFile(path.join(base,'manifest.json'),'utf8'));
+   if(manifest.name!=='claudian-memory')continue;
+   const config=JSON.parse(await fs.readFile(path.join(base,'installation.json'),'utf8'));
+   const settings=JSON.parse(await fs.readFile(path.join(root,'Claude Extensions Settings',dir.name+'.json'),'utf8'));
+   if(manifest.version===require('./package.json').version&&path.resolve(config.dataDir).toLowerCase()===path.resolve(dataDir).toLowerCase()&&settings.isEnabled===true)return {current:true,version:manifest.version};
+  }catch{}
+ }
+ return {current:false};
+};

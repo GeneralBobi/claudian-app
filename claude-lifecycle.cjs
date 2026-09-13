@@ -2,7 +2,7 @@
 const path=require('node:path');
 const quote=value=>"'"+value.replace(/'/g,"''")+"'";
 function command({exe,script,dataDir}) {
-  return `$env:ELECTRON_RUN_AS_NODE='1'; $OutputEncoding=[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); [Console]::In.ReadToEnd() | & ${quote(exe)} ${quote(script)} ${quote(dataDir)}`;
+  return `$ProgressPreference='SilentlyContinue'; $env:ELECTRON_RUN_AS_NODE='1'; $OutputEncoding=[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); [Console]::In.ReadToEnd() | & ${quote(exe)} ${quote(script)} ${quote(dataDir)}`;
 }
 function merge(previous,options) {
   const config=previous?JSON.parse(previous):{};

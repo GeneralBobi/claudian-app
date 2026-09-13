@@ -127,16 +127,16 @@ async function start() {
   handle('app:preferences', language => core.preferences(language));
   handle('memory:connections', () => core.connections());
   remoteConnector = await new (require('./remote-connector.cjs').RemoteConnector)({dataDir:core.dataDir,profile:async()=>(await core.snapshot()).profile,safeStorage}).load();
-  handle('connector:status',()=>remoteConnector.status());
+  handle('connector:status',async()=>({...await remoteConnector.status(),desktopExtension:await require('./connector-package.cjs').desktopStatus(home,core.dataDir)}));
   handle('connector:desktop-install',async()=>{
     const profile=(await core.snapshot()).profile;
     if(!profile?.hosts.some(h=>h.id==='claude-desktop'))throw Error('Select Claude in Claudian connections first.');
     await fs.access(profile.vault);
     const result=await require('./connector-package.cjs').writeDesktop(path.join(core.dataDir,'extensions'),{
       launcher:core.launcher,mcpScript:core.mcpScript,dataDir:core.dataDir,language:profile.language});
-    const error=await shell.openPath(result.archive);
-    if(error){shell.showItemInFolder(result.archive);throw Error('Open this .mcpb file from Claude Desktop settings: '+error);}
-    return {opened:true,archive:result.archive};
+    clipboard.writeText(result.archive);
+    shell.showItemInFolder(result.archive);
+    return {archive:result.archive};
   });
   handle('connector:start',url=>remoteConnector.start(url));
   handle('connector:stop',()=>remoteConnector.stop());
@@ -191,6 +191,11 @@ async function start() {
   handle('memory:scan-preview', async language => {
     const profile=(await core.snapshot()).profile;if(!profile)throw new Error('Memory is not configured.');
     const scan=require('./scan.cjs');return {prompt:scan.prompt({...profile,language:language==='tr'?'tr':'en'}),hosts:await Promise.all(profile.hosts.map(async h=>({...h,available:!!await scan.resolve(h.id,scanPaths.get(h.id))})))};
+  });
+  handle('memory:gemini-login',async()=>{
+    const profile=(await core.snapshot()).profile;
+    if(!profile)throw Error('Memory is not configured.');
+    return require('./scan.cjs').launch(profile,'gemini-cli',null,undefined,true);
   });
   handle('memory:scan-send', async (id,prompt) => {
     const profile=(await core.snapshot()).profile;if(!profile)throw new Error('Memory is not configured.');

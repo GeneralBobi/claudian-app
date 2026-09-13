@@ -43,7 +43,17 @@ function mcpRevoke(previous, expected) {
   return JSON.stringify({ ...config, mcpServers: kept }, null, 2) + '\n';
 }
 
-const configFile = home => path.join(home, 'AppData', 'Roaming', 'Claude', 'claude_desktop_config.json');
+const configFile = home => {
+  const fs=require('node:fs'),packages=path.join(home,'AppData','Local','Packages');
+  try {
+    const profiles=fs.readdirSync(packages,{withFileTypes:true}).filter(e=>e.isDirectory()&&/^Claude_[a-z0-9]+$/i.test(e.name))
+      .map(e=>path.join(packages,e.name,'LocalCache','Roaming','Claude'))
+      .filter(dir=>fs.existsSync(dir));
+    if(profiles.length===1)return path.join(profiles[0],'claude_desktop_config.json');
+    if(profiles.length>1)throw Error('Multiple Claude Store profiles found. Select the active installation before repairing.');
+  } catch(error) { if(error.code!=='ENOENT')throw error; }
+  return path.join(home,'AppData','Roaming','Claude','claude_desktop_config.json');
+};
 
 /**
  * ChatGPT icin yapilacak adim.

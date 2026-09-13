@@ -30,7 +30,7 @@ async function plan(setup,profile,host){
   let base=before;
   if(before&&artifacts.mcpEntry){
    const current=JSON.parse(before).mcpServers?.claudian;
-   if(JSON.stringify(current)!==JSON.stringify(entry))base=mcp.mcpRevoke(before,artifacts.mcpEntry);
+   if(current&&JSON.stringify(current)!==JSON.stringify(entry))base=mcp.mcpRevoke(before,artifacts.mcpEntry);
   }
   const granted=mcp.mcpGrant(base,entry);add(file,before,granted.content||base,['claude-desktop','gemini-cli'].includes(host.id)?'grant':'mcp');
   Object.assign(artifacts,{config:file,mcpEntry:entry,server:'claudian'});

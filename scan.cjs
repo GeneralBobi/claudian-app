@@ -55,9 +55,10 @@ exports.commandScript=(vault,executable,instruction,id)=>{
  return `Set-Location -LiteralPath ${quote(vault)}\n& ${quote(executable)} ${id==='gemini-cli'?'-i ':''}${quote(argument)}\n`;
 };
 exports.prompt=profile=>basePrompt(profile)+'\n\n'+(profile.language==='tr'?'Uygulamanın yönettiği gerçek başlangıç dosyaları (kendi AI bağlantının dosyasını kullan):':'Actual application-managed entry files (use your own host entry):')+'\n'+(profile.hosts||[]).filter(h=>h.artifacts?.skill).map(h=>(h.label||h.id)+': '+h.artifacts.skill).join('\n');
-exports.launch=async(profile,id,prompt,executablePath)=>{
+exports.launch=async(profile,id,prompt,executablePath,loginOnly=false)=>{
+ if(loginOnly&&id!=='gemini-cli')throw Error('Unsupported login launcher');
  if(!profile.hosts.some(h=>h.id===id))throw new Error('This AI connection is not configured.');
- if(typeof prompt!=='string'||!prompt.trim()||prompt.length>8000)throw new Error('Invalid scan message.');
+ if(!loginOnly&&(typeof prompt!=='string'||!prompt.trim()||prompt.length>8000))throw new Error('Invalid scan message.');
  const executable=await exports.resolve(id,executablePath);if(!executable)throw new Error('No CLI was found for this application. Paste the instruction into it instead.');
  // PowerShell ends a single-quoted string on the typographic quotes too, not only on U+0027.
  // Turkish text is full of them -- "skill'i", "AI'ın" -- so a prompt carrying one closed its
@@ -69,8 +70,8 @@ exports.launch=async(profile,id,prompt,executablePath)=>{
  // A short ASCII-only argument avoids Windows PowerShell 5.1 re-quoting embedded
  // double quotes and npm .cmd reparsing. The full instruction remains in UTF-8.
  const instruction=path.join(profile.vault,`.claudian-session-${require('node:crypto').randomUUID()}.md`);
- await fs.writeFile(instruction,prompt,{flag:'wx'});
- const script=exports.commandScript(profile.vault,executable,instruction,id);
+ if(!loginOnly)await fs.writeFile(instruction,prompt,{flag:'wx'});
+ const script=loginOnly?`Set-Location -LiteralPath ${quote(profile.vault)}\n& ${quote(executable)}\n`:exports.commandScript(profile.vault,executable,instruction,id);
  // No shell interpolation of user text; PowerShell literals double embedded quotes.
  // A GUI Electron parent cannot provide an interactive console through ignored stdio.
  // Ask Windows to create a visible console, and wait for that launcher to report errors.
