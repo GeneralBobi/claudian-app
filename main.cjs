@@ -127,7 +127,7 @@ async function start() {
   handle('app:preferences', language => core.preferences(language));
   handle('memory:connections', () => core.connections());
   remoteConnector = await new (require('./remote-connector.cjs').RemoteConnector)({dataDir:core.dataDir,profile:async()=>(await core.snapshot()).profile,safeStorage}).load();
-  handle('connector:status',async()=>({...await remoteConnector.status(),desktopExtension:await require('./connector-package.cjs').desktopStatus(home,core.dataDir)}));
+  handle('connector:status',async()=>({...await remoteConnector.status(),desktopExtension:await require('./connector-package.cjs').desktopStatus(home,core.dataDir,{launcher:core.launcher,mcpScript:core.mcpScript})}));
   handle('connector:desktop-install',async()=>{
     const profile=(await core.snapshot()).profile;
     if(!profile?.hosts.some(h=>h.id==='claude-desktop'))throw Error('Select Claude in Claudian connections first.');
@@ -152,9 +152,26 @@ async function start() {
     const exported=await require('./connector-package.cjs').write(target,{provider,url,language:profile.language});
     shell.showItemInFolder(exported.archive);return exported;
   });
+  const prepareProvider=async provider=>{
+    if(!['chatgpt','claude-desktop'].includes(provider))throw Error('Unknown provider');
+    let status=remoteConnector.status();
+    if(!status.enabled)status=await remoteConnector.start();
+    const endpoint=status.urls?.[provider];
+    if(!endpoint)throw Error('Device connection is not ready. Reconnect this device.');
+    return endpoint;
+  };
   handle('connector:provider',async provider=>{
-    const url={chatgpt:'https://chatgpt.com/plugins','claude-desktop':'https://claude.ai/customize/connectors'}[provider];
-    if(!url)throw Error('Unknown provider');await shell.openExternal(url);return true;
+    const endpoint=await prepareProvider(provider);
+    clipboard.writeText(endpoint);
+    await shell.openExternal(require('./connector-package.cjs').providerLink(provider,endpoint));
+    return true;
+  });
+  handle('connector:setup-help',async provider=>{
+    const endpoint=await prepareProvider(provider);
+    const prompt=require('./connector-package.cjs').setupHelp(provider,endpoint);
+    clipboard.writeText(prompt);
+    await shell.openExternal(provider==='chatgpt'?'https://chatgpt.com/':'https://claude.ai/new');
+    return {prompt};
   });
   handle('memory:self-check', () => core.selfCheck());
   const scanPaths=new Map();

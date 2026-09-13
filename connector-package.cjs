@@ -65,7 +65,7 @@ async function writeDesktop(directory,options) {
 module.exports={entries,zip,write,desktopEntries,writeDesktop};
 
 // Only an enabled extension bound to this installation is current.
-module.exports.desktopStatus=async(home,dataDir)=>{
+module.exports.desktopStatus=async(home,dataDir,installation)=>{
  const root=path.dirname(require('./mcp-hosts.cjs').configFile(home));
  const dirs=await fs.readdir(path.join(root,'Claude Extensions'),{withFileTypes:true}).catch(e=>{if(e.code==='ENOENT')return [];throw e;});
  for(const dir of dirs.filter(e=>e.isDirectory())){
@@ -75,8 +75,29 @@ module.exports.desktopStatus=async(home,dataDir)=>{
    if(manifest.name!=='claudian-memory')continue;
    const config=JSON.parse(await fs.readFile(path.join(base,'installation.json'),'utf8'));
    const settings=JSON.parse(await fs.readFile(path.join(root,'Claude Extensions Settings',dir.name+'.json'),'utf8'));
-   if(manifest.version===require('./package.json').version&&path.resolve(config.dataDir).toLowerCase()===path.resolve(dataDir).toLowerCase()&&settings.isEnabled===true)return {current:true,version:manifest.version};
+   const same=(a,b)=>typeof a==='string'&&typeof b==='string'&&path.resolve(a).toLowerCase()===path.resolve(b).toLowerCase();
+   const wrapper=await fs.readFile(path.join(base,'server.cjs'),'utf8');
+   const expected=desktopEntries({...config})['server.cjs'];
+   if(same(config.dataDir,dataDir)&&(!installation||(same(config.launcher,installation.launcher)&&same(config.mcpScript,installation.mcpScript)))&&wrapper===expected)return {current:settings.isEnabled===true,installed:true,enabled:settings.isEnabled===true,version:manifest.version};
   }catch{}
  }
  return {current:false};
 };
+
+// Official Claude custom connector install link; it only prefills, never grants access.
+module.exports.providerLink=(provider,endpoint)=>{
+ if(provider==='chatgpt')return 'https://chatgpt.com/plugins';
+ if(provider!=='claude-desktop')throw Error('Unknown provider');
+ const url=new URL('https://claude.ai/customize/connectors');
+ url.search=new URLSearchParams({modal:'add-custom-connector',connectorName:'Claudian',connectorUrl:endpoint}).toString();
+ return url.href;
+};
+module.exports.setupHelp=(provider,endpoint)=>`Help me connect my Claudian memory to ${provider==='chatgpt'?'ChatGPT':'Claude'}. This is a setup task I requested.
+Name: Claudian — This device
+MCP server URL: ${endpoint}
+Authentication: OAuth (do not request or paste an API key).
+This is my device connection, not the old https://claudian.app/api/mcp service. Keep my existing connections and notes. Reuse an existing connection if its URL matches; do not duplicate it.
+If you have browser/computer tools, open the provider's connection setup and fill the name, URL and OAuth fields. Otherwise guide me one screen and one action at a time, based on what I see. Do not claim to have operated the UI without tools.
+In ChatGPT the current entry is Plugins → Create app; some versions use Settings → Apps → Developer mode. In Claude use ${provider==='claude-desktop'?module.exports.providerLink(provider,endpoint):'Settings → Connectors'}.
+When the provider asks for permission, show what access is requested. Compare the pairing code with Claudian's AI connections screen and follow the applicable approval rules. Claudian and this computer must remain running.
+After connecting, help me run the connection test from Claudian and report only actual tool results. A copied instruction or sign-in page is not proof of read/write access. Do not ask profile, project or preference questions. Never ask me to send passwords or authentication tokens in chat.`;

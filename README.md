@@ -2,9 +2,9 @@
 
 A Windows application for a local, user-owned Markdown memory shared by AI tools.
 
-**Preview 0.18.4 — protocol 2.8.0.** The companion is under construction. A hosted device relay is available for account connectors; native account acceptance remains host-specific. This release improves local memory maintenance; it is not a guarantee that every AI host will automatically use memory.
+**Preview 0.18.5 — protocol 2.8.0.** The companion is under construction. A hosted device relay is available for account connectors; native account acceptance remains host-specific. This release improves local memory maintenance; it is not a guarantee that every AI host will automatically use memory.
 
-[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/download/v0.18.4/Claudian-Setup-0.18.4.exe) · [Website](https://claudian.app) · [Connection coverage](COMPATIBILITY.md)
+[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/download/v0.18.5/Claudian-Setup-0.18.5.exe) · [Website](https://claudian.app) · [Connection coverage](COMPATIBILITY.md)
 
 ## Setup and updates
 
@@ -49,6 +49,6 @@ AI tools appear in a compact status grid. Selecting a tool opens its setup and v
 
 The deployed relay passed HTTPS OAuth, authenticated read/write and revocation acceptance with a synthetic client. This is service evidence, not a claim that every provider account or mobile surface is verified.
 
-## 0.18.4 corrections
+## 0.18.5 corrections
 
 Only the recommended action is accented: terminal when available, otherwise opening the AI app. Completed checks and first reviews show green confirmation with neutral retry controls. File readiness now uses the same managed-section check as connection diagnostics, so unrelated provider settings changes no longer produce conflicting status. Empty first reviews finish without onboarding questions. Hook input accepts a UTF-8 BOM and empty input; session writes retry transient Windows file locks. The reported Codex hook failure still requires native confirmation. No additional provider acceptance tests were run for this patch.
