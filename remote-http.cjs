@@ -22,7 +22,7 @@ class RemoteHttp {
       if(req.method==='POST'&&suffix==='/oauth/revoke'){await this.auth.revokeToken(input(req));return response({});}
       if(req.method==='GET'&&suffix==='/oauth/authorize') {
         const r=await this.auth.begin(Object.fromEntries(url.searchParams));
-        return page('Connect your AI to Claudian',`<p>Open Claudian on your computer and approve only the request with this code:</p><h2>${r.code}</h2><p>Application: ${escape(r.name)}<br>Return address: ${escape(new URL(r.redirect).hostname)}<br>Access: ${escape(r.scope)}</p><p>Bilgisayarındaki Claudian uygulamasında aynı kodu kontrol edip bağlantıyı onayla. Ardından devam et.</p><form action="${escape(this.auth.base)}/oauth/complete"><input type="hidden" name="request" value="${r.id}"><button>Continue / Devam et</button></form>`);
+        return page('Connect your AI to Claudian',`<p>Open Claudian on your computer and approve only the request with this code:</p><h2>${r.code}</h2><p>Application: ${escape(r.name)}<br>Return address: ${escape(new URL(r.redirect).hostname)}<br>Access: ${escape(r.scope)}</p><p>Bilgisayarındaki Claudian uygulamasında aynı kodu kontrol edip bağlantıyı onayla. Ardından devam et.</p><p><a href="${escape(this.auth.base)}/oauth/complete?request=${encodeURIComponent(r.id)}">Continue / Devam et</a></p>`);
       }
       if(req.method==='GET'&&suffix==='/oauth/complete') {
         const next=this.auth.complete(url.searchParams.get('request'));
