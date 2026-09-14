@@ -14,7 +14,9 @@ async function handle(message, tools, info) {
   const { id, method, params } = message;
   if (method === 'initialize') {
     return { jsonrpc: '2.0', id, result: {
-      protocolVersion: PROTOCOL,
+      protocolVersion: info.supportedProtocols
+        ? (info.supportedProtocols.includes(params?.protocolVersion)?params.protocolVersion:info.supportedProtocols[0])
+        : PROTOCOL,
       capabilities: { tools: {} },
       serverInfo: { name: 'claudian', version: info.version },
       instructions: require('./memory-runtime.cjs').instructionsFor(info.language),

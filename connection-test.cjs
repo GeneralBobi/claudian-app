@@ -22,7 +22,7 @@ exports.submit=async(dataDir,vault,actor,args)=>{
  if(profile.access!=='write')throw Error('This connection has read-only access.');
  if(args.test_id!==path.basename(c.input)||args.value!==c.nonce)throw Error('Test response does not match.');
  await fs.writeFile(c.output,args.value+'\n',{flag:'wx'});
- if(require('./web-providers.cjs').isWeb(actor)){
+ if(require('./cloud-progress.cjs').webOnly(actor)){
   const dir=path.join(dataDir,'connection-receipts');await fs.mkdir(dir,{recursive:true});
   await fs.writeFile(path.join(dir,path.basename(c.input)+'.json'),JSON.stringify({host:actor,inputHash:c.inputHash}),{flag:'wx'});
  }

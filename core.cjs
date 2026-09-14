@@ -480,7 +480,7 @@ class MemorySetup {
     const mcp=profile.language==='tr'
       ? 'Claudian MCP araçları varsa önce read_connection_test çağır, dönen test_id ve dosyadan okuduğun doğrulama değerini submit_connection_test ile gönder. Gizli test dosyasını read_note veya write_note ile açmaya çalışma. Bu yalnız bağlantı testidir; kullanıcı hakkında kalıcı not üretme. MCP yoksa şu dosya testini kullan: '
       : 'If Claudian MCP tools are available, call read_connection_test, then submit_connection_test with the returned test_id and the verification value you read. Do not use read_note or write_note for the hidden test file. This is a connection test, not a durable fact about the user. If MCP is unavailable, use this file test: ';
-    if(require('./web-providers.cjs').isWeb(host))return {host,prompt:'Use this '+KNOWN[host].label+' conversation only. Call Claudian read_connection_test, then submit_connection_test with the returned test_id and value. If these tools are absent, stop and report that Claudian is not connected in this conversation. Do not use local files, another AI application, or claim success from this instruction. Do not create personal notes.'};
+    if(require('./cloud-progress.cjs').webOnly(host))return {host,prompt:profile.language==='tr'?'Yalnızca bu '+KNOWN[host].label+' sohbetinde seçili Claudian bağlantısını kullan. read_connection_test çağır, dönen test_id ve doğrulama değerini submit_connection_test ile gönder. Araçlar yoksa dur ve bağlantının bu sohbette seçili olmadığını bildir. Yerel dosya veya başka AI uygulaması kullanma; yalnızca bu metne dayanarak başarı bildirme. Kişisel not oluşturma.':'Use this '+KNOWN[host].label+' conversation only. Call Claudian read_connection_test, then submit_connection_test with the returned test_id and value. If these tools are absent, stop and report that Claudian is not connected in this conversation. Do not use local files, another AI application, or claim success from this instruction. Do not create personal notes.'};
     return { prompt: mcp+say, host };
   }
   async verify(host) {
@@ -493,7 +493,7 @@ class MemorySetup {
     if (!await exists(c.output)) return { verified: false, message: 'AI henüz yanıt dosyasını oluşturmamış.' };
     if ((await fs.stat(c.output)).size > 256) return { verified: false, message: 'Test yanıtı beklenen biçimde değil.' };
     if ((await fs.readFile(c.output, 'utf8')).trim() !== c.nonce) return { verified: false, message: 'Yanıt eşleşmedi; AI içindeki testi yeniden çalıştırın.' };
-    if(require('./web-providers.cjs').isWeb(host)){
+    if(require('./cloud-progress.cjs').webOnly(host)){
       const receipt=await json(path.join(this.dataDir,'connection-receipts',path.basename(c.input)+'.json'));
       if(receipt?.inputHash!==c.inputHash||receipt?.host!==host)return {verified:false,message:'Bu web bağlantısından MCP yanıtı bekleniyor; dosya yanıtı tek başına yeterli değil.'};
     }

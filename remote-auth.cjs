@@ -125,6 +125,7 @@ class RemoteAuth {
       for(const [key,t] of Object.entries(this.state.tokens))if(t.expires<=this.now())delete this.state.tokens[key];
       this.state.tokens[hash(access_token)]={kind:'access',grantId,scope,expires:this.now()+3600000};
       this.state.tokens[hash(refresh_token)]={kind:'refresh',grantId,expires:this.now()+30*86400000};
+      grant.tokenExchangedAt=new Date(this.now()).toISOString();
       await this.save(); return {access_token,refresh_token,token_type:'Bearer',expires_in:3600,scope};
     });
   }
@@ -138,7 +139,7 @@ class RemoteAuth {
   }
   async revoke(id) { return this.exclusive(async()=>{if(this.state.grants[id]){this.state.grants[id].revoked=true;await this.save();}}); }
   async revokeToken(input) { this.client(input);const token=this.state.tokens[hash(String(input.token||''))];if(token&&this.state.grants[token.grantId]?.clientId===input.client_id)await this.revoke(token.grantId); }
-  async observed(id,stage,tool) { return this.exclusive(async()=>{const g=this.state.grants[id];if(g){g.lastSeen=new Date(this.now()).toISOString();g.stage=stage;if(tool)g.lastTool=tool;await this.save();}}); }
-  grants() { return Object.values(this.state.grants).map(({id,host,name,scope,authorizedAt,lastSeen,lastTool,stage,revoked})=>({id,host,name,scope,authorizedAt,lastSeen,lastTool,stage,revoked})); }
+  async observed(id,stage,tool,toolsReady=false) { return this.exclusive(async()=>{const g=this.state.grants[id];if(g){g.lastSeen=new Date(this.now()).toISOString();g.stage=stage;if(tool)g.lastTool=tool;if(stage==='tools/list'){g.toolsListedAt=g.lastSeen;g.toolsReadyAt=toolsReady?g.lastSeen:null;}await this.save();}}); }
+  grants() { return Object.values(this.state.grants).map(({id,host,name,scope,authorizedAt,lastSeen,lastTool,stage,revoked,tokenExchangedAt,toolsListedAt,toolsReadyAt})=>({id,host,name,scope,authorizedAt,lastSeen,lastTool,stage,revoked,tokenExchangedAt,toolsListedAt,toolsReadyAt})); }
 }
 module.exports={RemoteAuth,hash,random,hosts,fail};

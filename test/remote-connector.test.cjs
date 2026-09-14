@@ -79,7 +79,10 @@ test('actual outbound relay carries authenticated MCP reads and writes without l
   assert.equal(r.status,200);const tokens=await r.json();
   const call=async(method,params)=>{const res=await fetch(endpoint,{method:'POST',headers:{authorization:'Bearer '+tokens.access_token,'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});return {status:res.status,body:await res.json()};};
   assert.match((await call('initialize',{})).body.result.instructions,/startup_context/);
+  assert.equal(connector.status().progress.chatgpt.canTest,false);
+  assert.equal((await call('initialize',{protocolVersion:'2025-03-26'})).body.result.protocolVersion,'2025-03-26');
   const list=await call('tools/list');assert.ok(list.body.result.tools.some(x=>x.name==='memory_review'));
+  assert.equal(connector.status().progress.chatgpt.canTest,true);
   const read=await call('tools/call',{name:'read_note',arguments:{note:'Existing'}});assert.match(JSON.stringify(read.body),/Original note/);
   const write=await call('tools/call',{name:'write_note',arguments:{note:'Via remote',body:'Saved over authenticated relay',reason:'Connection acceptance'}});
   assert.equal(write.body.result.isError,undefined,JSON.stringify(write.body));assert.equal(await fs.readFile(path.join(vault,'Via remote.md'),'utf8'),'Saved over authenticated relay\n');

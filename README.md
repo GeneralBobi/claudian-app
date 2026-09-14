@@ -2,9 +2,9 @@
 
 A Windows application for a local, user-owned Markdown memory shared by AI tools.
 
-**Preview 0.18.6 — protocol 2.8.0.** The companion is under construction. A hosted device relay is available for account connectors; native account acceptance remains host-specific. This release improves local memory maintenance; it is not a guarantee that every AI host will automatically use memory.
+**Preview 0.18.7 — protocol 2.8.0.** The companion is under construction. A hosted device relay is available for account connectors; native account acceptance remains host-specific. This release improves local memory maintenance; it is not a guarantee that every AI host will automatically use memory.
 
-[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/download/v0.18.6/Claudian-Setup-0.18.6.exe) · [Website](https://claudian.app) · [Connection coverage](COMPATIBILITY.md)
+[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/download/v0.18.7/Claudian-Setup-0.18.7.exe) · [Website](https://claudian.app) · [Connection coverage](COMPATIBILITY.md)
 
 ## Setup and updates
 
@@ -60,3 +60,9 @@ Gemini opens the actual Gemini website. Spark custom-app setup copies the device
 Perplexity setup opens its Connectors page, with device OAuth and an optional AI setup guide. Account approval and real MCP calls remain separate from setup preparation. Both web connections have independent test and first-review receipts.
 
 Gemini Spark and Perplexity account acceptance remain pending. This release adds setup support; it does not certify a connection in your account.
+
+### 0.18.7: Guided cloud setup
+
+ChatGPT, Gemini Spark and Perplexity now open a focused setup guide. It prepares the device URL, provides ready-to-copy form values, puts matching-code approval in the connection window, and provides an explicit unavailable-account exit. OAuth approval returns to the AI automatically. Authorization alone cannot unlock testing: the required tools must have been requested. ChatGPT web tests and first reviews require their MCP receipt, never a local-file fallback.
+
+Provider-owned create-app forms and account eligibility still apply; this is not a marketplace-listed, one-click installation. Account acceptance is scheduled separately with Claude Code after publication.

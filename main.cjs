@@ -153,7 +153,7 @@ async function start() {
     shell.showItemInFolder(exported.archive);return exported;
   });
   handle('connector:gemini-guide',async()=>{
-    const prompt=require('./web-providers.cjs').geminiGuide();clipboard.writeText(prompt);
+    const prompt=require('./web-providers.cjs').geminiGuide((await core.snapshot()).profile?.language);clipboard.writeText(prompt);
     await shell.openExternal('https://gemini.google.com/app');return {prompt};
   });
   const prepareProvider=async provider=>{
@@ -172,7 +172,7 @@ async function start() {
   });
   handle('connector:setup-help',async provider=>{
     const endpoint=await prepareProvider(provider);
-    const prompt=require('./connector-package.cjs').setupHelp(provider,endpoint);
+    const prompt=require('./connector-package.cjs').setupHelp(provider,endpoint,(await core.snapshot()).profile?.language);
     clipboard.writeText(prompt);
     await shell.openExternal(require('./web-providers.cjs').providers[provider]?.chat||(provider==='chatgpt'?'https://chatgpt.com/':'https://claude.ai/new'));
     return {prompt};
@@ -224,6 +224,7 @@ async function start() {
     return require('./scan.cjs').launch(profile,id,prompt,scanPaths.get(id));
   });
   handle('memory:review-start',async id=>{
+    requireCloudTools(id);
     const profile=(await core.snapshot()).profile;
     const host=(await core.health()).hosts.find(h=>h.id===id);
     if(host?.state!=='verified')throw Error('Verify this connection before starting its review.');
@@ -366,7 +367,11 @@ async function start() {
   handle('memory:adopt-protocol', () => mutate(() => core.adoptProtocol()));
   handle('memory:relocate', target => mutate(() => core.relocate(target)));
   handle('memory:skip-verification', () => core.skipVerification());
-  handle('memory:challenge', host => mutate(() => core.challenge(host)));
+  function requireCloudTools(host){
+    if(require('./cloud-progress.cjs').webOnly(host)&&!remoteConnector.status().progress?.[host]?.canTest)
+      throw Error('AI bağlantısının kurulumu henüz tamamlanmadı. Bağlantı kartından kuruluma devam et; izin onayı tek başına yeterli değil.');
+  }
+  handle('memory:challenge', host => mutate(() => {requireCloudTools(host);return core.challenge(host);}));
   handle('memory:verify', host => mutate(() => core.verify(host)));
   const verificationWatches=new Map();
   handle('memory:verify-cancel', host => {verificationWatches.get(host)?.abort();return true;});

@@ -72,7 +72,10 @@ class RemoteConnector {
     if(persist){this.state.enabled=false;await this.save();}
     return this.status();
   }
-  status() { return {state:this.connection,relay:this.state.relay||'',lastError:this.lastError,enabled:this.state.enabled,urls:this.http?Object.fromEntries(['chatgpt','claude-desktop','gemini','perplexity'].map(h=>[h,this.http.auth.resource(h)])):{},requests:this.http?.auth.requests()||[],grants:this.http?.auth.grants()||[]}; }
+  status() {
+    const s={state:this.connection,relay:this.state.relay||'',lastError:this.lastError,enabled:this.state.enabled,urls:this.http?Object.fromEntries(['chatgpt','claude-desktop','gemini','perplexity'].map(h=>[h,this.http.auth.resource(h)])):{},requests:this.http?.auth.requests()||[],grants:this.http?.auth.grants()||[]};
+    s.progress=Object.fromEntries(['chatgpt','gemini','perplexity'].map(h=>[h,require('./cloud-progress.cjs').progress(s,h)]));return s;
+  }
   async approve(id,allowed) {if(!this.http)throw Error('Remote connection is stopped');await this.http.auth.approve(id,allowed);return this.status();}
   async revoke(id) {if(!this.http)throw Error('Remote connection is stopped');await this.http.auth.revoke(id);return this.status();}
 }

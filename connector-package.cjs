@@ -93,7 +93,7 @@ module.exports.providerLink=(provider,endpoint)=>{
  url.search=new URLSearchParams({modal:'add-custom-connector',connectorName:'Claudian',connectorUrl:endpoint}).toString();
  return url.href;
 };
-module.exports.setupHelp=(provider,endpoint)=>require('./web-providers.cjs').isWeb(provider)?require('./web-providers.cjs').guide(provider,endpoint):`Help me connect my Claudian memory to ${provider==='chatgpt'?'ChatGPT':'Claude'}. This is a setup task I requested.
+const setupHelpEnglish=(provider,endpoint)=>require('./web-providers.cjs').isWeb(provider)?require('./web-providers.cjs').guide(provider,endpoint):`Help me connect my Claudian memory to ${provider==='chatgpt'?'ChatGPT':'Claude'}. This is a setup task I requested.
 Name: Claudian — This device
 MCP server URL: ${endpoint}
 Authentication: OAuth (do not request or paste an API key).
@@ -102,3 +102,13 @@ If you have browser/computer tools, open the provider's connection setup and fil
 In ChatGPT the current entry is Plugins → Create app; some versions use Settings → Apps → Developer mode. In Claude use ${provider==='claude-desktop'?module.exports.providerLink(provider,endpoint):'Settings → Connectors'}.
 When the provider asks for permission, show what access is requested. Compare the pairing code with Claudian's AI connections screen and follow the applicable approval rules. Claudian and this computer must remain running.
 After connecting, help me run the connection test from Claudian and report only actual tool results. A copied instruction or sign-in page is not proof of read/write access. Do not ask profile, project or preference questions. Never ask me to send passwords or authentication tokens in chat.`;
+
+module.exports.setupHelp=(provider,endpoint,language='en')=>{
+ if(language!=='tr')return setupHelpEnglish(provider,endpoint);
+ const target=provider==='chatgpt'?'ChatGPT':provider==='gemini'?'Gemini Spark':provider==='perplexity'?'Perplexity':'Claude';
+ return `Claudian bağlantısını ${target} içinde kurmama Türkçe, tek seferde bir adımla yardım et. Ad: Claudian — Bu cihaz. Bağlantı adresi: ${endpoint}. Kimlik doğrulama: OAuth. Bu adres tarayıcıda açılacak bir sayfa değildir.
+Önce hesabımda özel uygulama ekleme seçeneği olup olmadığını belirle. Yoksa burada dur; satın alma veya başka uygulamaya geçme. Varsa eşleşen adresli mevcut bağlantıyı kullan, yenisini çoğaltma. Eski Claudian Core bağlantılarını kendiliğinden silme.
+Tarayıcı araçların varsa kurulum ekranını açıp ad ve adres alanlarını doldur. Araçların yoksa bunları yaptığını söyleme; gördüğüm ekrana göre yalnız sıradaki işlemi açıkla. Şifre, API anahtarı veya erişim belirteci isteme. Claudian uygulaması açık kalsın. İzin ekranındaki kod Claudian ile eşleşmeli.
+ChatGPT kullanıyorsak yeni sohbette + menüsünden Claudian — Bu cihaz uygulamasını seçmeme yardım et. Gemini kullanıyorsak normal sohbet yerine Spark içindeki özel uygulamayı kullan. Perplexity hesabında özel bağlantı eklenemiyorsa kurulumun o hesapta kullanılamadığını açıkça belirt.
+İzin onayını kurulum veya erişim başarısı sayma. Claudian araçları gerçekten görününce masaüstü uygulamasındaki erişim testine geçelim. Yerel Windows dosya yolu ile bulut erişim testi yapma. Profil, proje veya tercih soruları sorma.`;
+};

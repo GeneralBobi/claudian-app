@@ -37,3 +37,13 @@ Sources checked 2026-09-14:
 - https://www.perplexity.ai/help-center/en/articles/13915507-adding-custom-remote-connectors
 
 Release authorized on 2026-09-14. Live AI/account acceptance tests remain deferred at the user’s request; setup support is not proof of account connectivity.
+
+## 0.18.7 — Guided cloud installation
+
+Setup navigation is persisted per vault/provider without marking account permission or access verified. Missing add-app options have a blocked exit. Pairing requests are shown in the current setup step; OAuth completion automatically returns to the provider. Test entry is gated by real tool-list evidence, independently of authorization. A fresh connector may need its tools refreshed before the test becomes available.
+
+Cloud HTTP negotiates MCP 2025-03-26 / 2025-06-18 rather than always returning the older stdio protocol. This addresses a compatibility risk; it is not confirmation of the reported ChatGPT schema failure on a real account.
+
+Provider-owned creation forms are still required. Claudian is not a published marketplace app with universal one-click installation. Setup availability is account dependent. Do not claim the three providers are accepted until Claude Code completes the post-release installation and tool-call checks.
+
+Sources: https://modelcontextprotocol.io/specification/2025-06-18/basic/lifecycle ; https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt ; https://support.google.com/gemini/answer/17209137 ; https://www.perplexity.ai/help-center/en/articles/13915507-adding-custom-remote-connectors

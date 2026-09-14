@@ -3,7 +3,7 @@ const {RemoteAuth,hosts}=require('./remote-auth.cjs');
 const mcp=require('./mcp.cjs');
 const escape=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const response=(body,status=200,headers={})=>({status,headers:{'content-type':'application/json','cache-control':'no-store','referrer-policy':'no-referrer','x-content-type-options':'nosniff',...headers},body:typeof body==='string'?body:JSON.stringify(body)});
-const page=(title,body)=>response(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Claudian — ${escape(title)}</title><body><main><h1>${escape(title)}</h1>${body}</main></body></html>`,200,{'content-type':'text/html; charset=utf-8','content-security-policy':"default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"});
+const page=(title,body,refresh='')=>response(`<!doctype html><html lang="en"><meta charset="utf-8">${refresh?`<meta http-equiv="refresh" content="2;url=${escape(refresh)}">`:""}<meta name="viewport" content="width=device-width"><title>Claudian — ${escape(title)}</title><body><main><h1>${escape(title)}</h1>${body}</main></body></html>`,200,{'content-type':'text/html; charset=utf-8','content-security-policy':"default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"});
 const input=req=>req.headers?.['content-type']?.includes('application/x-www-form-urlencoded')?Object.fromEntries(new URLSearchParams(req.body)):JSON.parse(req.body||'{}');
 class RemoteHttp {
   constructor(options) { this.options=options; this.auth=new RemoteAuth(options); }
@@ -22,12 +22,13 @@ class RemoteHttp {
       if(req.method==='POST'&&suffix==='/oauth/revoke'){await this.auth.revokeToken(input(req));return response({});}
       if(req.method==='GET'&&suffix==='/oauth/authorize') {
         const r=await this.auth.begin(Object.fromEntries(url.searchParams));
-        return page('Connect your AI to Claudian',`<p>Open Claudian on your computer and approve only the request with this code:</p><h2>${r.code}</h2><p>Application: ${escape(r.name)}<br>Return address: ${escape(new URL(r.redirect).hostname)}<br>Access: ${escape(r.scope)}</p><p>Bilgisayarındaki Claudian uygulamasında aynı kodu kontrol edip bağlantıyı onayla. Ardından devam et.</p><p><a href="${escape(this.auth.base)}/oauth/complete?request=${encodeURIComponent(r.id)}">Continue / Devam et</a></p>`);
+        return page('Connect your AI to Claudian',`<p>Open Claudian on your computer and approve only the request with this code:</p><h2>${r.code}</h2><p>Application: ${escape(r.name)}<br>Return address: ${escape(new URL(r.redirect).hostname)}<br>Access: ${escape(r.scope)}</p><p>Bilgisayarındaki Claudian uygulamasında aynı kodu kontrol edip bağlantıyı onayla. Onaydan sonra otomatik olarak geri döneceksin.</p><p><a href="${escape(this.auth.base)}/oauth/complete?request=${encodeURIComponent(r.id)}">Continue / Devam et</a></p>`,this.auth.base+'/oauth/complete?request='+encodeURIComponent(r.id));
       }
       if(req.method==='GET'&&suffix==='/oauth/complete') {
         const next=this.auth.complete(url.searchParams.get('request'));
         if(next)return response('',302,{location:next});
-        return page('Waiting for approval',`<p>Claudian uygulamasında bağlantı izni bekleniyor. Onayladıktan sonra bu sayfayı yenile.</p><p>Approve the matching request in the Claudian desktop application, then reload this page.</p>`);
+        const pending=this.auth.requests().find(r=>r.id===url.searchParams.get('request'));
+        return page('Claudian bağlantı onayı',`<p>Claudian uygulamasında aşağıdaki kodla eşleşen isteği onayla. Onaydan sonra otomatik olarak AI uygulamasına döneceksin.</p><h2>${escape(pending?.code||'')}</h2><p>${escape(pending?.name||'')} · ${escape(pending?.scope||'')}</p><p>Approve the matching code in Claudian. You will return to the AI automatically.</p>`,url.href);
       }
       const host=hosts.find(h=>suffix==='/'+h+'/mcp');
       if(!host)return response({error:'not_found'},404);
@@ -41,12 +42,14 @@ class RemoteHttp {
       if(message.id===undefined)return response('',202);
       const {profile,access,grant}=session;
       const tools=mcp.capabilities(profile.vault,()=>require('./notice.cjs').look({vault:profile.vault,ledgerFile:require('node:path').join(this.options.dataDir,'noticed.json')}),{access,dataDir:this.options.dataDir,actor:host,language:profile.language}).filter(t=>t.scope==='read'||access==='write');
-      const reply=await mcp.handle(message,tools,{version:profile.appVersion||'0',language:profile.language,authorize:async scope=>{
+      const reply=await mcp.handle(message,tools,{supportedProtocols:['2025-06-18','2025-03-26'],version:profile.appVersion||'0',language:profile.language,authorize:async scope=>{
         const current=await this.auth.authenticate(bearer,host);
         if(current.profile.vault!==profile.vault)throw Error('Selected vault changed');
         if(scope==='write'&&current.access!=='write')throw Error('Write permission was revoked');
       }});
-      if(!reply.error&&!reply.result?.isError)await this.auth.observed(grant.id,message.method,message.method==='tools/call'?message.params?.name:undefined);
+      const testTools=['read_connection_test','submit_connection_test'];
+      const toolsReady=message.method==='tools/list'&&testTools.every(name=>reply.result?.tools?.some(t=>t.name===name&&t.inputSchema?.type==='object'));
+      if(!reply.error&&!reply.result?.isError)await this.auth.observed(grant.id,message.method,message.method==='tools/call'?message.params?.name:undefined,toolsReady);
       return response(reply);
     } catch(e) {return response({error:e.status?e.message:'request_failed'},e.status||400);}
   }

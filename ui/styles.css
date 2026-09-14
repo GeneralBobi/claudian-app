@@ -124,3 +124,15 @@ textarea{width:100%;box-sizing:border-box;resize:vertical;background:var(--bg);c
 @media(prefers-reduced-motion:reduce){#connection-dialog[open]{animation:none}.connection-tile{transition:none}}
 @media(max-width:480px){.connection-grid{grid-template-columns:1fr}#connection-dialog{width:calc(100vw - 20px);max-height:calc(100vh - 20px)}.connection-dialog-header{padding:16px}.connection-dialog-body{padding:0 16px 16px}}
 .connection-steps [data-complete="true"]{color:#7fb069}.connection-steps [data-complete="true"] .step-symbol{background:#7fb069;border-color:#7fb069;color:#0e0e10}.connection-tile[data-state=complete] .tile-mark{background:#7fb069}.verify-row[data-state=verified]>.badge{color:#7fb069}
+
+/* Focused cloud setup: only the current action is expanded. */
+.setup-current { padding: 16px 0 24px; }
+.setup-current h3 { margin: 0 0 12px; }
+.setup-current p { max-width: 65ch; }
+.setup-fields { display: grid; gap: 0; margin: 20px 0; }
+.setup-fields > div { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 14px 0; border-bottom: 1px solid #26262c; }
+.setup-fields > div > span { flex-basis: 145px; color: #aaa69f; }
+.setup-fields strong { flex: 1; overflow-wrap: anywhere; }
+.setup-fields button { margin: 0; }
+.pairing-code { display: block; margin: 18px 0; font: 600 28px 'JetBrains Mono', monospace; letter-spacing: .12em; }
+.cloud-wizard .toolbar { flex-wrap: wrap; }
