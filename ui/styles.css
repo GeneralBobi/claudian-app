@@ -136,3 +136,66 @@ textarea{width:100%;box-sizing:border-box;resize:vertical;background:var(--bg);c
 .setup-fields button { margin: 0; }
 .pairing-code { display: block; margin: 18px 0; font: 600 28px 'JetBrains Mono', monospace; letter-spacing: .12em; }
 .cloud-wizard .toolbar { flex-wrap: wrap; }
+/* ---- 0.19.0 onboarding: one recommended action, and warnings that look like warnings ---- */
+
+/* Exactly one control on a screen may carry this. "Press this" and "be careful" must never
+   wear the same clothes, so the orange pulse belongs only to the next step and the warning
+   triangle only to something unfinished. */
+.recommended{position:relative;border-color:var(--orange);animation:recommend-pulse 1.8s ease-in-out infinite}
+@keyframes recommend-pulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(217,119,87,.34),0 0 0 1px var(--orange)}
+  50%{box-shadow:0 0 0 7px rgba(217,119,87,0),0 0 14px 2px rgba(217,119,87,.30),0 0 0 1px var(--orange)}
+}
+.recommended:hover,.recommended:focus-visible{animation-play-state:paused;border-color:var(--orange)}
+@media(prefers-reduced-motion:reduce){
+  /* Not "no signal" -- a stronger static one. */
+  .recommended{animation:none;box-shadow:0 0 0 2px var(--orange)}
+}
+
+.callout-warn{display:flex;flex-direction:column;gap:6px;margin:16px 0;padding:13px 15px;
+  border:1px solid #6b4f2a;border-left-width:3px;border-radius:5px;background:#231d15}
+.callout-warn .callout-title{font-family:Poppins,sans-serif;font-size:12px;font-weight:600;
+  color:#e0a75a;margin:0;display:flex;align-items:center;gap:8px}
+.callout-warn .callout-mark{font-size:11px;line-height:1}
+.callout-warn p{margin:0;font-size:12px}
+.callout-warn button{align-self:flex-start;margin-top:6px}
+
+.setup-banner{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:0 0 22px;padding:14px 16px;
+  border:1px solid #4a3a30;border-radius:6px;background:#1a1613}
+.setup-banner>div{flex:1;min-width:220px}
+.setup-banner strong{font-family:Poppins,sans-serif;font-size:12px;color:var(--text);display:block}
+.setup-banner p{margin:4px 0 0;font-size:12px}
+.setup-banner-lead{margin-top:4px}
+
+/* Selected is not connected. The two facts get two lines, never one. */
+.tile-selection{font:11px 'JetBrains Mono',monospace;color:var(--muted);letter-spacing:.2px}
+.tile-selection[data-linked="true"]{color:var(--text)}
+.provider-badge{font:10px 'JetBrains Mono',monospace;letter-spacing:.6px;text-transform:uppercase;
+  padding:2px 6px;border-radius:3px;border:1px solid #6b4f2a;color:#e0a75a;white-space:nowrap}
+.provider-badge-untested{border-color:#3d3d46;color:var(--muted)}
+
+/* Provider cards replace a row of bare checkboxes. Every line has a source; a line without
+   one is not rendered, because an empty badge is still a claim. */
+.host-cards{border:0;padding:0;margin:16px 0 0}
+.host-cards legend{font-size:11px;color:var(--muted);padding:0}
+.host-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin-top:9px}
+.host-card{display:flex;flex-direction:column;gap:5px;margin:0;padding:12px 13px;cursor:pointer;
+  border:1px solid var(--line);border-radius:6px;background:var(--surface);transition:border-color 120ms ease}
+.host-card:hover{border-color:#4a4a55}
+.host-card[data-selected="true"]{border-color:var(--orange);background:#1b1613}
+.host-card-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.host-card-top strong{font-family:Poppins,sans-serif;font-size:13px;color:var(--text)}
+.host-card input[type=checkbox]{margin:0;flex:none}
+.host-card-kind{font:11px 'JetBrains Mono',monospace;color:var(--muted)}
+.host-card-found{font-size:11px;color:var(--orange)}
+.host-card-req{font-family:Lora,Georgia,serif;font-size:11px;line-height:1.6;color:var(--muted)}
+@media(prefers-reduced-motion:reduce){.host-card{transition:none}}
+
+/* The reason a disabled button is disabled belongs next to the button, not further up the
+   page than the button the person is looking at. */
+.sticky-actions{position:sticky;bottom:0;display:flex;justify-content:space-between;align-items:center;
+  gap:14px;flex-wrap:wrap;margin-top:22px;padding:14px 0;border-top:1px solid var(--line);background:var(--bg)}
+.sticky-reason{font-family:Lora,Georgia,serif;font-size:11px;color:var(--muted)}
+[data-surface="setup"] .actions .sticky-reason{flex:1}
+[data-surface="setup"] .actions>span:last-child{display:flex;gap:12px;align-items:center}
+.claimed-name{font-size:11px;line-height:1.7;color:#e0a75a;border-left:2px solid #6b4f2a;padding-left:10px;margin:0 0 12px}

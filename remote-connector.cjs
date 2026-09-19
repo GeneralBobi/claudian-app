@@ -6,7 +6,7 @@ const DEFAULT_RELAY='https://claudian-device-relay.boranbirtanir.workers.dev';
 class RemoteConnector {
   constructor({dataDir,profile,safeStorage,fetch:request=fetch,allowLoopback=false}) {
     Object.assign(this,{dataDir,profile,safeStorage,request,allowLoopback});
-    this.file=path.join(dataDir,'remote-device.json');this.state={enabled:false};this.connection='stopped';this.lastError=null;this.controller=null;
+    this.file=path.join(dataDir,'remote-device.json');this.state={enabled:false};this.connection='stopped';this.lastError=null;this.controller=null;this.attempt=0;
   }
   async load() {
     try{this.state=JSON.parse(await fs.readFile(this.file,'utf8'));}catch(e){if(e.code!=='ENOENT')throw e;}
@@ -53,7 +53,7 @@ class RemoteConnector {
         if(!poll.ok)throw Error('Relay response: '+poll.status);
         const value=await poll.json();
         if(!Array.isArray(value.requests)||value.requests.length>8)throw Error('Invalid relay response');
-        this.connection='online';this.lastError=null;
+        this.connection='online';this.lastError=null;this.attempt=0;
         await Promise.all(value.requests.map(async req=>{
           if(typeof req.id!=='string')return;
           const response=await this.http.handle(req);
@@ -63,12 +63,21 @@ class RemoteConnector {
       }catch(e){
         if(controller.signal.aborted)break;
         this.connection='offline';this.lastError=e.message;
-        await new Promise(resolve=>{const end=()=>{clearTimeout(timer);controller.signal.removeEventListener('abort',end);resolve();};const timer=setTimeout(end,3000);controller.signal.addEventListener('abort',end,{once:true});});
+        // A fixed retry interval synchronises every device in the field: when the relay comes
+        // back they all reconnect on the same beat. Back off, and spread the herd with jitter.
+        const wait=this.backoff();
+        await new Promise(resolve=>{const end=()=>{clearTimeout(timer);controller.signal.removeEventListener('abort',end);resolve();};const timer=setTimeout(end,wait);controller.signal.addEventListener('abort',end,{once:true});});
       }
     }
   }
+  // 3s, 6s, 12s ... capped at 60s, each with up to +-25% jitter. The cap keeps a device that
+  // has been offline for hours from taking minutes to notice the relay is back.
+  backoff() {
+    const step=Math.min(3000*2**this.attempt++,60000);
+    return Math.round(step*(0.75+Math.random()*0.5));
+  }
   async stop({persist=true}={}) {
-    this.controller?.abort();await this.running;this.controller=null;this.connection='stopped';
+    this.controller?.abort();await this.running;this.controller=null;this.connection='stopped';this.attempt=0;
     if(persist){this.state.enabled=false;await this.save();}
     return this.status();
   }

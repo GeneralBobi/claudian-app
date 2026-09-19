@@ -9,7 +9,10 @@ const VERSION = policy.VERSION;
 const HOSTS = {
   'claude-code': { label: 'Claude Code', parts: ['.claude', 'skills', 'claudian-memory'] },
   codex: { label: 'Codex', parts: ['.agents', 'skills', 'claudian-memory'] },
-  gemini: {label:'Gemini',kind:'remote',detect:[]},
+  // The integration that actually works is Spark, not ordinary Gemini chat. The internal id
+  // stays 'gemini' so existing profiles, grant records and connector URLs keep resolving;
+  // only the name the user reads changes. See planning/PUBLIC-GATEWAY.md section 15.
+  gemini: {label:'Spark',kind:'remote',detect:[]},
   perplexity: {label:'Perplexity',kind:'remote',detect:[]},
   antigravity: { label: 'Antigravity', parts: ['.gemini', 'config', 'skills', 'claudian-memory'], detect: ['.gemini/antigravity', '.antigravity'] },
   'antigravity-cli': { label: 'Antigravity CLI', parts: ['.gemini', 'antigravity-cli', 'skills'], filename: 'claudian-memory.md', detect: ['.gemini/antigravity-cli'] },
@@ -106,15 +109,18 @@ class MemorySetup {
       const candidate = path.join(this.home, base, 'Claudian');
       if (await exists(path.join(candidate, 'CLAUDIAN.md')) || await exists(path.join(candidate, 'Vault Protokolü.md'))) candidates.push(candidate);
     }
-    // Suggesting Markdown to someone who has Obsidian installed but has not made a vault yet
-    // gets the first question of the wizard wrong for every new Obsidian user.
+    // Obsidian is the way Claudian is meant to be used, so it is the default answer -- not a
+    // guess derived from what happens to be installed. On a fresh machine nothing is installed
+    // yet, and the old rule therefore proposed Markdown to every single new user, making the
+    // first question of the wizard read as a storage-format decision. A missing Obsidian is
+    // not a wrong answer here; it is the next step, and the setup screen offers the download.
     const obsidianInstalled = await exists(path.join(process.env.LOCALAPPDATA || path.join(this.home, 'AppData', 'Local'), 'Programs', 'Obsidian', 'Obsidian.exe'));
     const vaults = [...new Set(candidates)]; const state = await this.snapshot();
     // A discovered personal vault is a choice, never implicit installation consent.
     const baseVault = path.join(this.home, 'Documents', 'Claudian');
     let proposedVault = baseVault, suffix = 2;
     while (await exists(proposedVault)) proposedVault = `${baseVault} ${suffix++}`;
-    return { vaults, suggested: { name: path.basename(this.home), vault: proposedVault, mode: 'new', storage: Object.keys(obsidian.vaults || {}).length || obsidianInstalled ? 'obsidian' : 'markdown', hosts: state.hosts.filter(h => h.configurationFound).map(h => h.id) }, hosts: state.hosts };
+    return { vaults, suggested: { name: path.basename(this.home), vault: proposedVault, mode: 'new', storage: 'obsidian', hosts: state.hosts.filter(h => h.configurationFound).map(h => h.id) }, hosts: state.hosts };
   }
   async prepare(input) {
     if (this.running) throw new Error('Kurulum zaten çalışıyor.');
@@ -521,3 +527,9 @@ class MemorySetup {
 module.exports = { MemorySetup, HOSTS, RETIRED, KNOWN, VERSION, hash, assertOrdinaryPath };
 require('./management.cjs')(MemorySetup, {HOSTS: KNOWN, hash, assertOrdinaryPath, json, atomicJson, exists});
 require('./upgrade.cjs')(MemorySetup, {hash,assertOrdinaryPath,json,atomicJson});
+// Every operation that reads config.json, changes it and writes it back is serialised.
+// See profile-lock.cjs for why the atomic write alone was not enough.
+require('./profile-lock.cjs').wrap(MemorySetup,[
+  'prepare','install','challenge','verify','preferences','useLanguage',
+  'skipVerification','adoptProtocol','sweepResidue','relocate','removeHost','upgrade'
+]);

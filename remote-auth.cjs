@@ -8,6 +8,11 @@ const path = require('node:path');
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const random = () => crypto.randomBytes(32).toString('base64url');
 const scopes = ['claudian.read', 'claudian.write'];
+// offline_access is a refresh signal, not an access right. It is advertised and accepted so
+// that a client asking for it is not rejected with invalid_scope, but it is stripped before
+// any permission decision and never stored on a grant.
+const OFFLINE = 'offline_access';
+const advertised = [...scopes, OFFLINE];
 const hosts = ['chatgpt', 'claude-desktop', 'gemini', 'perplexity'];
 const fail = (message, status=400) => Object.assign(new Error(message), {status});
 
@@ -32,7 +37,7 @@ class RemoteAuth {
     finally { await fs.rm(temp,{force:true}); }
   }
   resource(host) { if(!hosts.includes(host))throw fail('Unknown AI connection'); return this.base+'/'+host+'/mcp'; }
-  metadata() { return {issuer:this.base,authorization_endpoint:this.base+'/oauth/authorize',token_endpoint:this.base+'/oauth/token',registration_endpoint:this.base+'/oauth/register',revocation_endpoint:this.base+'/oauth/revoke',response_types_supported:['code'],grant_types_supported:['authorization_code','refresh_token'],code_challenge_methods_supported:['S256'],token_endpoint_auth_methods_supported:['none','client_secret_post'],scopes_supported:scopes}; }
+  metadata() { return {issuer:this.base,authorization_endpoint:this.base+'/oauth/authorize',token_endpoint:this.base+'/oauth/token',registration_endpoint:this.base+'/oauth/register',revocation_endpoint:this.base+'/oauth/revoke',response_types_supported:['code'],grant_types_supported:['authorization_code','refresh_token'],code_challenge_methods_supported:['S256'],token_endpoint_auth_methods_supported:['none','client_secret_post'],scopes_supported:advertised,authorization_response_iss_parameter_supported:true}; }
   async register(input) {
     return this.exclusive(async()=>{
       if(Object.keys(this.state.clients).length>=100)throw fail('Client registration limit reached',429);
@@ -67,8 +72,9 @@ class RemoteAuth {
     if(typeof input.state!=='string'||input.state.length>2048)throw fail('Invalid state');
     const host=hosts.find(h=>this.resource(h)===input.resource);
     if(!host)throw fail('invalid_target');
-    const requested=[...new Set(String(input.scope||scopes[0]).split(' '))];
-    if(!requested.includes(scopes[0])||requested.some(s=>!scopes.includes(s)))throw fail('invalid_scope');
+    const asked=[...new Set(String(input.scope||scopes[0]).split(' ').filter(Boolean))];
+    if(!asked.includes(scopes[0])||asked.some(s=>!advertised.includes(s)))throw fail('invalid_scope');
+    const requested=asked.filter(s=>s!==OFFLINE);
     const p=await this.profile();
     if(!p?.hosts?.some(h=>h.id===host))throw fail('Enable this AI in Claudian first',403);
     if(requested.includes(scopes[1])&&p.access!=='write')throw fail('Write access is disabled in Claudian',403);
@@ -94,6 +100,9 @@ class RemoteAuth {
     this.clean(); const r=this.pending.get(id); if(!r)throw fail('Connection request expired',410);
     if(r.status==='pending')return null;
     const url=new URL(r.redirect); url.searchParams.set('state',r.state);
+    // RFC 9207: the issuer is returned on success and on failure, so a client cannot be
+    // tricked into accepting a code minted by a different authorization server.
+    url.searchParams.set('iss',this.base);
     if(r.status==='denied')url.searchParams.set('error','access_denied');
     else {
       const code=random();this.codes.set(hash(code),{grantId:r.grantId,clientId:r.clientId,redirect:r.redirect,challenge:r.challenge,resource:r.resource,expires:this.now()+60000});url.searchParams.set('code',code);

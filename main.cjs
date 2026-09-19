@@ -24,6 +24,11 @@ if (smoke) app.setPath('userData', require('node:fs').mkdtempSync(path.join(os.t
 if (smoke) app.disableHardwareAcceleration();
 const origin = 'claudian://app';
 let win, core, remoteConnector, migrationError='', setupReview=false, installStamp='';
+// app:enter reloads the window, which destroys every bit of renderer state -- including the
+// view the person just asked for. "Set up AI connections" therefore landed them on Memory,
+// the one screen that makes an unfinished setup look finished. The requested view is handed
+// across the reload here and consumed exactly once.
+let entryView='';
 protocol.registerSchemesAsPrivileged([{ scheme: 'claudian', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 if (!smoke) app.setPath('userData', acceptanceRoot?path.join(acceptanceRoot,'data'):path.join(app.getPath('appData'), 'Claudian Desktop'));
 if (purge) app.whenReady().then(purgeInstallation).then(() => app.exit(0)).catch(error => { console.error(error); app.exit(1); });
@@ -115,7 +120,10 @@ async function start() {
     });
   }
   require('./companion-bridge.cjs').attach(handle,session);
-  handle('app:snapshot', async () => ({...await core.snapshot(),appVersion:app.getVersion(),migrationError,setupReview}));
+  handle('app:snapshot', async () => {
+    const view=entryView; entryView='';
+    return {...await core.snapshot(),appVersion:app.getVersion(),migrationError,setupReview,entryView:view};
+  });
   handle('setup:review', async (hosts, consent, withdraw) => {
     const result=await require('./setup-review.cjs').apply(core,hosts,consent,withdraw);
     return result;
@@ -326,8 +334,9 @@ async function start() {
     return result;
   });
   handle('app:discover', () => core.discover());
-  handle('app:enter', async () => {
+  handle('app:enter', async (view) => {
     if (!(await core.snapshot()).profile) throw new Error('Önce kurulumu tamamlayın.');
+    entryView = ['home','connections'].includes(view) ? view : '';
     await require('./setup-review.cjs').acknowledge(core.dataDir,installStamp);setupReview=false;
     win.setSize(940, 760); win.center(); win.setTitle('claudian.app');
     await win.loadURL(origin + '/index.html');

@@ -44,7 +44,7 @@ contextBridge.exposeInMainWorld('claudian', {
   configuration: (host, kind) => invoke('memory:configuration', host, kind),
   obsidian: () => invoke('memory:obsidian'),
   discover: () => invoke('app:discover'),
-  enter: () => invoke('app:enter'),
+  enter: view => invoke('app:enter', view),
   chooseFolder: () => invoke('app:folder'),
   relocate: target => invoke('memory:relocate', target),
   verifyWatch: (host,requestId) => invoke('memory:verify-watch', host,requestId),

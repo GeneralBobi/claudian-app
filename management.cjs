@@ -72,7 +72,11 @@ module.exports = (Setup, {HOSTS, hash, assertOrdinaryPath, json, atomicJson, exi
     const profile = await json(this.configFile);
     if (!profile) return [];
     return Promise.all(profile.hosts.map(async host => {
-      if(HOSTS[host.id].kind==='remote'&&!this.tunnelUrl)return {id:host.id,label:host.label,files:[],
+      // The label was copied into the profile at install time, so a renamed provider would
+      // keep showing its old name to everyone who installed before the rename. The registry
+      // is the live source; the persisted copy is only a fallback for a retired host.
+      const label=HOSTS[host.id]?.label||host.label;
+      if(HOSTS[host.id].kind==='remote'&&!this.tunnelUrl)return {id:host.id,label,files:[],
         access:{state:'unavailable',scope:profile.access,step:profile.language==='tr'?'Bağlantılar ekranından hesap bağlantısını tamamla.':'Complete account connection in the Connections screen.'},
         artifacts:{},hookTrust:null,status:'attention'};
       // artifacts carries path entries plus an access descriptor; only paths are read.
@@ -98,7 +102,7 @@ module.exports = (Setup, {HOSTS, hash, assertOrdinaryPath, json, atomicJson, exi
         } catch(e) { if(e.code!=='ENOENT')status='unreadable'; }
         details.push({kind:'config',path:access.file,status});
       }
-      return {id:host.id,label:host.label,files:details,access,artifacts:host.artifacts||{},hookTrust:host.artifacts?.hookTrust||null,status:details.length>0 && details.every(f=>f.status==='ready') ? 'ready' : 'attention'};
+      return {id:host.id,label,files:details,access,artifacts:host.artifacts||{},hookTrust:host.artifacts?.hookTrust||null,status:details.length>0 && details.every(f=>f.status==='ready') ? 'ready' : 'attention'};
     }));
   };
   // The application checks its own work instead of asking the user to go and check it. Three
@@ -263,7 +267,7 @@ module.exports = (Setup, {HOSTS, hash, assertOrdinaryPath, json, atomicJson, exi
     const hosts = profile.hosts.map(host => {
       let state = 'unverified';
       if (host.verifiedAt) state = (host.verifiedProtocol === profile.protocolVersion && host.verifiedVault === profile.vault) ? 'verified' : 'stale';
-      return {id: host.id, label: host.label, verifiedAt: host.verifiedAt || null, state, maintenance:maintenance.find(m=>m.host===host.id)||null};
+      return {id: host.id, label: HOSTS[host.id]?.label || host.label, verifiedAt: host.verifiedAt || null, state, maintenance:maintenance.find(m=>m.host===host.id)||null};
     });
     const verifiedCount = hosts.filter(h => h.state === 'verified').length;
     return {lastChange, hosts, verifiedCount, everVerified: hosts.some(h => h.verifiedAt), skippedAt: profile.verificationSkippedAt || null, vaultMissing, vault: profile.vault};

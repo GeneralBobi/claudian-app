@@ -1,4 +1,4 @@
-# Connection coverage — 0.18.6
+# Connection coverage — 0.19.0
 
 Installation and actual conversation behavior are separate checks. Connections offers a file-access challenge; it is not a complete long-conversation acceptance test.
 
@@ -7,6 +7,8 @@ Installation and actual conversation behavior are separate checks. Connections o
 | Claude Code | Skill, startup rule, local MCP, conversation hooks | Controlled 20-turn CLI session passed |
 | Codex | Skill, global AGENTS block, local MCP, conversation hooks | Controlled 5-turn CLI session passed; hooks need host trust |
 | Claude Desktop | Local MCP configuration and generated .mcpb | Packaged extension read/write tests; native conversation acceptance pending |
+| Spark (Google) | Hosted device relay, guided account OAuth | Setup support only. Runs inside Spark, not ordinary Gemini chat. Early access; no real account acceptance |
+| Perplexity | Hosted device relay, guided account OAuth | **Untested.** Never exercised with a real account; setup support is not evidence of a working connection |
 | Gemini CLI (legacy) | Preserved existing files; no new connections | Earlier local file receipts are not Gemini web acceptance |
 | Antigravity / CLI | Skill and context file | Configuration tests; real conversation acceptance pending |
 | ChatGPT | Hosted device relay, guided account OAuth | Live HTTPS OAuth/read/write/revoke passed with synthetic client; real account acceptance pending |

@@ -1,7 +1,7 @@
 {
   "name": "claudian-desktop",
   "productName": "Claudian",
-  "version": "0.18.7",
+  "version": "0.19.0",
   "private": true,
   "description": "Claudian ortak hafÄ±za uygulamasÄ±",
   "author": "Claudian",
@@ -28,6 +28,7 @@
       "main.cjs",
       "preload.cjs",
       "core.cjs",
+      "profile-lock.cjs",
       "grants.cjs",
       "codex-grant.cjs",
       "management.cjs",

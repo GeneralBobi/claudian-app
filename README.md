@@ -2,9 +2,9 @@
 
 A Windows application for a local, user-owned Markdown memory shared by AI tools.
 
-**Preview 0.18.7 — protocol 2.8.0.** The companion is under construction. A hosted device relay is available for account connectors; native account acceptance remains host-specific. This release improves local memory maintenance; it is not a guarantee that every AI host will automatically use memory.
+**Preview 0.19.0 — protocol 2.8.0.** The companion is under construction. A hosted device relay is available for account connectors; native account acceptance remains host-specific. This release improves local memory maintenance; it is not a guarantee that every AI host will automatically use memory.
 
-[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/download/v0.18.7/Claudian-Setup-0.18.7.exe) · [Website](https://claudian.app) · [Connection coverage](COMPATIBILITY.md)
+[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/download/v0.19.0/Claudian-Setup-0.19.0.exe) · [Website](https://claudian.app) · [Connection coverage](COMPATIBILITY.md)
 
 ## Setup and updates
 
@@ -66,3 +66,29 @@ Gemini Spark and Perplexity account acceptance remain pending. This release adds
 ChatGPT, Gemini Spark and Perplexity now open a focused setup guide. It prepares the device URL, provides ready-to-copy form values, puts matching-code approval in the connection window, and provides an explicit unavailable-account exit. OAuth approval returns to the AI automatically. Authorization alone cannot unlock testing: the required tools must have been requested. ChatGPT web tests and first reviews require their MCP receipt, never a local-file fallback.
 
 Provider-owned create-app forms and account eligibility still apply; this is not a marketplace-listed, one-click installation. Account acceptance is scheduled separately with Claude Code after publication.
+
+### 0.19.0: Setup, routing and connection reliability
+
+The controlled continuation of 0.18.7. No new architecture. Upgrading requires no migration.
+
+Obsidian is the default note application instead of a guess derived from what happens to be
+installed; plain Markdown stays as an explicit advanced choice. Claudian derives one
+recommended next action from state it already had and marks a single control with it, with a
+static border in place of the pulse under reduced motion. "Selected", "connected" and
+"read/write verified" are stated as three separate facts, because they are. Finishing setup
+now actually opens Connections; the destination was previously discarded by the panel reload.
+
+The working Google integration is presented as **Spark**, with a Beta badge, because ordinary
+Gemini chat cannot use it. Perplexity is marked **Untested**: it has never been exercised with
+a real account here. No plan requirement is shown for any provider, because none is recorded
+in this repository.
+
+`offline_access` is accepted and advertised — clients asking for it were previously rejected
+with `invalid_scope` — and authorization responses now carry `iss` per RFC 9207. Reconnection
+uses exponential backoff with jitter. Profile writes are serialised against a second window.
+
+`npm test` passes end to end again; the packaged smoke run was broken on 0.18.7 because it
+drove its remove/re-add round trip through a retired host.
+
+The public gateway described in the planning contract is **not** part of this release. Cloud
+connections work exactly as they did in 0.18.7, over the existing device relay.
