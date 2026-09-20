@@ -41,8 +41,18 @@ exports.begin=async(dataDir,p,host)=>{
  const input=path.join(p.vault,`.claudian-review-${host}-${id}.md`),output=input.replace(/\.md$/,'-response.json');
  const receipt=JSON.stringify({request_id:id,value:nonce,status:'completed',summary:'Your actual sources, changes and remaining gaps'});
  const web=require('./cloud-progress.cjs').webOnly(host);
+ // A web host could not complete a review at all. The nonce existed only behind
+ // read_first_review, that call is blocked by provider policy on at least one surface, and
+ // submit_first_review requires the nonce -- so the deterministic path was structurally
+ // impossible and the only thing that came back was prose, which is not a receipt. The token
+ // now travels inside the instruction the user pastes. It is still single use (the response
+ // file is created with wx), still expires with the request, still scoped to this device's
+ // review record, and the tool call still arrives over this host's authenticated grant. What
+ // it no longer does is prove, by itself, that the model ran a scan -- so submit() now also
+ // requires that the grant has actually called Claudian.
+ const token=web?`\n\nClaudian first review token for this request:\nrequest_id: ${id}\nvalue: ${nonce}\nCall submit_first_review with exactly these two values, your status and your actual summary. Do not alter them and do not write them into a note. If read_first_review is available you may use it instead; the values are the same.`:'';
  const prompt=require('./scan.cjs').prompt({...p,hosts:p.hosts.filter(h=>h.id===host)}).replace(web?/^[^\n]*\n/:/$^/,'')+'\n\n'+
- (web?'Use only Claudian MCP in this web conversation. Call read_first_review and submit_first_review to return your actual report, even when no notes changed. If tools are missing, stop and report that the connection is unavailable. Do not use local files or another AI application. Do not ask personal onboarding questions.':`Return the review report to Claudian even when no notes changed. Use read_first_review and submit_first_review if available. Otherwise write the following JSON structure to ${output}:\n${receipt}\nReplace summary with your actual report. Use status completed when the review is finished (an empty vault is valid), needs_input if the review itself is blocked awaiting the user, or failed on an access/error failure. Do not claim success without doing the review. This receipt does not require inventing or changing user notes.`);
+ (web?'Use only Claudian MCP in this web conversation. Call submit_first_review to return your actual report, even when no notes changed. If tools are missing, stop and report that the connection is unavailable. Do not use local files or another AI application. Do not ask personal onboarding questions.'+token:`Return the review report to Claudian even when no notes changed. Use read_first_review and submit_first_review if available. Otherwise write the following JSON structure to ${output}:\n${receipt}\nReplace summary with your actual report. Use status completed when the review is finished (an empty vault is valid), needs_input if the review itself is blocked awaiting the user, or failed on an access/error failure. Do not claim success without doing the review. This receipt does not require inventing or changing user notes.`);
  await ordinary(input);await fs.writeFile(input,prompt,{flag:'wx'});
  const r={id,nonce,host,vault:p.vault,protocol:p.protocolVersion,input,output,inputHash:digest(prompt),issuedAt:new Date().toISOString()};
  await save(dataDir,host,r);return {host,prompt,id};
@@ -67,9 +77,26 @@ async function initializeProviderMemory(vault,host,actor){
   old_text:current.body,new_text:next,reason:'first-review:persistent-memory-accepted'},actor);
  return {initialized:true,note,receipt:receipt.id};
 }
-exports.submit=async(dataDir,vault,host,args)=>{
+// Proof that this grant did Claudian work, not proof that the work was any good. A report is
+// accepted only from a conversation that actually read through Claudian; a provider that
+// merely echoes the token back without ever loading context cannot close a review.
+const SCAN_EVIDENCE=['startup_context','read_first_review','read_note','list_notes','search_notes','noticed','begin_memory_turn'];
+exports.submit=async(dataDir,vault,host,args,activity)=>{
  if((await profileFor(dataDir,vault,host)).access!=='write')throw Error('This connection has read-only access.');
- const r=await active(dataDir,vault,host);report(args,r);
+ const r=await active(dataDir,vault,host);
+ // A web submission is recorded on the request itself, and active() only knows about the
+ // parsed result, so a retry used to get past it and fail on the response file with a raw
+ // EEXIST. Retry safety means the second attempt is told what happened, not handed errno.
+ if(r.mcpSubmitted)throw Error('Review expired or already completed. Start a new review.');
+ report(args,r);
+ if(require('./cloud-progress.cjs').webOnly(host)){
+  const seen=typeof activity==='function'?(activity()||{}):null;
+  // No evidence channel at all (a local transport) is not the same as an empty one.
+  if(seen&&!SCAN_EVIDENCE.some(name=>seen[name])){
+   r.rejected={at:new Date().toISOString(),reason:'no-scan-evidence'};await save(dataDir,host,r);
+   throw Error('This conversation has not read anything through Claudian. Run the review first, then submit its result.');
+  }
+ }
  await fs.writeFile(r.output,JSON.stringify(args),{flag:'wx'});
  if(require('./cloud-progress.cjs').webOnly(host)){r.mcpSubmitted=true;await save(dataDir,host,r);}
  // The receipt is the primary outcome and is already durable. Initialization is reported,
@@ -87,6 +114,9 @@ exports.status=async(dataDir,vault,host)=>{
  // that already answered -- yes or no -- is untouched, and a read-only connection writes nothing.
  if(r.result?.status==='completed'){try{await initializeProviderMemory(vault,host,'first-review');}catch{}}
  if(r.result)return r.result;
+ // A rejected report is an outcome, not silence. Without this the screen kept saying
+ // "waiting for the AI report" for a full day after Claudian had already refused one.
+ if(r.rejected)return {status:'invalid',message:'A report was returned without evidence of a real review. Start the review again.',receivedAt:r.rejected.at};
  if(require('./cloud-progress.cjs').webOnly(host)&&!r.mcpSubmitted)return {status:Date.now()-Date.parse(r.issuedAt)>24*60*60*1000?'expired':'waiting',issuedAt:r.issuedAt};
  if(Date.now()-Date.parse(r.issuedAt)>24*60*60*1000)return {status:'expired'};
  try{

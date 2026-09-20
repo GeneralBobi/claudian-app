@@ -41,7 +41,10 @@ class RemoteHttp {
       if(!message||Array.isArray(message)||message.jsonrpc!=='2.0'||typeof message.method!=='string')return response({error:'invalid_request'},400);
       if(message.id===undefined)return response('',202);
       const {profile,access,grant}=session;
-      const tools=mcp.capabilities(profile.vault,()=>require('./notice.cjs').look({vault:profile.vault,ledgerFile:require('node:path').join(this.options.dataDir,'noticed.json')}),{access,dataDir:this.options.dataDir,actor:host,language:profile.language}).filter(t=>t.scope==='read'||access==='write');
+      const tools=mcp.capabilities(profile.vault,()=>require('./notice.cjs').look({vault:profile.vault,ledgerFile:require('node:path').join(this.options.dataDir,'noticed.json')}),{access,dataDir:this.options.dataDir,actor:host,language:profile.language,
+        // Independent evidence of what this grant has actually called. A first review closes
+        // on the application's own record, never on the provider's account of itself.
+        activity:()=>this.auth.activity(grant.id)}).filter(t=>t.scope==='read'||access==='write');
       const reply=await mcp.handle(message,tools,{supportedProtocols:['2025-06-18','2025-03-26'],version:profile.appVersion||'0',language:profile.language,authorize:async scope=>{
         const current=await this.auth.authenticate(bearer,host);
         if(current.profile.vault!==profile.vault)throw Error('Selected vault changed');

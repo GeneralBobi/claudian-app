@@ -1,4 +1,4 @@
-# Connection coverage — 0.19.1
+# Connection coverage — 0.19.2
 
 Installation and actual conversation behavior are separate checks. Connections offers a file-access challenge; it is not a complete long-conversation acceptance test.
 
@@ -10,7 +10,7 @@ Installation and actual conversation behavior are separate checks. Connections o
 | Spark (Google) | Hosted device relay, guided account OAuth | Setup support only. Runs inside Spark, not ordinary Gemini chat. Early access; no real account acceptance |
 | Perplexity | Hosted device relay, guided account OAuth | **Untested.** Never exercised with a real account; setup support is not evidence of a working connection |
 | Gemini CLI (legacy) | Preserved existing files; no new connections | Earlier local file receipts are not Gemini web acceptance |
-| Antigravity / CLI | Skill and context file | Configuration tests; real conversation acceptance pending |
+| Antigravity | One connection, two entry points (IDE and terminal); skill and shared context file | Configuration tests; real conversation acceptance pending |
 | ChatGPT | Hosted device relay, guided account OAuth | Live HTTPS OAuth/read/write/revoke passed with synthetic client; real account acceptance pending |
 
 Claude Code and Codex acceptance explicitly supplied generated settings and instructions in isolated synthetic vaults. Codex hook trust was explicitly enabled for that controlled fixture. Neither result proves that a freshly installed native host automatically activates the connection.

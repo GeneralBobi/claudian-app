@@ -407,7 +407,24 @@ module.exports = (Setup, {HOSTS, hash, assertOrdinaryPath, json, atomicJson, exi
     } finally { if (created && await fs.readFile(probe,'utf8').catch(()=>null) === token) await fs.unlink(probe); }
     return {vault:'ready',connections:await this.connections()};
   };
+  // Removing the provider removes every entry point it owns. Leaving the terminal half
+  // installed after the card said "removed" is the same lie in the other direction.
   Setup.prototype.removeHost = async function(id, options = {}) {
+    const companions = (require('./core.cjs').COMPANIONS[id] || []);
+    if (companions.length) {
+      const profile = await json(this.configFile);
+      const present = companions.filter(c => profile?.hosts.some(h => h.id === c));
+      if (present.length && profile?.hosts.some(h => h.id === id)) {
+        // Companions first. Each removal still refuses to delete a file the user edited, and
+        // doing the secondary entry points first means such a refusal leaves the provider
+        // whole instead of half-removed.
+        for (const each of present) await Setup.prototype.removeOneHost.call(this, each, options);
+        return Setup.prototype.removeOneHost.call(this, id, options);
+      }
+    }
+    return Setup.prototype.removeOneHost.call(this, id, options);
+  };
+  Setup.prototype.removeOneHost = async function(id, options = {}) {
     if (this.running) throw new Error('Please wait for the current operation.');
     this.running = true;
     const changed = [];

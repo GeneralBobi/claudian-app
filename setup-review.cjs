@@ -16,6 +16,9 @@ async function apply(core, hosts, consent, consentWithdraw) {
   // Connecting an AI to a folder that is not there installs the appearance of a memory. The
   // folder is the subject of every file this call writes, so it is settled first.
   if (snapshot.vaultMissing) throw Error('Not klasörü bulunamadı. Önce klasörü seç veya yeniden oluştur.');
+  // One card can stand for more than one entry point (Antigravity's IDE and terminal). The
+  // half the user never saw must be kept with the half they ticked, not silently withdrawn.
+  hosts = require('./core.cjs').expandCompanions(hosts).filter(id=>snapshot.hosts.some(h=>h.id===id));
   const added = hosts.filter(id=>!profile.hosts.some(h=>h.id===id));
   if (added.length) {
     // Adding a connection here writes the same files setup writes, so it needs the same grant.
@@ -37,8 +40,11 @@ async function apply(core, hosts, consent, consentWithdraw) {
     error.withdrawing = withdrawn;
     throw error;
   }
+  for (const id of withdrawn) if (!consentWithdraw.includes(id)) throw Error('Kaldırma onayı bu bağlantıyı kapsamıyor: ' + id);
   for (const id of withdrawn) {
-    if (!consentWithdraw.includes(id)) throw Error('Kaldırma onayı bu bağlantıyı kapsamıyor: ' + id);
+    // Removing a provider takes its companion entry points with it, so by the time the loop
+    // reaches the companion there may be nothing left to remove. That is success, not a fault.
+    if (!(await core.snapshot()).profile?.hosts.some(h => h.id === id)) continue;
     await core.removeHost(id);
   }
   return core.upgrade();

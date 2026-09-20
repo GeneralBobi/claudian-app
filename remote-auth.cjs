@@ -148,7 +148,13 @@ class RemoteAuth {
   }
   async revoke(id) { return this.exclusive(async()=>{if(this.state.grants[id]){this.state.grants[id].revoked=true;await this.save();}}); }
   async revokeToken(input) { this.client(input);const token=this.state.tokens[hash(String(input.token||''))];if(token&&this.state.grants[token.grantId]?.clientId===input.client_id)await this.revoke(token.grantId); }
-  async observed(id,stage,tool,toolsReady=false) { return this.exclusive(async()=>{const g=this.state.grants[id];if(g){g.lastSeen=new Date(this.now()).toISOString();g.stage=stage;if(tool)g.lastTool=tool;if(stage==='tools/list'){g.toolsListedAt=g.lastSeen;g.toolsReadyAt=toolsReady?g.lastSeen:null;}await this.save();}}); }
-  grants() { return Object.values(this.state.grants).map(({id,host,name,scope,authorizedAt,lastSeen,lastTool,stage,revoked,tokenExchangedAt,toolsListedAt,toolsReadyAt})=>({id,host,name,scope,authorizedAt,lastSeen,lastTool,stage,revoked,tokenExchangedAt,toolsListedAt,toolsReadyAt})); }
+  // lastTool answered "what was the most recent call" and nothing else, so a review that
+  // needed proof of a real scan had no record to stand on. Tool names are a closed set
+  // defined by this application, so the map cannot be grown by a caller.
+  async observed(id,stage,tool,toolsReady=false) { return this.exclusive(async()=>{const g=this.state.grants[id];if(g){g.lastSeen=new Date(this.now()).toISOString();g.stage=stage;if(tool){g.lastTool=tool;g.tools={...g.tools,[tool]:g.lastSeen};}if(stage==='tools/list'){g.toolsListedAt=g.lastSeen;g.toolsReadyAt=toolsReady?g.lastSeen:null;}await this.save();}}); }
+  // What this grant has actually called, for callers that must distinguish a real scan from
+  // a provider simply asserting one happened.
+  activity(id) { const g=this.state.grants[id]; return g&&!g.revoked?{...g.tools}:{}; }
+  grants() { return Object.values(this.state.grants).map(({id,host,name,scope,authorizedAt,lastSeen,lastTool,tools,stage,revoked,tokenExchangedAt,toolsListedAt,toolsReadyAt})=>({id,host,name,scope,authorizedAt,lastSeen,lastTool,tools:{...tools},stage,revoked,tokenExchangedAt,toolsListedAt,toolsReadyAt})); }
 }
 module.exports={RemoteAuth,hash,random,hosts,fail};

@@ -2,9 +2,9 @@
 
 A Windows application for a local, user-owned Markdown memory shared by AI tools.
 
-**Preview 0.19.1 — protocol 2.9.0.** The companion is under construction. A hosted device relay is available for account connectors; native account acceptance remains host-specific. This release improves local memory maintenance; it is not a guarantee that every AI host will automatically use memory.
+**Preview 0.19.2 — protocol 2.9.0.** The companion is under construction. A hosted device relay is available for account connectors; native account acceptance remains host-specific. This release is about the setup, review and connection screens; it is not a guarantee that every AI host will automatically use memory.
 
-[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/download/v0.19.1/Claudian-Setup-0.19.1.exe) · [Website](https://claudian.app) · [Connection coverage](COMPATIBILITY.md)
+[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/download/v0.19.2/Claudian-Setup-0.19.2.exe) · [Website](https://claudian.app) · [Connection coverage](COMPATIBILITY.md)
 
 ## Setup and updates
 
@@ -66,6 +66,22 @@ Gemini Spark and Perplexity account acceptance remain pending. This release adds
 ChatGPT, Gemini Spark and Perplexity now open a focused setup guide. It prepares the device URL, provides ready-to-copy form values, puts matching-code approval in the connection window, and provides an explicit unavailable-account exit. OAuth approval returns to the AI automatically. Authorization alone cannot unlock testing: the required tools must have been requested. ChatGPT web tests and first reviews require their MCP receipt, never a local-file fallback.
 
 Provider-owned create-app forms and account eligibility still apply; this is not a marketplace-listed, one-click installation. Account acceptance is scheduled separately with Claude Code after publication.
+
+### 0.19.2: Setup, review and connection screens
+
+A patch release about the screens, carrying protocol 2.9.0 unchanged. Nothing in the vault
+changes and there is no migration. The recommended-action pulse is removed from the stylesheet
+rather than hidden behind a media query; the setup banner's **Verify access** button now opens
+the connection it names and issues its real read/write test instead of re-rendering the screen
+it already lives on; the review screen's five body paragraphs become one helper line plus a
+collapsed detail, with consent still in the open; providers are cards that keep *selected*,
+*connected* and *verified* as three separate claims; Antigravity's IDE and terminal are one
+connection with two ways in rather than two AI applications; the Spark action opens Spark and
+the manual-sharing fallback says that it is one; and a first review on a web provider can be
+completed deterministically, with Claudian requiring its own evidence that a scan happened and
+never reading the provider's prose for success.
+
+Full notes: [release-notes-0.19.2.md](release-notes-0.19.2.md)
 
 ### 0.19.1: Memory and runtime reliability — protocol 2.9.0
 

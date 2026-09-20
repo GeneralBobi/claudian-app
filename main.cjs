@@ -162,7 +162,9 @@ async function start() {
   });
   handle('connector:gemini-guide',async()=>{
     const prompt=require('./web-providers.cjs').geminiGuide((await core.snapshot()).profile?.language);clipboard.writeText(prompt);
-    await shell.openExternal('https://gemini.google.com/app');return {prompt};
+    // Deliberately the manual address, not the Spark one: this action is the fallback for
+    // accounts without Spark custom apps, and it installs no connection.
+    await shell.openExternal(require('./web-providers.cjs').providers.gemini.manual);return {prompt};
   });
   const prepareProvider=async provider=>{
     if(!['chatgpt','claude-desktop','gemini','perplexity'].includes(provider))throw Error('Unknown provider');

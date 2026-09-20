@@ -30,6 +30,22 @@ const RETIRED = {
   'gemini-cli': {label:'Gemini CLI (legacy)',parts:['.agents','skills','claudian-memory'],detect:['.gemini/settings.json'],retired:true},
   cursor: { label: 'Cursor', parts: ['.agents', 'skills', 'claudian-memory'], detect: ['.cursor'], retired: true },
 };
+// Antigravity is ONE product with two entry points: the IDE and its terminal. The product
+// listed them as two AI applications, which is simply untrue -- both write into ~/.gemini,
+// both share the same GEMINI.md rule, and the CLI's "open app" action already launched the
+// IDE. The internal ids stay so installed files, profiles and grants keep resolving; what
+// changes is that the user sees one connection, and selecting it carries both entry points.
+const COMPANIONS = { antigravity: ['antigravity-cli'] };
+const VARIANT_OF = Object.fromEntries(Object.entries(COMPANIONS).flatMap(([primary, list]) => list.map(id => [id, primary])));
+const withCompanions = (ids, installed = []) => {
+  const out = [...ids];
+  for (const id of ids) for (const companion of COMPANIONS[id] || [])
+    if (!out.includes(companion) && !installed.includes(companion) && Object.hasOwn(KNOWN, companion)) out.push(companion);
+  return out;
+};
+// Every entry point a chosen provider owns, whether or not it is installed. Used wherever a
+ // selection decides what is KEPT -- a card the user never saw must not read as "unticked".
+const expandCompanions = ids => [...new Set(ids.flatMap(id => [id, ...(COMPANIONS[id] || [])]))];
 const KNOWN = { ...HOSTS, ...RETIRED };
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const exists = async file => { try { await fs.lstat(file); return true; } catch (e) { if (e.code === 'ENOENT') return false; throw e; } };
@@ -97,6 +113,8 @@ class MemorySetup {
     const connectionConflicts = conflicts.filter(file => !protocolConflicts.includes(file));
     return { profile, vaultMissing, protocolConflicts, connectionConflicts, running: this.running, events: this.events, version: VERSION,
       hosts: await Promise.all(Object.entries(HOSTS).map(async ([id, h]) => ({ id, label: h.label,
+        // Set on the entry point that must not appear as a provider of its own.
+        variantOf: VARIANT_OF[id] || null, companions: COMPANIONS[id] || [],
         configurationFound: (await Promise.all((h.detect || (id === 'codex' ? [this.codexHome] : [h.parts[0]])).map(p => exists(path.resolve(this.home, p))))).some(Boolean),
         // MCP konaklarinin skill dosyasi yoktur; yoklugu bir eksiklik degil, bicimleri.
         skillExists: h.parts ? await exists(path.join(this.home, ...h.parts, h.filename || 'SKILL.md')) : false }))) };
@@ -134,6 +152,9 @@ class MemorySetup {
     const vault = path.resolve(input.vault);
     if (existingProfile && (vault !== existingProfile.vault || input.mode !== 'existing' || input.storage !== existingProfile.storage || input.name.trim() !== existingProfile.name)) throw new Error('Bağlantı eklerken mevcut not ortamı değiştirilemez.');
     if (existingProfile && input.hosts.some(id => existingProfile.hosts.some(h => h.id === id))) throw new Error('Bu AI bağlantısı zaten kurulu.');
+    // One chosen provider, every entry point it owns. Companions already installed are left
+    // alone rather than reinstalled, so adding the card twice is not an error.
+    input = { ...input, hosts: withCompanions(input.hosts, (existingProfile?.hosts || []).map(h => h.id)) };
     if (vault === path.parse(vault).root || vault === path.resolve(this.home)) throw new Error('Hafıza için ayrı bir klasör seçin.');
     await assertOrdinaryPath(vault);
     const hasVault = await exists(vault);
@@ -524,7 +545,7 @@ class MemorySetup {
     return notes.sort((a, b) => b.modified.localeCompare(a.modified)).slice(0, 30);
   }
 }
-module.exports = { MemorySetup, HOSTS, RETIRED, KNOWN, VERSION, hash, assertOrdinaryPath };
+module.exports = { MemorySetup, HOSTS, RETIRED, KNOWN, COMPANIONS, VARIANT_OF, withCompanions, expandCompanions, VERSION, hash, assertOrdinaryPath };
 require('./management.cjs')(MemorySetup, {HOSTS: KNOWN, hash, assertOrdinaryPath, json, atomicJson, exists});
 require('./upgrade.cjs')(MemorySetup, {hash,assertOrdinaryPath,json,atomicJson});
 // Every operation that reads config.json, changes it and writes it back is serialised.

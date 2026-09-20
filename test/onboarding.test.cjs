@@ -83,11 +83,121 @@ test('every unfinished state yields exactly one action with a label and a destin
   assert.equal(c.nextAction(),null,'a finished setup pulses nothing');
 });
 
-test('reduced motion replaces the pulse with a static border instead of removing the signal',()=>{
+// --- 0.19.2 ------------------------------------------------------------------------------
+// These are named after what the user reported, not after the code that answers it. The
+// previous suite was green while the screens were visibly wrong, which is the failure mode
+// worth testing against.
+
+test('no setup control pulses, blinks or is otherwise animated',()=>{
   const css=fs.readFileSync(path.join(__dirname,'../ui/styles.css'),'utf8');
-  const block=css.slice(css.indexOf('.recommended{'));
-  assert.match(block,/@media\(prefers-reduced-motion:reduce\)/);
-  assert.match(block,/\.recommended\{animation:none;box-shadow:/);
+  const renderer=fs.readFileSync(path.join(__dirname,'../ui/renderer.js'),'utf8');
+  assert.doesNotMatch(css,/recommend-pulse/,'the pulse keyframes are gone, not merely unreferenced');
+  assert.doesNotMatch(css,/@keyframes\s+(recommend-pulse|check-reveal|connection-enter)/);
+  assert.doesNotMatch(css,/\.recommended\b/,'the class that existed only to carry the pulse is gone');
+  assert.doesNotMatch(renderer,/class="primary recommended"/);
+  assert.doesNotMatch(renderer,/['"`]recommended['"`]/,'no CTA is given the old pulse class');
+  // The emphasis that replaced it must be static: colour, weight and border only.
+  const block=css.slice(css.indexOf('.next-step{'),css.indexOf('.callout-warn{'));
+  assert.ok(block.includes('.next-step{'),'the next-step emphasis exists');
+  assert.doesNotMatch(block,/animation/,'the next step is emphasised, never animated');
+  assert.match(block,/border-color:var\(--orange\)/);
+  // Only a spinner may still move, and only while something is actually running.
+  const keyframes=[...css.matchAll(/@keyframes\s+([a-z-]+)/g)].map(m=>m[1]);
+  assert.deepEqual(keyframes,['verify-spin'],'the only remaining animation belongs to work in progress');
+});
+
+test('every pending action is aimed at something, and none of them is a no-op',()=>{
+  // "Erişimi doğrula" sat on the connections screen and its action was "go to the connections
+  // screen": pressed from where it was drawn, it re-rendered the same page and nothing about
+  // the installation changed. Measured on 0.19.1.
+  const c=machine({state:{hosts:[],profile:{storage:'obsidian',vault:'v',hosts:[{id:'claude-code'}]}},
+    connectionList:[{id:'claude-code',status:'ready',access:{state:'granted'}}],
+    healthData:{hosts:[],verifiedCount:0}});
+  assert.equal(c.setupState(),'VERIFY_PENDING');
+  const a=c.nextAction();
+  assert.ok(a,'a pending state must still offer an action');
+  assert.notEqual(a.action,'goto-connections','the banner lives on that screen; going there changes nothing');
+  assert.equal(a.action,'start-verification');
+  assert.equal(a.host,'claude-code','the action names the connection it will test');
+});
+
+test('a verification button is not offered when there is nothing it could test',()=>{
+  // Better no control than a control that answers with silence.
+  const c=machine({state:{hosts:[],profile:{storage:'obsidian',vault:'v',access:'read',hosts:[{id:'claude-code'}]}},
+    connectionList:[{id:'claude-code',status:'ready',access:{state:'granted'}}],
+    healthData:{hosts:[],verifiedCount:0}});
+  assert.equal(c.setupState(),'VERIFY_PENDING');
+  assert.equal(c.nextAction(),null,'a read-only connection cannot write a test answer');
+});
+
+test('Antigravity CLI is an entry point, not a second AI application',()=>{
+  const core=require('../core.cjs');
+  assert.deepEqual(core.COMPANIONS.antigravity,['antigravity-cli']);
+  assert.equal(core.VARIANT_OF['antigravity-cli'],'antigravity');
+  assert.equal(core.VARIANT_OF.antigravity,undefined);
+  // Choosing the provider carries both entry points.
+  assert.deepEqual(core.withCompanions(['antigravity']),['antigravity','antigravity-cli']);
+  assert.deepEqual(core.withCompanions(['antigravity'],['antigravity-cli']),['antigravity'],
+    'an entry point already installed is not reinstalled');
+  // Keeping the provider keeps both, so an unseen card never reads as "unticked".
+  assert.deepEqual(core.expandCompanions(['antigravity']),['antigravity','antigravity-cli']);
+  // And the product never draws the secondary entry point as a provider of its own.
+  const renderer=fs.readFileSync(path.join(__dirname,'../ui/renderer.js'),'utf8');
+  for(const guard of ['h=>!h.variantOf','filter(h=>!h.variantOf)'])
+    assert.ok(renderer.includes(guard)||renderer.includes('!h.variantOf'),'provider lists filter variants');
+  assert.ok(renderer.includes('mergedConnections('),'the connection grid merges entry points');
+});
+
+test('Spark opens Spark, and the manual fallback says that it is one',()=>{
+  const {providers}=require('../web-providers.cjs');
+  assert.equal(providers.gemini.chat,'https://gemini.google.com/spark','the primary action opens Spark');
+  assert.equal(providers.gemini.manual,'https://gemini.google.com/app','ordinary Gemini chat is the fallback only');
+  const main=fs.readFileSync(path.join(__dirname,'../main.cjs'),'utf8');
+  assert.doesNotMatch(main,/openExternal\('https:\/\/gemini\.google\.com\/app'\)/,
+    'no hard-coded /app remains beside the Spark product');
+  const renderer=fs.readFileSync(path.join(__dirname,'../ui/renderer.js'),'utf8');
+  const label=renderer.slice(renderer.indexOf("'gemini-web-guide'")-260,renderer.indexOf("'gemini-web-guide'"));
+  assert.match(label,/manuel payla|manual sharing/i,'the fallback is labelled as manual sharing');
+});
+
+test('a provider requirement is quoted from the vendor, never invented',()=>{
+  const c=machine();
+  const chatgpt=c.hostRequirement?c.hostRequirement('chatgpt'):null;
+  const renderer=fs.readFileSync(path.join(__dirname,'../ui/renderer.js'),'utf8');
+  const source=renderer.slice(renderer.indexOf('const hostRequirement='),renderer.indexOf('function webHostCard('));
+  assert.match(source,/Business/, 'the write-capable plan requirement is stated');
+  assert.match(source,/Pro/, 'the read-only path is stated in the same sentence, not as a second badge');
+  assert.match(source,/web only|web \u00fczerinde/i);
+  // One sentence, one answer. Two badges that contradict each other is the defect.
+  assert.equal(source.match(/chatgpt:t\(/g).length,1);
+  assert.equal((renderer.match(/const hostRequirement=/g)||[]).length,1,'one source for a requirement');
+  assert.equal(chatgpt===null||typeof chatgpt==='string',true);
+});
+
+test('a first review is not closed by prose, and a web report needs evidence of a real scan',()=>{
+  const source=fs.readFileSync(path.join(__dirname,'../first-review.cjs'),'utf8');
+  // The provider's own words are never parsed for success.
+  assert.match(source,/value\.request_id!==r\.id\|\|value\.value!==r\.nonce/);
+  // The token travels with the instruction, because read_first_review is blocked on Spark.
+  assert.match(source,/Claudian first review token/);
+  assert.match(source,/SCAN_EVIDENCE/);
+  assert.match(source,/no-scan-evidence/);
+  // A rejected report is an outcome the screen shows, not twenty-four hours of "waiting".
+  assert.match(source,/r\.rejected\)return \{status:'invalid'/);
+  const capabilities=fs.readFileSync(path.join(__dirname,'../memory-capabilities.cjs'),'utf8');
+  assert.match(capabilities,/submit\(dataDir,vault,actor,args,options\.activity\)/);
+  const http=fs.readFileSync(path.join(__dirname,'../remote-http.cjs'),'utf8');
+  assert.match(http,/activity:\(\)=>this\.auth\.activity\(grant\.id\)/);
+});
+
+test('the global memory seed carries no personal path or name',()=>{
+  // The seed goes to every installation. One personal path in it is a defect for everyone.
+  for(const file of ['policy.cjs','scan.cjs','welcome.cjs','core.cjs']){
+    const body=fs.readFileSync(path.join(__dirname,'..',file),'utf8');
+    assert.doesNotMatch(body,/C:\\\\Users\\\\[A-Z]/i,file+' hard-codes a user folder');
+    assert.doesNotMatch(body,/Boran/,file+' names a person');
+    assert.doesNotMatch(body,/Documents\\\\Claudian/,file+' hard-codes a vault path');
+  }
 });
 
 test('provider names state only what this repository can prove',()=>{

@@ -1,7 +1,11 @@
 'use strict';
 // Web applications have independent identities. Never migrate CLI receipts to them.
 const providers={
- gemini:{label:'Spark',chat:'https://gemini.google.com/app',setup:'https://gemini.google.com/spark/apps',
+ // The product is Spark and its own address is /spark. /app is ordinary Gemini chat, which
+ // cannot use this connection at all -- it is the destination of the manual-sharing fallback
+ // and of nothing else. The two were the same URL, so the primary action for a Spark
+ // connection opened the one surface where that connection does not exist.
+ gemini:{label:'Spark',chat:'https://gemini.google.com/spark',manual:'https://gemini.google.com/app',setup:'https://gemini.google.com/spark/apps',
   steps:'Connected Apps → Custom apps for Spark → Add a custom app. Paste the MCP server URL and choose Next. Claudian supports Dynamic Client Registration; do not invent client credentials.',
   requirements:'Spark is an early-access Google product reached from the Gemini web app; the connection runs inside Spark, not inside ordinary Gemini chat. Google currently limits custom Spark apps to eligible personal accounts, age 18+, in the US, in English, with Keep Activity on and Spark access. If Custom apps is missing, stop: ordinary Gemini chat cannot access a local Windows vault.'},
  perplexity:{label:'Perplexity',chat:'https://www.perplexity.ai/',setup:'https://www.perplexity.ai/account/connectors',

@@ -27,11 +27,14 @@ test('six hosts share skill aliases and Google context without duplicate writes'
 
 for (const host of allHosts.slice(2)) test(`${host} installs independently`, async t => {
   const {core,input} = await fixture(t); input.hosts = [host];
+  // Antigravity is one provider with two entry points, so choosing it installs both skills
+  // over the one shared rule file. Everything else still installs exactly one of each.
+  const entries = require('../core.cjs').expandCompanions([host]);
   const plan = await core.prepare(input);
-  assert.equal(plan.files.filter(f => f.type === 'skill').length, 1);
+  assert.equal(plan.files.filter(f => f.type === 'skill').length, entries.length);
   assert.equal(plan.files.filter(f => f.type === 'rule').length, 1);
   await core.install(plan.id,true);
-  assert.equal((await core.snapshot()).profile.hosts[0].id, host);
+  assert.deepEqual((await core.snapshot()).profile.hosts.map(h => h.id), entries);
 });
 
 test('add hosts to installed memory, reusing owned shared skill without changing notes', async t => {
