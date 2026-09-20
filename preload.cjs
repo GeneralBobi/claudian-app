@@ -18,6 +18,8 @@ contextBridge.exposeInMainWorld('claudian', {
   connectorExport: provider => invoke('connector:export',provider),
   connectorProvider: provider => invoke('connector:provider',provider),
   obsidianInstalled: () => invoke('app:obsidian-installed'),
+  state: () => invoke('app:state'),
+  reportObsidian: value => invoke('app:obsidian-state', value),
   downloadObsidian: () => invoke('app:download-obsidian'),
   scanPreview: language => invoke('memory:scan-preview',language),
   reviewStart: id => invoke('memory:review-start',id),

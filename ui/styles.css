@@ -101,6 +101,23 @@ textarea{width:100%;box-sizing:border-box;resize:vertical;background:var(--bg);c
 .connection-steps [data-complete="true"]{color:var(--text)}
 .connection-steps [data-complete="true"] .step-symbol{background:var(--orange);border-color:var(--orange);color:#0e0e10}
 .step-check{width:18px;height:18px;stroke-dasharray:24;stroke-dashoffset:0}
+/* Why a report was turned away, or why a request no longer applies. It belongs beside the
+   badge that reports the state, not in a log the user will never open. */
+.review-reason{flex-basis:100%;margin:8px 0 0;font-size:12px;line-height:1.6;color:#e0a75a;max-width:72ch}
+/* The panel. Every line is derived by the application from this machine; nothing here waits
+   for a model to write it, so nothing here needs to look like a chat transcript. */
+.panel-section{margin:24px 0 0}
+.panel-section>h2{font-size:14px;margin:0 0 10px}
+.panel-section>summary{cursor:pointer;font-size:12px;color:var(--muted);margin-top:18px}
+.panel-item{display:flex;align-items:center;justify-content:space-between;gap:16px;
+  padding:14px 16px;margin-bottom:8px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.panel-item strong{font-family:Poppins,sans-serif;font-size:13px}
+.panel-item p{margin:4px 0 0;font-size:12px;color:var(--muted);max-width:68ch}
+.panel-item button{flex:none;margin:0}
+.panel-clear{font-size:13px;color:var(--muted);max-width:68ch}
+.panel-list{margin:0;padding-left:20px;max-width:72ch}
+.panel-list li{font-size:13px;line-height:1.8}
+.panel-list time{font:11px 'JetBrains Mono',monospace;color:var(--muted);margin-right:8px}
 .review-report{flex-basis:100%;padding:16px;background:var(--surface);border-radius:12px}
 .review-report pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;max-width:72ch;line-height:1.7}
 .setup-steps{padding-left:22px;max-width:72ch}.setup-steps li{padding:8px 0 14px}.setup-steps button{display:block;margin-top:10px}

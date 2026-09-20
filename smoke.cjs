@@ -44,11 +44,17 @@ exports.run=async({win,core,app,home})=>{const output=process.env.CLAUDIAN_SMOKE
  // The embedded web companion panel was withdrawn on 10.09.2026 and the companion screen
  // is a local, under-construction surface. The invariant worth guarding is that no remote
  // view comes back and that the access code form is the only input offered here.
- await wait('!!document.querySelector("#core-form")');
- assert.equal(await js('getComputedStyle(document.querySelector("nav .development-label")).display'),'inline');
- assert.ok(await js('!!document.querySelector("#core-code")'));
- assert.ok(await js('!!document.querySelector(".development-label")'));
+ // The panel knows this device's state by itself. It used to be a login form for a web Core
+ // behind a tunnel started by hand, so with that machine down it asked for a code that could
+ // not work and explained nothing.
+ await wait('!!document.querySelector(".panel-section")');
+ assert.ok(await js('!!document.querySelector(".panel-section")'),'the panel renders derived state');
+ assert.equal(await js('document.querySelectorAll("#core-code").length'),0,'no access code is asked for');
+ assert.ok(await js('document.body.textContent.includes("Connections")'),'connections are listed from the device itself');
+ assert.ok(await js('!!panelState&&Array.isArray(panelState.attention)'),'attention is a derived list, not prose');
+ assert.ok(await js('!!panelState.updatedAt'),'the panel states when it was derived');
  assert.equal(win.contentView.children.filter(v=>v.webContents&&v.webContents!==win.webContents).length,0,'no embedded remote view');
+ await fs.writeFile(path.join(output,'panel-derived.png'),(await win.webContents.capturePage()).toPNG());
  assert.equal(await js('typeof require'),'undefined');
  assert.equal(await js('typeof window.claudian.internal'),'undefined');
  await click('[data-view=home]');await wait('!!document.querySelector("[data-action=obsidian]")');

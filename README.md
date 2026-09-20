@@ -2,9 +2,9 @@
 
 A Windows application for a local, user-owned Markdown memory shared by AI tools.
 
-**Preview 0.19.2 — protocol 2.9.0.** The companion is under construction. A hosted device relay is available for account connectors; native account acceptance remains host-specific. This release is about the setup, review and connection screens; it is not a guarantee that every AI host will automatically use memory.
+**Preview 0.20.0 — protocol 2.9.0.** Claudian keeps running with its window closed and the panel derives your state from this computer. A hosted device relay is available for account connectors; native account acceptance remains host-specific. This is not a guarantee that every AI host will automatically use memory.
 
-[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/download/v0.19.2/Claudian-Setup-0.19.2.exe) · [Website](https://claudian.app) · [Connection coverage](COMPATIBILITY.md)
+[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/download/v0.20.0/Claudian-Setup-0.20.0.exe) · [Website](https://claudian.app) · [Connection coverage](COMPATIBILITY.md)
 
 ## Setup and updates
 
@@ -66,6 +66,22 @@ Gemini Spark and Perplexity account acceptance remain pending. This release adds
 ChatGPT, Gemini Spark and Perplexity now open a focused setup guide. It prepares the device URL, provides ready-to-copy form values, puts matching-code approval in the connection window, and provides an explicit unavailable-account exit. OAuth approval returns to the AI automatically. Authorization alone cannot unlock testing: the required tools must have been requested. ChatGPT web tests and first reviews require their MCP receipt, never a local-file fallback.
 
 Provider-owned create-app forms and account eligibility still apply; this is not a marketplace-listed, one-click installation. Account acceptance is scheduled separately with Claude Code after publication.
+
+### 0.20.0: Background runtime and a panel that knows your state
+
+Closing the window used to quit Claudian and stop the device connection with it, silently.
+There is now a tray icon: closing hides, Quit is explicit and disconnects cleanly, and
+**Start with Windows** is available and off by default. The Panel tab shows what Claudian
+derives from this computer — what needs you, each connection's connected/verified/review
+facts, your open loops and reminders from the active parts of your own notes, and what
+changed recently. No AI has to be open for any of it.
+
+Also: an application update that moves the memory protocol now supersedes an in-flight first
+review explicitly, in both the screen and the tool error, instead of leaving it reading as
+"waiting"; a refused tool call is recorded as refused, with its reason; and releasing the
+public site is one command that needs nothing else running.
+
+Full notes: [release-notes-0.20.0.md](release-notes-0.20.0.md) · Signing: [SIGNING.md](SIGNING.md)
 
 ### 0.19.2: Setup, review and connection screens
 

@@ -551,6 +551,6 @@ require('./upgrade.cjs')(MemorySetup, {hash,assertOrdinaryPath,json,atomicJson})
 // Every operation that reads config.json, changes it and writes it back is serialised.
 // See profile-lock.cjs for why the atomic write alone was not enough.
 require('./profile-lock.cjs').wrap(MemorySetup,[
-  'prepare','install','challenge','verify','preferences','useLanguage',
+  'prepare','install','challenge','verify','preferences','runtimePreference','useLanguage',
   'skipVerification','adoptProtocol','sweepResidue','relocate','removeHost','upgrade'
 ]);

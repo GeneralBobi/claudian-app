@@ -52,7 +52,11 @@ class RemoteHttp {
       }});
       const testTools=['read_connection_test','submit_connection_test'];
       const toolsReady=message.method==='tools/list'&&testTools.every(name=>reply.result?.tools?.some(t=>t.name===name&&t.inputSchema?.type==='object'));
-      if(!reply.error&&!reply.result?.isError)await this.auth.observed(grant.id,message.method,message.method==='tools/call'?message.params?.name:undefined,toolsReady);
+      const called=message.method==='tools/call'?message.params?.name:undefined;
+      // A refused call is recorded as refused. Without this the device cannot tell a provider
+      // that never called from one it keeps turning away, and the screen guesses.
+      const failure=reply.error?.message||(reply.result?.isError?reply.result.content?.map(c=>c.text).join(' ').slice(0,300):null);
+      await this.auth.observed(grant.id,message.method,called,toolsReady,failure||null);
       return response(reply);
     } catch(e) {return response({error:e.status?e.message:'request_failed'},e.status||400);}
   }

@@ -1,7 +1,7 @@
 'use strict';
 const api=window.claudian, content=document.querySelector('#content'), errorBox=document.querySelector('#error');
 let challenge=null, verifyNotice='', verifyState='', firstScan=null, healthData=null, obsidianPresent=null, probeIssue='', cliReady={}, updateInfo=null, autoChallenge=false;
-let state, draft, plan, language='en', extending=false, busy=false, complete=false, events=[], view='home', removing=null, notice='', companionData=null, companionIssue='';
+let state, draft, plan, language='en', extending=false, busy=false, complete=false, events=[], view='home', removing=null, notice='', companionData=null, companionIssue='', panelState=null;
 const setup=document.body.dataset.surface==='setup';
 let reviewing=false, reviewResult=null, selectedHosts=[], verifyRequest=0;
 // Claudian checks its own connections instead of handing the check back to the user.
@@ -259,6 +259,16 @@ function entryPointRow(h){
   +`<div class="toolbar">${btn('Continue in the app','Uygulamada devam et','entry-open',true,`data-host="${esc(h.id)}" data-mode="app"`)}`
   +`${btn('Continue in the terminal','Terminalde devam et','entry-open',false,`data-host="${esc(h.id)}" data-mode="terminal"`)}</div></div>`;
 }
+// What Claudian turned away, in its own words, from its own record. Distinguishing "the AI
+// never called" from "the AI called and was refused" is the difference between a screen that
+// waits and a screen that explains.
+function refusal(h){
+ const g=(remoteStatus?.grants||[]).filter(x=>x.host===h.id&&!x.revoked&&x.refused&&Object.keys(x.refused).length);
+ if(!g.length)return '';
+ const last=g.map(x=>Object.entries(x.refused)).flat().sort((a,b)=>Date.parse(b[1].at)-Date.parse(a[1].at))[0];
+ if(!last||!/first_review/.test(last[0]))return '';
+ return last[1].error||'';
+}
 function firstScanRow(h){
  const info=(healthData?.hosts||[]).find(x=>x.id===h.id);
  if(!info||info.state!=='verified')return '';
@@ -273,9 +283,12 @@ function firstScanRow(h){
   const used=(remoteStatus?.grants||[]).some(g=>g.host===h.id&&!g.revoked&&g.lastSeen&&Date.parse(g.lastSeen)>since);
   if(used&&Date.now()-since>10*60*1000)r={...r,status:'no_report'};
  }
- const labels={completed:t('Review completed','Tarama tamamlandı'),needs_input:t('Your answer is needed','Yanıtın gerekiyor'),failed:t('Review failed','Tarama başarısız'),waiting:t('Waiting for the AI report','AI raporu bekleniyor'),no_report:t('The AI used the connection but returned no report','AI bağlantıyı kullandı ama rapor döndürmedi'),expired:t('Review expired; start again','Tarama süresi doldu; yeniden başlat'),invalid:t('Report could not be verified','Rapor doğrulanamadı'),stale:t('Configuration changed; review again','Yapılandırma değişti; yeniden tara')};
+ const labels={completed:t('Review completed','Tarama tamamlandı'),needs_input:t('Your answer is needed','Yanıtın gerekiyor'),failed:t('Review failed','Tarama başarısız'),waiting:t('Waiting for the AI report','AI raporu bekleniyor'),no_report:t('The AI used the connection but returned no report','AI bağlantıyı kullandı ama rapor döndürmedi'),superseded:t('A Claudian update replaced the protocol; start the review again','Claudian güncellemesi protokolü değiştirdi; taramayı yeniden başlat'),expired:t('Review expired; start again','Tarama süresi doldu; yeniden başlat'),invalid:t('Report could not be verified','Rapor doğrulanamadı'),stale:t('Configuration changed; review again','Yapılandırma değişti; yeniden tara')};
  return `<div class="config-file verify-row" data-state="${r?.status==='completed'?'verified':'first-scan'}"><span>${t('First review','İlk tarama')}</span>`
-  +`<span class="badge" role="status">${esc(labels[r?.status]||t('Not started','Başlatılmadı'))}${r?.receivedAt?' · '+esc(new Date(r.receivedAt).toLocaleString()):''}</span>${r?.summary?`<details class="review-report"><summary>${t('Read the AI report','AI raporunu oku')}</summary><pre>${esc(r.summary)}</pre><p>${t('Report returned by the AI for this review.','Bu tarama için AI tarafından döndürülen rapor.')}</p></details>`:''}`
+  +`<span class="badge" role="status">${esc(labels[r?.status]||t('Not started','Başlatılmadı'))}${r?.receivedAt?' · '+esc(new Date(r.receivedAt).toLocaleString()):''}</span>`
+  +(r?.status==='superseded'&&r.from?`<p class="review-reason">${t('The request was issued under protocol ','İstek protokol ')}${esc(r.from)}${t('; this device now runs ','ile açıldı; bu cihaz artık ')}${esc(r.to||'')}${t('. Nothing was lost — the review simply has to be run against the current protocol.','sürümünü kullanıyor. Hiçbir şey kaybolmadı; tarama güncel protokolle yeniden çalıştırılmalı.')}</p>`:'')
+  +(refusal(h)?`<p class="review-reason">${t('Claudian refused this connection’s last attempt: ','Claudian bu bağlantının son denemesini geri çevirdi: ')}${esc(refusal(h))}</p>`:'')
+  +`${r?.summary?`<details class="review-report"><summary>${t('Read the AI report','AI raporunu oku')}</summary><pre>${esc(r.summary)}</pre><p>${t('Report returned by the AI for this review.','Bu tarama için AI tarafından döndürülen rapor.')}</p></details>`:''}`
   +(open?`<pre class="prompt">${esc(firstScan.prompt)}</pre><div class="toolbar">`
      +(cliReady[h.id]?btn('Run in terminal','Terminalde çalıştır','run-scan',r?.status!=='completed',`data-host="${h.id}"`)
                      :'')+appActions(h,'copy-scan',r?.status==='completed')
@@ -340,7 +353,7 @@ function accessRow(h){
  const label=a.state==='granted'?t('Granted during setup','Kurulumda verildi'):t('Already granted','Zaten vardı');
  return `<div class="config-file"><span>${t('Folder access','Klasör erişimi')}</span><span class="badge">${esc(label)}</span></div>`;
 }
-function header(){document.documentElement.lang=language;document.querySelector('header .caption').textContent='';const nav=document.querySelector('nav');if(nav){nav.hidden=extending;nav.innerHTML=`<button data-view="home">${t('Memory','Hafıza')}</button><button data-view="connections">${t('Connections','Bağlantılar')}</button><button data-view="companion">${t('Companion','Yol arkadaşı')} · <span class="development-label">${t('Under development','Geliştiriliyor')}</span></button><button data-view="settings">${t('Settings','Ayarlar')}</button>`;nav.querySelectorAll('button').forEach(n=>n.classList.toggle('active',n.dataset.view===view));}}
+function header(){document.documentElement.lang=language;document.querySelector('header .caption').textContent='';const nav=document.querySelector('nav');if(nav){nav.hidden=extending;nav.innerHTML=`<button data-view="home">${t('Memory','Hafıza')}</button><button data-view="connections">${t('Connections','Bağlantılar')}</button><button data-view="companion">${t('Panel','Panel')}</button><button data-view="settings">${t('Settings','Ayarlar')}</button>`;nav.querySelectorAll('button').forEach(n=>n.classList.toggle('active',n.dataset.view===view));}}
 // A card instead of a bare checkbox. Every line on it has a source in this repository:
 // the connection kind comes from the host registry, "found on this computer" from the same
 // detection the installer uses, the requirement sentence from web-providers.cjs. A line
@@ -367,7 +380,7 @@ function renderSetup(){
 }
 async function renderPanel(){const p=state.profile;
  if(!p)throw new Error('Memory is not configured.');
- if(view==='companion'){renderCompanion();return;}
+ if(view==='companion'){renderPanelView();return;}
  if(view==='settings'){content.innerHTML=`<h1>${t('Settings','Ayarlar')}</h1><p>${t('The application and newly installed memory files use the setup language. Updates and protocol maintenance are collected here.','Uygulama ve yeni kurulan hafıza dosyaları kurulum dilini kullanır. Güncelleme ve protokol bakımı burada toplanır.')}</p>`;return;}
  const hosts=mergedConnections(await api.connections());connectionList=hosts;healthData=await api.health();if(api.reviewStatus)for(const h of hosts)reviewResults[h.id]=await api.reviewStatus(h.id).catch(e=>({status:'invalid',message:e.message}));if(view==='connections')remoteStatus=await api.connectorStatus();
  if(obsidianPresent===null)obsidianPresent=await api.obsidianInstalled().catch(()=>null);
@@ -401,7 +414,7 @@ function providerBadge(id){
 function connectionTile(h){
  const info=healthData?.hosts?.find(x=>x.id===h.id), review=reviewResults[h.id];
  const cloudReady=remoteStatus?.progress?.[h.id]?.canTest===true;
- const broken=(['chatgpt','gemini','perplexity'].includes(h.id)?!cloudReady:h.status!=='ready')||['invalid','failed','expired'].includes(review?.status);
+ const broken=(['chatgpt','gemini','perplexity'].includes(h.id)?!cloudReady:h.status!=='ready')||['invalid','failed','expired','stale','superseded'].includes(review?.status);
  const verified=info?.state==='verified', done=verified&&review?.status==='completed'&&!broken;
  const tone=h.id==='gemini-cli'?'pending':broken?'issue':done?'complete':verified?'verified':'pending';
  const label=['chatgpt','gemini','perplexity'].includes(h.id)&&!cloudReady&&setupStep(h.id)==='unavailable'?t('Unavailable in this account','Bu hesapta kullanılamıyor'):h.id==='gemini-cli'?t('Legacy CLI · not Gemini web','Eski CLI · Gemini web değil'):broken?(['chatgpt','gemini','perplexity'].includes(h.id)?t('Setup incomplete','Kurulum tamamlanmadı'):t('Needs attention','Kontrol gerekli')):done?t('Completed','Tamamlandı'):verified?t('Review pending','İlk tarama bekliyor'):t('AI test pending','AI testi bekliyor');
@@ -428,7 +441,11 @@ async function renderNow(){
  const details=[...content.querySelectorAll('details')];for(const i of expanded)if(details[i])details[i].open=true;
  if(preserve)window.scrollTo(0,y);
 }
-async function renderContent(){header();if(reviewing){renderReview();return;}const result=await (setup||extending?renderSetup():renderPanel());if(state.profile&&view==='settings'&&!extending&&!setup){content.insertAdjacentHTML('beforeend',`<section class="updates"><p>Claudian ${esc(state.appVersion)} · Protocol ${esc(state.profile.protocolVersion)}</p>${state.protocolConflicts?.length?`<div class="health-row health-warn"><div><span>${t('Protocol','Protokol')}</span><p>${t('Your memory protocol is older than this version and was left untouched because it differs from what Claudian installed.','Hafıza protokolün bu sürümden eski ve Claudian kurulumundan farklı olduğu için değiştirilmedi.')}</p><p class="path">${state.protocolConflicts.map(f=>esc(f.split(/[\\/]/).pop())).join(' · ')}</p></div>${btn('Install the current protocol','Güncel protokolü kur','adopt-protocol',true)}</div>`:''}${state.connectionConflicts?.length?`<div class="health-row health-warn"><div><span>${t('Connection files','Bağlantı dosyaları')}</span><p>${t('These files carry changes Claudian did not write, so they were left alone. Repair the connection to reinstall them.','Bu dosyalarda Claudian’ın yazmadığı değişiklikler var, bu yüzden dokunulmadı. Yeniden kurmak için bağlantıyı onar.')}</p><p class="path">${state.connectionConflicts.map(f=>esc(f.split(/[\/]/).pop())).join(' · ')}</p></div>${btn('Go to connections','Bağlantılara git','goto-connections')}</div>`:''}${btn('Check for updates','Güncellemeleri kontrol et','updates')}<span id="update-status" role="status"></span></section>`);}return result;}
+async function renderContent(){header();if(reviewing){renderReview();return;}
+ // The panel reads the application's own derivation, not the renderer's live guesses, so it
+ // is the same answer the tray shows and the same answer that was true while the window was
+ // closed. Loaded on entry rather than on every render of every other screen.
+ if(view==='companion'&&!panelState){try{panelState=await api.state();}catch(e){error(e);}}const result=await (setup||extending?renderSetup():renderPanel());if(state.profile&&view==='settings'&&!extending&&!setup){content.insertAdjacentHTML('beforeend',`<section class="updates"><p>Claudian ${esc(state.appVersion)} · Protocol ${esc(state.profile.protocolVersion)}</p>${state.protocolConflicts?.length?`<div class="health-row health-warn"><div><span>${t('Protocol','Protokol')}</span><p>${t('Your memory protocol is older than this version and was left untouched because it differs from what Claudian installed.','Hafıza protokolün bu sürümden eski ve Claudian kurulumundan farklı olduğu için değiştirilmedi.')}</p><p class="path">${state.protocolConflicts.map(f=>esc(f.split(/[\\/]/).pop())).join(' · ')}</p></div>${btn('Install the current protocol','Güncel protokolü kur','adopt-protocol',true)}</div>`:''}${state.connectionConflicts?.length?`<div class="health-row health-warn"><div><span>${t('Connection files','Bağlantı dosyaları')}</span><p>${t('These files carry changes Claudian did not write, so they were left alone. Repair the connection to reinstall them.','Bu dosyalarda Claudian’ın yazmadığı değişiklikler var, bu yüzden dokunulmadı. Yeniden kurmak için bağlantıyı onar.')}</p><p class="path">${state.connectionConflicts.map(f=>esc(f.split(/[\/]/).pop())).join(' · ')}</p></div>${btn('Go to connections','Bağlantılara git','goto-connections')}</div>`:''}${btn('Check for updates','Güncellemeleri kontrol et','updates')}<span id="update-status" role="status"></span></section>`);}return result;}
 // companion-bridge.cjs throws one of three exact codes. Collapsing them into a single
 // sentence made an offline Core look like a wrong access code, so the reader concluded
 // their data was gone. Each case is named, and the unreachable case says the code was
@@ -522,6 +539,7 @@ document.addEventListener('click',async e=>{const nav=e.target.closest('[data-vi
  if(a==='repair'){const r=await api.repair(el.dataset.host);state=await api.snapshot();notice=r.conflicts.length?t('Some files could not be repaired; review configuration.','Bazı dosyalar onarılamadı; yapılandırmayı incele.'):t('Connection repaired. Previous files were backed up. Restart your AI application.','Bağlantı onarıldı. Önceki dosyalar yedeklendi. AI uygulamanı yeniden aç.');await render();}
  if(a==='updates'){const r=await api.updates();document.querySelector('#update-status').textContent=r.available?t(' New version: ',' Yeni sürüm: ')+r.latest:t(' You are up to date.',' Güncelsin.');if(r.available)document.querySelector('#update-status').insertAdjacentHTML('beforeend',btn('Update now','Şimdi güncelle','download-update',true));}
  if(a==='goto-connections'){view='connections';await render();return;}
+ if(a==='panel-refresh'){panelState=await api.state();await render();return;}
  // The two banner actions that used to be 'goto-connections'. Pressed from the connections
  // screen -- where the banner lives -- that did nothing at all: same view, same render, same
  // screen. Each now opens the connection it is about, and 'Verify access' additionally issues
@@ -580,13 +598,79 @@ api.onProgress(e=>{events.push(e);if(busy&&(setup||extending))renderSetup();});
 
 
 
+// The panel knows the user's situation by itself.
+//
+// It used to be a window onto a web Core reached with an access code, over a tunnel, from a
+// Next server started by hand with `run.bat`. So the answer to "is my Spark verification
+// still pending?" depended on a batch file being open on this desktop — and when it was not,
+// the panel asked for a code that could not work and said nothing about why.
+//
+// Everything below is derived by the application from its own files (see state.cjs). No AI
+// has to have been opened, nothing waits for a model to write Markdown, and a fact that
+// cannot be derived is absent rather than invented.
+function panelAction(a){
+ // Every line has to be actionable or it is just a status board.
+ if(a.kind==='setup_incomplete')return btn('Continue setup','Kuruluma devam et','goto-connections',true);
+ if(a.kind==='connector_offline')return btn('Connection settings','Bağlantı ayarları','goto-connections');
+ if(a.host)return btn('Open','Aç','open-next-connection',a.kind.startsWith('verification'),`data-host="${esc(a.host)}"`);
+ return '';
+}
+// The panel says what is unfinished, not which constant the code used.
+function setupReason(code){
+ return {
+  VAULT_MISSING:t('Your notes folder is not where Claudian expects it','Not klasörün Claudian’ın beklediği yerde değil'),
+  OBSIDIAN_MISSING:t('Obsidian is not installed on this computer','Obsidian bu bilgisayarda kurulu değil'),
+  OBSIDIAN_RESTART_REQUIRED:t('Obsidian is running, so the notes folder cannot be registered yet','Obsidian açık olduğu için not klasörü henüz kaydedilemiyor'),
+  AI_NOT_SELECTED:t('No AI application is connected yet','Henüz hiçbir AI uygulaması bağlı değil'),
+  AI_SELECTED_NOT_CONNECTED:t('An AI is selected but its connection is not finished','Bir AI seçildi ama bağlantısı tamamlanmadı'),
+  CONNECTION_FAILED:t('A connection needs attention before it can be used','Bir bağlantı kullanılabilmesi için kontrol istiyor'),
+  VERIFY_PENDING:t('Files are installed, but no AI has proven it can read them','Dosyalar kurulu, ancak hiçbir AI okuyabildiğini kanıtlamadı'),
+ }[code]||t('Setup is not finished','Kurulum tamamlanmadı');
+}
+function panelLine(a){
+ const label={
+  setup_incomplete:setupReason(a.detail),
+  connector_offline:t('This device is not reachable by your AI accounts','Bu cihaza AI hesaplarından ulaşılamıyor'),
+  verification_pending:t('Access has never been verified','Erişim hiç doğrulanmadı'),
+  verification_stale:t('Verification is older than the current setup','Doğrulama güncel kurulumdan eski'),
+  authorization_waiting:t('An authorization is waiting for your approval','Bir izin isteği onayını bekliyor'),
+  first_review_rejected:t('A report was refused','Bir rapor geri çevrildi'),
+  first_review_failed:t('The first review failed','İlk tarama başarısız oldu'),
+  first_review_expired:t('The first review expired','İlk taramanın süresi doldu'),
+  first_review_stale:t('The first review belongs to an older setup','İlk tarama eski bir kuruluma ait'),
+  first_review_superseded:t('A Claudian update replaced the protocol after this review started','Tarama başladıktan sonra bir Claudian güncellemesi protokolü değiştirdi'),
+  first_review_needs_input:t('The review is waiting for your answer','Tarama yanıtını bekliyor'),
+ }[a.kind]||a.kind;
+ return `<div class="panel-item"><div><strong>${a.label?esc(a.label)+' · ':''}${esc(label)}</strong>${a.detail&&a.kind!=='setup_incomplete'?`<p>${esc(String(a.detail))}</p>`:''}</div>${panelAction(a)}</div>`;
+}
+function renderPanelView(){
+ const s=panelState;
+ if(!s)return content.innerHTML=`<h1>${t('Panel','Panel')}</h1><p>${t('Reading this device’s state…','Bu cihazın durumu okunuyor…')}</p>`;
+ const when=s.updatedAt?new Date(s.updatedAt).toLocaleTimeString(language==='tr'?'tr-TR':'en-GB'):'—';
+ const attention=s.attention||[];
+ content.innerHTML=`<h1>${t('Panel','Panel')}</h1>`
+  +`<p class="hint">${t('Derived by Claudian from this computer. No AI has to be open for this to be current.','Claudian bunu bu bilgisayardan türetir. Güncel olması için bir AI’ın açık olması gerekmez.')} · ${t('Updated ','Güncellendi ')}${esc(when)}</p>`
+  +`<section class="panel-section"><h2>${t('Needs you','Seni bekleyen')}${attention.length?` (${attention.length})`:''}</h2>`
+  +(attention.length?attention.map(panelLine).join('')
+    :`<p class="panel-clear">${s.verificationSkipped
+        ? t('Nothing needs you. You skipped the access check, so no connection has proven itself inside an AI — run it from Connections whenever you want to.','Seni bekleyen bir şey yok. Erişim kontrolünü atladın, yani hiçbir bağlantı kendini AI içinde kanıtlamadı — istediğin zaman Bağlantılar’dan çalıştırabilirsin.')
+        : t('Nothing needs you right now.','Şu an seni bekleyen bir şey yok.')}</p>`)
+  +`</section>`
+  +`<section class="panel-section"><h2>${t('Connections','Bağlantılar')}</h2>`
+  +(s.connections||[]).map(c=>`<div class="panel-item"><div><strong>${esc(c.label)}</strong><p>${c.connected?t('Connected','Bağlı'):t('Not connected','Bağlı değil')} · ${c.verified?t('read/write verified','okuma/yazma doğrulandı'):t('access not verified','erişim doğrulanmadı')} · ${t('first review: ','ilk tarama: ')}${esc(c.review)}</p></div>${btn('Open','Aç','open-next-connection',false,`data-host="${esc(c.id)}"`)}</div>`).join('')
+  +`</section>`
+  +((s.openLoops||[]).length?`<section class="panel-section"><h2>${t('Open loops','Açık döngüler')}</h2><p class="hint">${t('Unchecked items in your own panel note. Archived sections are not read.','Kendi panel notundaki işaretsiz maddeler. Arşivlenmiş bölümler okunmaz.')}</p><ul class="panel-list">${s.openLoops.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></section>`:'')
+  +((s.reminders||[]).length?`<section class="panel-section"><h2>${t('Reminders','Hatırlatıcılar')}</h2><ul class="panel-list">${s.reminders.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></section>`:'')
+  +((s.recent||[]).length?`<details class="panel-section"><summary>${t('What changed recently','Son değişenler')}</summary><ul class="panel-list">${s.recent.slice(0,10).map(e=>`<li><time>${esc(new Date(e.at).toLocaleString(language==='tr'?'tr-TR':'en-GB'))}</time> ${esc(e.kind)}${e.host?' · '+esc(e.host):''}${e.to?' → '+esc(e.to):''}</li>`).join('')}</ul></details>`:'');
+}
 function renderCompanion(){
  const cards=Array.isArray(companionData?.cards)?companionData.cards.slice(0,3):[];
  content.innerHTML=`<section class="empty companion-native"><div class="caption development-label">${t('UNDER DEVELOPMENT','GELİŞTİRİLİYOR')}</div><div class="wordmark">claudian<span>.</span>app</div><h1>${t('From an assistant to a companion.','Bir asistandan, yol arkadaşına.')}</h1><p>${t('A layer that understands your notes, time and changing circumstances together — and is there at the right moment.','Notlarını, zamanını ve değişen koşullarını birlikte anlayan; doğru anda yanında olan bir katman.')}</p><p>${t('This system is not ready yet. Shared memory works today; we are building the companion on top of it.','Bu sistem henüz hazır değil. Ortak hafıza bugün çalışıyor; yol arkadaşını bunun üzerine geliştiriyoruz.')}</p>${companionIssue?`<p role="status">${esc(companionIssue)}</p>`:''}${!companionData?`<form id="core-form"><label for="core-code">${t('Access code','Access code')}</label><div class="row"><input id="core-code" type="password" autocomplete="off" maxlength="128" required placeholder="•••• — ••••"><button type="submit" class="primary">${t('Connect','Bağlan')} →</button></div></form>`:`<div class="companion-feed"><div class="toolbar"><span>${t('Last received','Son alınan')}: ${esc(companionData.generatedAt?new Date(companionData.generatedAt).toLocaleString(language):'—')}</span>${btn('Refresh','Yenile','core-refresh')}${btn('Disconnect','Bağlantıyı kes','core-disconnect')}</div>${companionData.focus?`<h2>${esc(companionData.focus)}</h2>`:''}${cards.length?cards.map(c=>`<article class="companion-contact"><small>${esc(c.sourceLabel)}</small><h2>${esc(c.title)}</h2><p>${esc(c.body)}</p></article>`).join(''):`<p>${t('No new contact to show.','Gösterilecek yeni temas yok.')}</p>`}</div>`}</section>`;
  const form=document.querySelector('#core-form');if(form)form.addEventListener('submit',e=>{e.preventDefault();const button=form.querySelector('button');button.dataset.action='core-connect';button.type='button';button.click();});
 }
 api.onVerify(async event=>{if(!challenge||event.host!==challenge.host||event.requestId!==verifyRequest)return;const message=event.message||verifyNotice;if(verifyState===event.state&&verifyNotice===message)return;verifyState=event.state;verifyNotice=message;await render();});
-setInterval(async()=>{if(view!=='companion'||!companionData||busy)return;try{companionData=await api.companionRefresh();companionIssue='';}catch(e){companionIssue=coreIssue(e,Boolean(companionData));}if(view==='companion')renderCompanion();},60000);
+setInterval(async()=>{if(view==='companion'&&!busy){try{panelState=await api.state();renderPanelView();}catch(e){error(e);}}
+ if(view!=='companion'||!companionData||busy)return;try{companionData=await api.companionRefresh();companionIssue='';}catch(e){companionIssue=coreIssue(e,Boolean(companionData));}if(view==='companion')renderCompanion();},60000);
 
 // The line a user pastes to open a Claudian conversation on a skill-file host. Same text for
 // every entry point of the same provider -- the entry point changes where it is pasted, not

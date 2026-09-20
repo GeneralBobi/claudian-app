@@ -7,9 +7,21 @@ module.exports = (Setup, {HOSTS, hash, assertOrdinaryPath, json, atomicJson, exi
     const file = path.join(this.dataDir, 'preferences.json');
     if (language !== undefined) {
       if (!['en','tr'].includes(language)) throw new Error('Invalid language.');
-      await atomicJson(file, {language});
+      // Merge, do not replace. This file now also carries the runtime preferences, and
+      // writing only the language would silently switch auto-start off every time someone
+      // changed the interface language.
+      await atomicJson(file, {...await json(file, {}), language});
     }
     return await json(file, {language:'en'});
+  };
+  // Runtime preferences. Off by default, both of them: Claudian asks to stay running, it does
+  // not decide to. Stored beside the language because they are the same kind of fact -- how
+  // this person wants the application to behave on this machine, not part of their memory.
+  Setup.prototype.runtimePreference = async function(name, value) {
+    if (!['autoStart','background'].includes(name)) throw new Error('Unknown preference.');
+    const file = path.join(this.dataDir, 'preferences.json');
+    if (value !== undefined) await atomicJson(file, {...await json(file, {}), [name]: value === true});
+    return (await json(file, {}))[name] === true;
   };
   Setup.prototype.useLanguage = async function(language, options={}) {
     if (!['en','tr'].includes(language)) throw new Error('Invalid language.');

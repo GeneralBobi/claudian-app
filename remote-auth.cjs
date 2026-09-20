@@ -151,10 +151,23 @@ class RemoteAuth {
   // lastTool answered "what was the most recent call" and nothing else, so a review that
   // needed proof of a real scan had no record to stand on. Tool names are a closed set
   // defined by this application, so the map cannot be grown by a caller.
-  async observed(id,stage,tool,toolsReady=false) { return this.exclusive(async()=>{const g=this.state.grants[id];if(g){g.lastSeen=new Date(this.now()).toISOString();g.stage=stage;if(tool){g.lastTool=tool;g.tools={...g.tools,[tool]:g.lastSeen};}if(stage==='tools/list'){g.toolsListedAt=g.lastSeen;g.toolsReadyAt=toolsReady?g.lastSeen:null;}await this.save();}}); }
+  // Only successful calls used to be recorded, so "the AI never tried" and "Claudian refused
+  // what it tried" left exactly the same trace: none. That is how a first review that was
+  // being refused on every attempt read as one that was still awaited. A refusal is now
+  // recorded as a refusal, with its reason, and kept apart from the success map -- a call
+  // that failed is evidence of an attempt, never evidence of a read.
+  async observed(id,stage,tool,toolsReady=false,failure=null) { return this.exclusive(async()=>{const g=this.state.grants[id];if(!g)return;
+    g.lastSeen=new Date(this.now()).toISOString();g.stage=stage;
+    if(tool){
+      g.lastTool=tool;
+      if(failure)g.refused={...g.refused,[tool]:{at:g.lastSeen,error:String(failure).slice(0,300)}};
+      else {g.tools={...g.tools,[tool]:g.lastSeen};if(g.refused)delete g.refused[tool];}
+    }
+    if(!failure&&stage==='tools/list'){g.toolsListedAt=g.lastSeen;g.toolsReadyAt=toolsReady?g.lastSeen:null;}
+    await this.save();}); }
   // What this grant has actually called, for callers that must distinguish a real scan from
   // a provider simply asserting one happened.
   activity(id) { const g=this.state.grants[id]; return g&&!g.revoked?{...g.tools}:{}; }
-  grants() { return Object.values(this.state.grants).map(({id,host,name,scope,authorizedAt,lastSeen,lastTool,tools,stage,revoked,tokenExchangedAt,toolsListedAt,toolsReadyAt})=>({id,host,name,scope,authorizedAt,lastSeen,lastTool,tools:{...tools},stage,revoked,tokenExchangedAt,toolsListedAt,toolsReadyAt})); }
+  grants() { return Object.values(this.state.grants).map(({id,host,name,scope,authorizedAt,lastSeen,lastTool,tools,refused,stage,revoked,tokenExchangedAt,toolsListedAt,toolsReadyAt})=>({id,host,name,scope,authorizedAt,lastSeen,lastTool,tools:{...tools},refused:{...refused},stage,revoked,tokenExchangedAt,toolsListedAt,toolsReadyAt})); }
 }
 module.exports={RemoteAuth,hash,random,hosts,fail};

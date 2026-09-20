@@ -104,3 +104,56 @@ test('a local host keeps the old contract: no token in the prompt, no evidence c
  await review.submit(dataDir,vault,'codex',{request_id:r.request_id,value:r.value,status:'completed',summary:'Local pass.'});
  assert.equal((await review.status(dataDir,vault,'codex')).status,'completed');
 });
+
+// --- 0.20.0: the reason a web review never came back ----------------------------------------
+// Measured on a real profile. A Spark review was issued at 09:50 under protocol 2.8.0 and read
+// successfully at 09:56. That afternoon the 0.19.1 upgrade rewrote the vault protocol to
+// 2.9.0, which invalidated the in-flight request. Every later call failed the configuration
+// check, and because only successful calls were recorded, the device had no trace of the
+// attempts: the screen said "waiting for the AI report" for the rest of the day, and the model
+// received a bare configuration error after doing the whole scan.
+test('an application update that moves the protocol supersedes an in-flight review, and says so',async t=>{
+ const {p,vault,dataDir}=await webFixture(t);
+ await review.begin(dataDir,p,'gemini');
+ assert.equal((await review.status(dataDir,vault,'gemini')).status,'waiting');
+
+ // The upgrade rewrites the protocol note and the profile alongside it.
+ await fs.writeFile(path.join(dataDir,'profile.json'),JSON.stringify({...p,protocolVersion:'3.0.0'}));
+
+ const after=await review.status(dataDir,vault,'gemini');
+ assert.equal(after.status,'superseded','not "stale", and certainly not "waiting"');
+ assert.equal(after.from,'2.9.0');
+ assert.equal(after.to,'3.0.0');
+
+ // And the model is told what happened instead of being handed a bare configuration error.
+ await assert.rejects(review.read(dataDir,vault,'gemini'),err=>{
+  assert.match(err.message,/superseded by a Claudian update/);
+  assert.match(err.message,/2\.9\.0/);
+  assert.match(err.message,/3\.0\.0/);
+  assert.match(err.message,/Nothing you did was wrong/);
+  return true;
+ });
+ await assert.rejects(review.submit(dataDir,vault,'gemini',
+  {request_id:'x',value:'y',status:'completed',summary:'z'},()=>({startup_context:'now'})),
+  /superseded by a Claudian update/);
+});
+
+test('a moved notes folder is a different failure with a different sentence',async t=>{
+ const {p,vault,dataDir}=await webFixture(t);
+ await review.begin(dataDir,p,'gemini');
+ const moved=vault+'-elsewhere';
+ await fs.mkdir(moved,{recursive:true});
+ await fs.writeFile(path.join(dataDir,'profile.json'),JSON.stringify({...p,vault:moved}));
+ const after=await review.status(dataDir,moved,'gemini');
+ assert.equal(after.status,'stale');
+ await assert.rejects(review.read(dataDir,moved,'gemini'),/different notes folder/);
+});
+
+test('a review issued under the current protocol is untouched by the distinction',async t=>{
+ const {p,vault,dataDir}=await webFixture(t);
+ const begun=await review.begin(dataDir,p,'gemini');
+ const value=/value: ([0-9a-f]{32})/.exec(begun.prompt)[1];
+ await review.submit(dataDir,vault,'gemini',
+  {request_id:begun.id,value,status:'completed',summary:'Read the entry map.'},()=>({startup_context:'now'}));
+ assert.equal((await review.status(dataDir,vault,'gemini')).status,'completed');
+});

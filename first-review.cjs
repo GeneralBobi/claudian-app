@@ -16,7 +16,18 @@ async function save(dataDir,host,value){
 async function load(dataDir,vault,host){
  const p=await profileFor(dataDir,vault,host),target=file(dataDir,host);await ordinary(target);
  const r=JSON.parse(await fs.readFile(target,'utf8'));
- if(r.vault!==vault||r.protocol!==p.protocolVersion)throw Error('Review belongs to an earlier configuration');
+ // "An earlier configuration" was one sentence for two very different events, and the more
+ // common one was invisible. Installing an application update rewrites the vault's protocol
+ // note; a review issued before that update then fails every later call, including the
+ // submit the AI goes away for minutes to prepare. Nothing said so -- not to the user, whose
+ // screen kept saying the report was awaited, and not to the model, which got a bare
+ // configuration error after doing the work. Measured on this machine: a Spark review issued
+ // at 09:50 under protocol 2.8.0, read successfully at 09:56, then stranded by the 0.19.1
+ // upgrade to 2.9.0 that afternoon.
+ if(r.vault!==vault){const e=Error('This review belongs to a different notes folder. Ask the user to start a new review.');e.reason='vault';throw e;}
+ if(r.protocol!==p.protocolVersion){
+  const e=Error(`This review request was superseded by a Claudian update: it was issued under memory protocol ${r.protocol} and this device now runs ${p.protocolVersion}. Nothing you did was wrong. Tell the user the review needs to be started again from Claudian.`);
+  e.reason='protocol';e.from=r.protocol;e.to=p.protocolVersion;throw e;}
  if(!/^[a-f0-9-]{36}$/.test(r.id)||r.host!==host)throw Error('Invalid review request');
  const expected=path.join(vault,`.claudian-review-${host}-${r.id}.md`);
  if(r.input!==expected||r.output!==expected.replace(/\.md$/,'-response.json'))throw Error('Invalid review destination');
@@ -108,7 +119,11 @@ exports.submit=async(dataDir,vault,host,args,activity)=>{
 };
 exports.initializeProviderMemory=initializeProviderMemory;
 exports.status=async(dataDir,vault,host)=>{
- let r;try{r=await load(dataDir,vault,host);}catch(e){if(e.code==='ENOENT')return {status:'not_started'};if(/earlier configuration/.test(e.message))return {status:'stale'};throw e;}
+ let r;try{r=await load(dataDir,vault,host);}catch(e){
+  if(e.code==='ENOENT')return {status:'not_started'};
+  if(e.reason==='protocol')return {status:'superseded',from:e.from,to:e.to};
+  if(e.reason==='vault')return {status:'stale'};
+  throw e;}
  // An installation that completed its review before this existed would never be asked again and
  // never recorded either, so it would keep offering consent forever. Idempotent, so a profile
  // that already answered -- yes or no -- is untouched, and a read-only connection writes nothing.

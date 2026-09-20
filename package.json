@@ -1,7 +1,7 @@
 {
   "name": "claudian-desktop",
   "productName": "Claudian",
-  "version": "0.19.2",
+  "version": "0.20.0",
   "private": true,
   "description": "Claudian ortak hafÄ±za uygulamasÄ±",
   "author": "Claudian",
@@ -68,6 +68,8 @@
       "connector-package.cjs",
       "memory-capture.cjs",
       "lifecycle.cjs",
+      "runtime.cjs",
+      "state.cjs",
       "first-review.cjs",
       "web-providers.cjs",
       "cloud-progress.cjs"
@@ -75,7 +77,13 @@
     "win": {
       "target": "nsis",
       "signExecutable": false,
-      "icon": "assets/icon.ico"
+      "icon": "assets/icon.ico",
+      "signtoolOptions": {
+        "signingHashAlgorithms": [
+          "sha256"
+        ],
+        "rfc3161TimeStampServer": "http://timestamp.digicert.com"
+      }
     },
     "nsis": {
       "include": "assets/installer.nsh",

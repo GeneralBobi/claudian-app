@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, session, clipboard, Notification, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, session, clipboard, Notification, safeStorage, Tray, Menu, nativeImage } = require('electron');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const fs = require('node:fs/promises');
@@ -23,7 +23,7 @@ if(acceptanceRoot && (!path.isAbsolute(acceptanceRoot)||!require('node:fs').exis
 if (smoke) app.setPath('userData', require('node:fs').mkdtempSync(path.join(os.tmpdir(), 'claudian-smoke-profile-')));
 if (smoke) app.disableHardwareAcceleration();
 const origin = 'claudian://app';
-let win, core, remoteConnector, migrationError='', setupReview=false, installStamp='';
+let win, core, remoteConnector, runtime=null, migrationError='', setupReview=false, installStamp='';
 // app:enter reloads the window, which destroys every bit of renderer state -- including the
 // view the person just asked for. "Set up AI connections" therefore landed them on Memory,
 // the one screen that makes an unfinished setup look finished. The requested view is handed
@@ -110,7 +110,10 @@ async function start() {
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', event => event.preventDefault());
   win.on('close', event => {
-    if (core.running) { event.preventDefault(); core.cancel(); }
+    if (core.running) { event.preventDefault(); core.cancel(); return; }
+    // Closing the window is not quitting. It used to be, and the device connection died with
+    // it -- silently, while every connector kept its saved app and its grant.
+    if (runtime) runtime.onClose(event);
   });
   function handle(name, fn) {
     ipcMain.handle(name, async (event, ...args) => {
@@ -133,6 +136,41 @@ async function start() {
   });
 
   handle('app:preferences', language => core.preferences(language));
+  /*
+    Derived state — the panel's own knowledge, computed from this machine.
+
+    Everything here already existed, recomputed inside a render function and discarded. That
+    is why the panel could not say "Spark verification is pending" unless an AI had recently
+    been open to write it down: a fact sitting in four local files had no way to become one
+    the application remembered. Now it is derived, persisted, and its changes recorded.
+
+    No model is involved, and nothing is inferred. A value that cannot be derived is absent.
+  */
+  let obsidianState = {}, lastState = null;
+  async function refreshState() {
+    const profile = (await core.snapshot()).profile;
+    if (!profile) return null;
+    const reviews = {};
+    for (const host of profile.hosts || []) {
+      try { reviews[host.id] = await require('./first-review.cjs').status(core.dataDir, profile.vault, host.id); }
+      catch (error) { reviews[host.id] = { status: 'invalid', message: error.message }; }
+    }
+    const next = await require('./state.cjs').derive({
+      profile,
+      health: await core.health().catch(() => null),
+      connections: await core.connections().catch(() => []),
+      connector: remoteConnector?.status() || {},
+      reviews,
+      obsidian: obsidianState,
+      language: (await core.preferences()).language,
+    });
+    const result = await require('./state.cjs').persist(core.dataDir, next);
+    lastState = result.state;
+    if (runtime) void runtime.rebuild();
+    return result;
+  }
+  handle('app:state', async () => ({ ...(await refreshState())?.state || null, recent: await require('./state.cjs').recent(core.dataDir) }));
+  handle('app:obsidian-state', value => { obsidianState = { ...obsidianState, ...value }; return true; });
   handle('memory:connections', () => core.connections());
   remoteConnector = await new (require('./remote-connector.cjs').RemoteConnector)({dataDir:core.dataDir,profile:async()=>(await core.snapshot()).profile,safeStorage}).load();
   handle('connector:status',async()=>({...await remoteConnector.status(),desktopExtension:await require('./connector-package.cjs').desktopStatus(home,core.dataDir,{launcher:core.launcher,mcpScript:core.mcpScript})}));
@@ -442,10 +480,50 @@ async function start() {
   if (!smoke) {
     setTimeout(() => void noticed(), 8000);
     setInterval(() => void noticed(), 30 * 60 * 1000);
+    // Cheap by construction: five small local files and two notes. It runs with the window
+    // closed, because that is exactly when nothing else was recomputing it.
+    setTimeout(() => void refreshState().catch(() => {}), 2000);
+    setInterval(() => void refreshState().catch(() => {}), 60 * 1000);
+  }
+
+  // The tray is what lets Claudian keep its device connection with the window closed. It is
+  // not created during a smoke run: that process must still exit on its own.
+  if (!smoke) {
+    try {
+      runtime = require('./runtime.cjs').attach({
+        app, Tray, Menu, nativeImage, win,
+        status: () => remoteConnector?.status() || {},
+        state: () => lastState,
+        language: async () => (await core.preferences()).language,
+        autoStart: () => app.getLoginItemSettings().openAtLogin === true,
+        setAutoStart: async value => {
+          // Recorded in Claudian's own preferences as well as with the operating system, so
+          // the tray checkbox still tells the truth if the login item is removed elsewhere.
+          app.setLoginItemSettings({ openAtLogin: value === true, args: ['--background'] });
+          await core.runtimePreference('autoStart', value === true);
+        },
+      });
+      runtime.start();
+    } catch (error) { console.error('[claudian] tray:', error.message); runtime = null; }
   }
 
   await win.loadURL(origin + (installed ? '/index.html' : '/setup.html'));
   if (smoke) await require('./smoke.cjs').run({ win, core, app, home });
-  else win.show();
+  // Started by the login item: the connection comes up, the window does not. Opening it is
+  // the tray icon's job, not a surprise on every sign-in.
+  else if (!process.argv.includes('--background')) win.show();
 }
-app.on('window-all-closed', () => app.quit());
+// Deliberately does nothing on Windows and Linux: the tray keeps Claudian alive with its
+// window closed, and Quit is an explicit choice in that menu. Without a tray to quit from --
+// smoke runs, or a platform where the icon could not be created -- the old behaviour stands,
+// because an application nobody can see and nobody can close is worse than one that exits.
+app.on('window-all-closed', () => { if (!runtime || smoke) app.quit(); });
+// The poll loop holds the device connection. Stopping it before exit is the difference
+// between a clean disconnect and a relay that keeps a dead device registered.
+app.on('before-quit', async event => {
+  if (!remoteConnector || remoteConnector.stopping) return;
+  event.preventDefault();
+  remoteConnector.stopping = true;
+  try { await remoteConnector.stop({ persist: false }); } catch { /* exit anyway */ }
+  app.quit();
+});
