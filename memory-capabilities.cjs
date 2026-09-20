@@ -42,7 +42,9 @@ function capabilities(vault, notice, options={}) {
       return seen.candidates.map(c=>`${c.title}\n  neden: ${c.why}\n  kanıt: ${c.evidence.join(' | ')}\n  üretici: ${c.producer}`).join('\n\n')||'Şu an fark edilen bir şey yok.';
     }),
     tool('capture','write','Keep one durable fact without choosing a file: the application places it in the note that holds its role, under the right heading, with provenance and a receipt. Use it whenever something is worth keeping and no existing line needs editing; a missing note is never a reason to skip. kind: commitment (dated) · open_loop (no date) · preference · agreement (how to work with the user) · decision · rejection (with its reason) · project · lesson. Dates are YYYY-MM-DD and never invented.',
-      schema({kind:{type:'string',enum:Object.keys(require('./memory-capture.cjs').KINDS)},text:string,quote:string,date:string,approximate:{type:'boolean'},source:{type:'string',enum:['user_statement','observation','inference']},reason:string},['kind','text']),
+      // Both enums come from the module that enforces them. The source list was written out a
+      // second time here and drifted: the protocol declared external_source, the tool refused it.
+      schema({kind:{type:'string',enum:Object.keys(require('./memory-capture.cjs').KINDS)},text:string,quote:string,date:string,approximate:{type:'boolean'},source:{type:'string',enum:require('./memory-capture.cjs').SOURCES},reference:string,reason:string},['kind','text']),
       args=>require('./memory-capture.cjs').capture(vault,args,actor,options.language||'en')),
     edit('write_note','create','Create a NEW note after searching for duplicates. Existing notes cannot be overwritten.',{body:string},['body']),
     edit('patch_note','patch','Replace one exact passage using the SHA-256 from read_note. Saves a backup and verified receipt.',{expected_sha256:string,old_text:string,new_text:string},['expected_sha256','old_text','new_text']),

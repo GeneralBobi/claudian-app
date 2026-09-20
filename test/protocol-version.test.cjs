@@ -145,11 +145,11 @@ test('the protocol carries the rules the reference vault depends on', () => {
   const required = {
     tr: [/Bu hafıza ne içindir/, /Ajan sürekliliği/, /Bağlı araçlardan gelen bilgi/, /Bulgu yazılır, yorum sorulur/,
          /`tür` değerleri kapalı bir listedir/, /Yapı — harita, nöron, bağlantı/, /İkame sessizce yapılmaz/,
-         /Yetenek yüzeye bağlıdır/, /Kullanıcının adımı/, /üç paragrafa çıkarsa/],
+         /Yetenek yüzeye bağlıdır/, /Kullanıcının adımı/, /yardımcı işaretlerdir, mekanik eşik değil/],
     en: [/What this memory is for/, /Agent continuity/, /Information arriving through connected tools/,
          /The finding is written; the interpretation is asked/, /`type` is a closed list/,
          /Structure — map, neuron, link/, /Substitution is never silent/, /A capability belongs to a surface/,
-         /The user's step/, /grows to three paragraphs/],
+         /The user's step/, /useful signs, not a mechanical threshold/],
   };
   for (const [language, patterns] of Object.entries(required)) {
     const text = policy.protocol(language);

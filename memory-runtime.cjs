@@ -32,25 +32,111 @@ async function surface(vault, adapters, host, language) {
     appendSection:section?null:policy.memorySection(language,label)}};
 }
 
+// The active decisions a startup payload carries. Kept whole entries, never truncated mid-
+// record, because half a decision is worse than a pointer to all of them. Entries that match
+// the topic come first, the rest by recency, and whatever did not fit is counted out loud --
+// a constraint that is silently missing is the failure the "constraints are loaded, not
+// chosen" rule exists to prevent.
+const ENTRY=/^-\s+(?:\[[ x]\]\s+)?\*\*/;
+const DONE=/^-\s+\[x\]/i;
+const RECORDED=/(?:kayıt|recorded|açıldı|opened):\s*(\d{4}-\d{2}-\d{2})/;
+// "Her madde kısa ve kalın bir tez cümlesiyle açılır" -- the note anatomy guarantees this
+// opener exists, which is what makes a record shortenable without becoming unrecognisable.
+const HEADLINE=/^(-\s+(?:\[[ x]\]\s+)?\*\*[^*]+\*\*)/;
+const headline=line=>{const match=HEADLINE.exec(line);return (match?match[1]:line.slice(0,220).trimEnd())+' …';};
+function boundedEntries(body,topic,budget,language){
+  if(body.length<=budget)return {body,omitted:0};
+  const eol=body.includes('\r\n')?'\r\n':'\n';
+  const lines=body.replace(/\r\n/g,'\n').split('\n');
+  const head=[],blocks=[];let current=null;
+  for(const line of lines){
+    if(ENTRY.test(line)){current={lines:[line],at:'',done:DONE.test(line)};blocks.push(current);continue;}
+    if(/^#{1,6}\s/.test(line))current=null;
+    if(current){current.lines.push(line);const at=RECORDED.exec(line);if(at)current.at=at[1];continue;}
+    head.push({line,after:blocks.length});
+  }
+  if(!blocks.length)return {body,omitted:0};
+  const needle=String(topic||'').toLocaleLowerCase('tr').split(/\s+/).filter(w=>w.length>3);
+  const score=block=>{const text=block.lines.join(' ').toLocaleLowerCase('tr');return needle.filter(w=>text.includes(w)).length;};
+  // Still open outranks already finished, then the topic, then recency. A completed item is
+  // a record; an open one is a commitment, and a commitment is what this payload exists for.
+  const order=blocks.map((block,index)=>({block,index,hits:score(block)}))
+    .sort((a,b)=>(a.block.done?1:0)-(b.block.done?1:0)||b.hits-a.hits||(b.block.at||'').localeCompare(a.block.at||'')||a.index-b.index);
+  // An entry that is still open is a commitment, and a commitment is never dropped: what a
+  // budget may take away is its detail, not its existence. Measured on the reference panel
+  // 20.09.2026 -- dropping whole records to fit 6 KB removed 19 of 27 open loops, which is a
+  // lost constraint dressed up as a bound. Three tiers instead: the records that fit arrive
+  // whole; every other open record arrives as the bold thesis line the protocol requires it to
+  // open with; only finished records fall out entirely, and they are counted.
+  const room=budget-head.reduce((n,h)=>n+h.line.length+1,0);
+  const full=new Set();let used=0;
+  for(const {block,index} of order){const size=block.lines.join('\n').length+1;if(used+size>room&&full.size)continue;used+=size;full.add(index);}
+  const out=[];let shortened=0,omitted=0;
+  for(let i=0;i<=blocks.length;i++){
+    for(const h of head)if(h.after===i)out.push(h.line);
+    if(i>=blocks.length)continue;
+    const block=blocks[i];
+    if(full.has(i)){out.push(...block.lines);continue;}
+    if(block.done){omitted++;continue;}
+    out.push(headline(block.lines[0]));shortened++;
+  }
+  const notes=[];
+  if(shortened)notes.push(language==='tr'
+    ?`${shortened} açık kayıt yalnız başlığıyla verildi`
+    :`${shortened} open record(s) are shown by their opening line only`);
+  if(omitted)notes.push(language==='tr'
+    ?`${omitted} tamamlanmış kayıt çıkarıldı`
+    :`${omitted} finished record(s) were left out`);
+  if(notes.length)out.push('',language==='tr'
+    ?`> ⚠ ${notes.join(', ')}. Ayrıntı, karar kökeni veya geçmiş gerektiğinde notun tamamı read_note ile okunur.`
+    :`> ⚠ ${notes.join(', ')}. Read the whole note with read_note when detail, decision provenance or history is needed.`);
+  const text=out.join('\n');
+  return {body:eol==='\n'?text:text.replace(/\n/g,eol),omitted,shortened};
+}
+
 async function context(vault, topic='', access='read', language='en', host=null) {
   const files=await store.list(vault), names=new Set(files.map(f=>f.note));
   // Notes are addressed by role, never by filename: the user may rename or translate any of
   // them, and a memory that searches for names breaks silently the first time they do.
   const {roles:resolved, adapters}=await require('./roles.cjs').resolve(vault);
+  const lifecycle=require('./lifecycle.cjs');
   const wanted=['entry','agreements','decisions','panel','reminders'];
-  const notes=[], missing=[];
+  const notes=[], missing=[], retired=[];
   for(const role of wanted) {
     const name=resolved[role];
     if(!name||!names.has(name)){missing.push(role);continue;}
     const note=await store.read(vault,name);
+    // 2.9.0: a startup payload is ACTIVE only. Superseded and archived sections carry their own
+    // visible marker in the note; they are left out of this view so that an unchecked box inside
+    // an abandoned plan cannot arrive as today's open loop. The note itself is never edited.
+    const view=lifecycle.activeOnly(note.body,language);
+    if(view.retired.length)retired.push({note:name,role,sections:view.retired});
+    if(view.status!=='active'){retired.push({note:name,role,status:view.status});continue;}
+    let body=view.body;
+    // The two notes that grow without bound: every decision ever taken, and every open loop ever
+    // opened. Both are entry lists, so both are bounded the same way -- by whole records, with the
+    // count of what did not fit stated in the payload rather than left to a requiresFullRead that
+    // would hand back the entire file, retired sections and all.
+    if(role==='decisions'||role==='panel'){
+      const bound=boundedEntries(body,topic,6000,language);body=bound.body;
+      if(bound.omitted||bound.shortened)retired.push({note:name,role,shortened:bound.shortened,omittedFinished:bound.omitted});
+    }
+    const filtered=body===note.body?note:{...note,body};
     // Never silently cut a constraint. Return a visible continuation requirement.
-    notes.push(note.body.length>12000?{note:name,sha256:note.sha256,requiresFullRead:true,reason:'Large note: read_note is required before relying on these constraints.'}:note);
+    notes.push(filtered.body.length>12000?{note:name,sha256:note.sha256,requiresFullRead:true,reason:'Large note: read_note is required before relying on these constraints.'}:filtered);
   }
   const protocolNote=resolved.protocol&&names.has(resolved.protocol)?resolved.protocol:null;
   const protocol=protocolNote?await store.read(vault,protocolNote):null;
-  return {vault,access,protocolVersion:policy.VERSION,instructions:instructionsFor(language),notes,missing,
-    protocol:{source:'application',version:policy.VERSION,body:policy.protocol(language)},
-    vaultProtocol:protocol&&protocol.body.length<=22000?protocol:protocol?{note:protocolNote,requiresFullRead:true}:null,
+  // The vault copy is only worth reading when it differs from the protocol this application
+  // already carries in this same payload. Measured 20.09.2026: the copy was byte-identical and
+  // still came back flagged requiresFullRead, so every write turn paid 25 KB to read a file it
+  // had just been handed. A customised copy has a different digest and keeps the old behaviour.
+  const carried=policy.protocol(language);
+  const identical=protocol?store.digest(protocol.body)===store.digest(carried):false;
+  return {vault,access,protocolVersion:policy.VERSION,instructions:instructionsFor(language),notes,missing,retired,
+    protocol:{source:'application',version:policy.VERSION,body:carried},
+    vaultProtocol:!protocol?null:identical?{note:protocolNote,identical:true,reason:'The vault copy matches the application protocol in this payload. Do not read it again.'}
+      :protocol.body.length<=22000?protocol:{note:protocolNote,requiresFullRead:true},
     protocolPolicy:'The application protocol remains available if its vault copy is removed. Preserve user notes and constraints. A differing vault protocol may contain user customizations; read it before writing. Do not recreate a removed vault protocol during conversation maintenance.',
     related:topic?await store.search(vault,topic,8):[],
     ...await surface(vault,adapters,host,language),
@@ -76,12 +162,17 @@ async function save(dataDir,state) {
 }
 async function begin(dataDir,session,host) {
   const state=await load(dataDir,session);
+  // A prompt hook only knows the label of the host whose hook file it lives in, not which
+  // connection actually serves this conversation's tool calls. Once a turn has proved which
+  // connection does the writing, that owner survives the next hook: otherwise every turn
+  // re-breaks the same way and every review has to rebind again.
+  const owner=state.reboundFrom===host&&state.host?state.host:host;
   if(state.turn){
     const outcome=isReviewed(state)?state.outcome:'UNREVIEWED';
     state.history=[...(state.history||[]),{turn:state.turn,outcome,startedAt:state.startedAt,reviewedAt:state.reviewedAt||null,receipts:state.receipts?.length||0}].slice(-100);
     if(outcome==='UNREVIEWED'||outcome==='FAILED')state.failedTurns=(state.failedTurns||0)+1;
   }
-  state.turn++;state.host=host;state.startedAt=new Date().toISOString();
+  state.turn++;state.host=owner;state.startedAt=new Date().toISOString();
   state.outcome=null;state.receipts=[];state.reviewedAt=null;state.failedAt=null;state.toolCount=0;state.checkpoint=0;state.reviewedCheckpoint=0;
   await save(dataDir,state);return state;
 }
@@ -89,12 +180,32 @@ async function reviewUnlocked(dataDir,args,actor,vault) {
   if(!['NO_OP','UPDATED','FAILED'].includes(args.outcome))throw Error('outcome must be NO_OP, UPDATED or FAILED.');
   const state=await load(dataDir,args.session_id);
   if(!Number.isInteger(args.turn)||args.turn<1||args.turn!==state.turn)throw Error('Stale turn. Use the session and turn from the current prompt hook.');
-  if(state.host!==actor)throw Error('This session belongs to a different connection.');
   const receipts=await store.history(vault,100);
   const ids=Array.isArray(args.receipts)?args.receipts:[];
-  if(args.outcome==='UPDATED' && (!ids.length||ids.some(id=>!receipts.some(r=>r.id===id&&r.status==='committed'&&r.actor===actor&&r.at>=state.startedAt))))throw Error('UPDATED requires committed receipts from this actor and turn.');
+  const inTurn=receipts.filter(r=>r.status==='committed'&&r.at>=state.startedAt);
+  if(args.outcome==='UPDATED' && (!ids.length||ids.some(id=>!inTurn.some(r=>r.id===id&&r.actor===actor))))throw Error('UPDATED requires committed receipts from this actor and turn.');
+  // Two Claudian connections can be registered on one machine -- the Claude Code entry in
+  // .claude.json and the Claude application's own entry -- and a Claude Code session running
+  // inside the Claude application uses the first one's prompt hook while its tool calls are
+  // served by the second. Measured 20.09.2026 on this profile: begin() stamped 'claude-code'
+  // from the hook, every receipt came back with actor 'claude-desktop', and the review was
+  // refused by an equality that was never really about ownership.
+  //
+  // Ownership follows the writer, and only on evidence. Two conditions, both required: this
+  // connection committed at least one receipt in this turn, and no other connection committed
+  // any. A label by itself proves nothing, so a turn nobody wrote in cannot be claimed -- that
+  // would let any connection close any other's turn on no evidence at all. Two connections
+  // genuinely writing in one session is ambiguous, and ambiguity is refused rather than
+  // guessed. A rebind is recorded on the session and reported in the result, never silent.
+  if(state.host!==actor){
+    const others=[...new Set(inTurn.filter(r=>r.actor!==actor).map(r=>r.actor))];
+    if(others.length)throw Error(`This turn was opened by ${state.host} and already carries writes from ${others.join(', ')}; ${actor} cannot review it.`);
+    if(!inTurn.some(r=>r.actor===actor))throw Error(`This session belongs to a different connection: it was opened by ${state.host} and ${actor} has written nothing in this turn. Call begin_memory_turn with this session_id to take the turn, then review it.`);
+    state.reboundFrom=state.host;state.reboundAt=new Date().toISOString();state.host=actor;
+  }
   state.reviewedTurn=state.turn;state.reviewedCheckpoint=state.checkpoint||0;state.outcome=args.outcome;state.receipts=ids;state.reviewedAt=new Date().toISOString();await save(dataDir,state);
-  return {session:state.session,turn:state.turn,outcome:state.outcome,recorded:true};
+  return {session:state.session,turn:state.turn,outcome:state.outcome,recorded:true,
+    ...(state.reboundFrom?{connection:{owner:actor,openedBy:state.reboundFrom}}:{})};
 }
 async function exclusive(dataDir,session,action){
  const file=sessionFile(dataDir,session)+'.lock';await store.ordinary(file);await fs.mkdir(path.dirname(file),{recursive:true});
@@ -111,6 +222,7 @@ async function status(dataDir) {
     const file=path.join(dir,name);await store.ordinary(file);
     const state=JSON.parse(await fs.readFile(file,'utf8'));
     sessions.push({host:state.host,turn:state.turn,reviewedTurn:state.reviewedTurn,outcome:state.outcome||null,
+      openedBy:state.reboundFrom||null,reboundAt:state.reboundAt||null,
       startedAt:state.startedAt,reviewedAt:state.reviewedAt||null,failedAt:state.failedAt||null,
       pending:!isReviewed(state),receipts:state.receipts?.length||0,
       failedTurns:state.failedTurns||0,history:state.history||[]});

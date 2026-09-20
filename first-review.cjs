@@ -48,9 +48,44 @@ exports.begin=async(dataDir,p,host)=>{
  await save(dataDir,host,r);return {host,prompt,id};
 };
 exports.read=async(dataDir,vault,host)=>{const r=await active(dataDir,vault,host);return {request_id:r.id,value:r.nonce,instruction:await fs.readFile(r.input,'utf8')};};
-exports.submit=async(dataDir,vault,host,args)=>{if((await profileFor(dataDir,vault,host)).access!=='write')throw Error('This connection has read-only access.');const r=await active(dataDir,vault,host);report(args,r);await fs.writeFile(r.output,JSON.stringify(args),{flag:'wx'});if(require('./cloud-progress.cjs').webOnly(host)){r.mcpSubmitted=true;await save(dataDir,host,r);}return {submitted:true};};
+// The shared persistent memory is initialized here, once, and by the application rather than
+// by the model: a completed first review is the point at which setup consent plus a real scan
+// have both happened. Idempotent by construction -- an adapter note that already records an
+// answer returns null and nothing is written, so a second surface cannot open a second root
+// and a re-run cannot overwrite what is there. A failed or blocked review writes nothing.
+async function initializeProviderMemory(vault,host,actor){
+ const policy=require('./policy.cjs');
+ if(!policy.ACCOUNT_MEMORY.includes(host))return {initialized:false,reason:'no account memory on this surface'};
+ const {adapters}=await require('./roles.cjs').resolve(vault);
+ const note=adapters[host];
+ if(!note)return {initialized:false,reason:'no adapter note'};
+ const store=require('./memory-store.cjs');
+ const current=await store.read(vault,note);
+ const next=policy.memoryAccepted(current.body);
+ if(next===null)return {initialized:false,reason:'already recorded'};
+ const receipt=await store.mutate(vault,{note,operation:'patch',expected_sha256:current.sha256,
+  old_text:current.body,new_text:next,reason:'first-review:persistent-memory-accepted'},actor);
+ return {initialized:true,note,receipt:receipt.id};
+}
+exports.submit=async(dataDir,vault,host,args)=>{
+ if((await profileFor(dataDir,vault,host)).access!=='write')throw Error('This connection has read-only access.');
+ const r=await active(dataDir,vault,host);report(args,r);
+ await fs.writeFile(r.output,JSON.stringify(args),{flag:'wx'});
+ if(require('./cloud-progress.cjs').webOnly(host)){r.mcpSubmitted=true;await save(dataDir,host,r);}
+ // The receipt is the primary outcome and is already durable. Initialization is reported,
+ // never allowed to fail the submission that proved the review happened.
+ let memory={initialized:false,reason:'not attempted'};
+ if(args.status==='completed'){try{memory=await initializeProviderMemory(vault,host,'first-review');}
+  catch(error){memory={initialized:false,error:error.message};}}
+ return {submitted:true,persistentMemory:memory};
+};
+exports.initializeProviderMemory=initializeProviderMemory;
 exports.status=async(dataDir,vault,host)=>{
  let r;try{r=await load(dataDir,vault,host);}catch(e){if(e.code==='ENOENT')return {status:'not_started'};if(/earlier configuration/.test(e.message))return {status:'stale'};throw e;}
+ // An installation that completed its review before this existed would never be asked again and
+ // never recorded either, so it would keep offering consent forever. Idempotent, so a profile
+ // that already answered -- yes or no -- is untouched, and a read-only connection writes nothing.
+ if(r.result?.status==='completed'){try{await initializeProviderMemory(vault,host,'first-review');}catch{}}
  if(r.result)return r.result;
  if(require('./cloud-progress.cjs').webOnly(host)&&!r.mcpSubmitted)return {status:Date.now()-Date.parse(r.issuedAt)>24*60*60*1000?'expired':'waiting',issuedAt:r.issuedAt};
  if(Date.now()-Date.parse(r.issuedAt)>24*60*60*1000)return {status:'expired'};
@@ -58,7 +93,10 @@ exports.status=async(dataDir,vault,host)=>{
   await active(dataDir,vault,host);
   const stat=await fs.stat(r.output);if(stat.size>64000)throw Error('Review response too large');
   const value=JSON.parse(await fs.readFile(r.output,'utf8'));
-  r.result=report(value,r);await save(dataDir,host,r);return r.result;
+  r.result=report(value,r);await save(dataDir,host,r);
+  // A review returned through the response file rather than submit() lands here. Same rule.
+  if(r.result.status==='completed'){try{await initializeProviderMemory(vault,host,'first-review');}catch{}}
+  return r.result;
  }catch(e){if(e.code==='ENOENT'||e instanceof SyntaxError)return {status:'waiting',issuedAt:r.issuedAt};return {status:'invalid',message:e.message};}
 };
 // The UI and MCP server run in separate processes. Serialize receipt acceptance

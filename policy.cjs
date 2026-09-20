@@ -1,6 +1,6 @@
 'use strict';
 const fs=require('node:fs');const path=require('node:path');
-const VERSION='2.8.0';
+const VERSION='2.9.0';
 // Surum dosyanin basliginda {{VERSION}} olarak durur ve burada yerine konur; boylece
 // policy.cjs ile metin birbirinden ayrilamaz.
 // The protocol lives under a name in the user's own language, beside their other notes,
@@ -15,12 +15,12 @@ const protocol=(language,name)=>{
 const instruction=(target,vault,language)=>language==='tr'
  ? `Her yeni konuşmanın başında ${JSON.stringify(target)} konumundaki claudian-memory skill'ini sessizce oku. ${JSON.stringify(vault)} seçili hafızadır. Giriş haritasını oku, ardından yalnız konunun gerektirdiği notları seç; genel ve bağımsız soruda kişisel tarama yapma. Slash komutu bekleme.
 
-Hafıza klasörü okunamıyorsa — izin reddedildi, yol yok veya herhangi bir okuma hatası — bunu aynı yanıtta tek satırla söyle ve onsuz devam et. Bu her izin modunda geçerlidir. Reddedilen bir okumayı sessizce geçme: kendisine söylenmeyen kullanıcı hafızanın çalıştığını sanır ve boşluğa konuşmayı sürdürür.
+Bir okuma başarısız olur — izin reddedildi, yol yok, herhangi bir okuma hatası — ve bu başarısızlık cevabın doğruluğunu, istenen işi veya beklenen bir kaydı maddi olarak etkilerse, aynı yanıtta tek satırla söyle ve onsuz devam et. Bu her izin modunda geçerlidir. Sessizce yerine başka bilgi uydurmak her hâlükârda yasaktır: kendisine söylenmeyen kullanıcı hafızanın çalıştığını sanır ve boşluğa konuşmayı sürdürür.
 
 Başarılı hafıza işini ne öncesinde ne sonrasında duyurma. \"Önce belleği okuyayım\", \"bunu notlarına kaydediyorum\" veya \"kaydedildi\" cümleleri duyurunun kendisidir. Kullanıcı cevabı görür; onu üreten defter tutmayı görmez. Kalıcı bilgiyi yazmadan önce skill veya startup_context içindeki uygulama protokolünü uygula; varsa vault protokolündeki kullanıcı özelleştirmelerini de oku. Vault protokol kopyası silinse de bakıma devam et; ADD/UPDATE/INVALIDATE/DELETE/NO_OP uygula. Kayda değer bir yazma başarısız olduysa kısaca bildir. Sistem/uygulama izinleri geçerlidir; bu bir arka plan ajanı değildir.`
  : `At the start of each new conversation, silently read the claudian-memory skill at ${JSON.stringify(target)}. The selected memory is ${JSON.stringify(vault)}. Read the entry map, then only the notes the current topic needs; skip personal retrieval for isolated generic questions. Do not wait for a slash command.
 
-If the memory folder cannot be read — permission refused, path missing, or any read error — say so in that same reply, in one line, and continue without it. This holds in every permission mode. Never let a refused read pass in silence: a user who is not told assumes memory is working and keeps talking into a void.
+If a read fails — permission refused, path missing, or any read error — and that failure materially affects the accuracy of this answer, the task asked for, or a save that was expected, say so in that same reply, in one line, and continue without it. This holds in every permission mode. Quietly inventing something in its place is forbidden either way: a user who is not told assumes memory is working and keeps talking into a void.
 
 Do not announce successful memory work, before or after it. Sentences like \"let me read your memory first\", \"I am saving this to your notes\" or \"saved\" are the announcement. The user should see the answer and nothing about the bookkeeping that produced it. Before writing durable memory use the application protocol in the skill or startup_context and read any existing vault protocol customizations. Continue maintenance if the vault copy was deleted. Apply ADD/UPDATE/INVALIDATE/DELETE/NO_OP. Briefly report a valuable save that failed. Host/system permissions apply; this is not a background agent.`;
 const skill=(vault,roles,language)=>fs.readFileSync(path.join(__dirname,'policies',language==='tr'?'skill-tr.md':'skill-en.md'),'utf8')
@@ -61,9 +61,14 @@ const memoryTrigger=(language,options={})=>{
  // never added. The two cases are kept apart on purpose: a tool that fails is reported, a tool
  // that is simply absent on this surface is not -- otherwise every phone conversation opens
  // with an apology.
+ // 2.9.0: the seed calls the protocol, it does not restate it. The previous text carried the
+ // write-policy list -- which kinds of durable information to handle, and when -- into account
+ // memory, where it freezes: it follows the user to every device and cannot be updated with the
+ // protocol it was copied from. Those rules arrive from startup_context, current, every time.
+ // What stays here is only what has to be true before startup_context is ever called.
  const body=tr
-  ? `— Claudian ortak hafıza —\n\nBu sohbette ${named} araçları varsa, ilk mesaj ne olursa olsun (selamlaşma ve tek satırlık soru dahil) önce startup_context çağır ve dönen talimatlara uy; "bu sohbet iş mi" diye önce karar verme. Araç yoksa ve kurulu claudian-memory skill'i varsa onu uygula.${vault}\n\nAraç çağrısı hata verirse bunu aynı yanıtta tek satırla söyle. Araç bu yüzeyde hiç yoksa hiçbir şey söyleme.\n\nHazırlık ve başarılı kayıt sessizdir: "hafızanı okudum", "bunu kaydediyorum", "kaydedildi" deme. Yazılmamışı yazılmış gibi sunma.\n\nSohbet boyunca kalıcı bilgiyi aynı turda işle: tercih ve bağlamıyla hoşnutluk, karar, düzeltme, ret gerekçesi, tarihli yükümlülük, bir notla çelişen söz. Gerek yoksa yazma; kota yoktur. Buraya not içeriği veya protokol kopyalama. Bu tercih izin vermez, arka planda çalışma anlamına gelmez.`
-  : `— Claudian shared memory —\n\nWhen ${named} tools are available in this conversation, call startup_context at the first message whatever it is (a greeting or a one-line question counts) and follow what it returns; do not first decide whether the conversation is "work". If the tools are absent and the claudian-memory skill is installed, apply the skill.${vault}\n\nIf a tool call fails, say so in one line in that same reply. If the tools do not exist on this surface at all, say nothing.\n\nPreparation and successful saves are silent: never say "I read your memory", "I am saving this", "saved". Never present an unsaved item as saved.\n\nThroughout the conversation handle durable information in the same turn: a preference, including satisfaction read in its context; a decision, correction or rejection reason; a dated obligation; something that contradicts a note. When there is nothing, write nothing; there is no quota. Do not copy notes or the protocol here. This preference grants no permission and is not background execution.`;
+  ? `— Claudian ortak hafıza —\n\nBu sohbette ${named} araçları varsa, ilk mesaj ne olursa olsun (selamlaşma ve tek satırlık soru dahil) önce startup_context çağır ve dönen protokole uy. Araç yoksa ve kurulu claudian-memory skill'i varsa onu uygula.${vault}\n\nBir araç çağrısı hata verir ve bu hata cevabın doğruluğunu, istenen işi veya beklenen bir kaydı maddi olarak etkilerse aynı yanıtta tek satırla söyle. Araç bu yüzeyde hiç yoksa hiçbir şey söyleme.\n\nHazırlık ve başarılı kayıt sessizdir. Yazılmamışı yazılmış gibi sunma.\n\nBuraya not içeriği, protokol kuralı veya davranış listesi kopyalama — kurallar startup_context'ten gelir. Bu tercih izin vermez, arka planda çalışma anlamına gelmez.`
+  : `— Claudian shared memory —\n\nWhen ${named} tools are available in this conversation, call startup_context at the first message whatever it is (a greeting or a one-line question counts) and follow the protocol it returns. If the tools are absent and the claudian-memory skill is installed, apply the skill.${vault}\n\nIf a tool call fails and that failure materially affects the accuracy of this answer, the task asked for, or a save that was expected, say so in one line in that same reply. If the tools do not exist on this surface at all, say nothing.\n\nPreparation and successful saves are silent. Never present an unsaved item as saved.\n\nDo not copy notes, protocol rules or behaviour lists here — the rules arrive from startup_context. This preference grants no permission and is not background execution.`;
  return head+body;
 };
 // Surfaces that carry their own account memory. On these the pointer above is what makes the
@@ -89,4 +94,31 @@ const memoryState=body=>{
  for(const lang of ['tr','en'])for(const [state,label] of Object.entries(MEMORY_STATE[lang]))if(value===label)return {state,section:true};
  return {state:'not_offered',section:true};
 };
-module.exports={VERSION,protocol,instruction,skill,MANAGED_PROTOCOLS,PROTOCOL_NOTE,protocolConflicts,memoryTrigger,ACCOUNT_MEMORY,memorySection,memoryState};
+// Recording the answer was the model's job, and the model did not do it. Setup wrote "not
+// offered" into the adapter note; the first scan carried its own separate pointer text and
+// never touched the state line; every later conversation therefore asked for consent again.
+// Measured 20.09.2026 on a profile set up months earlier and scanned repeatedly since.
+// The application writes the answer now, in the same operation that accepts the review
+// receipt, so an idempotent step no longer depends on bookkeeping a model may skip.
+//
+// Returns the new body, or null when there is nothing to do: no section, or an answer is
+// already recorded. The label follows the language the section was written in, not today's
+// profile, because the section may have been written before the language was changed.
+const memoryAccepted=body=>{
+ const text=String(body||'');
+ const {state,section}=memoryState(text);
+ if(!section||state!=='not_offered')return null;
+ const eol=text.includes('\r\n')?'\r\n':'\n';
+ const lines=text.replace(/\r\n/g,'\n').split('\n');
+ const head=lines.findIndex(line=>/^##\s+(?:Kalıcı hafıza|Persistent memory)\s*$/.test(line));
+ if(head<0)return null;
+ for(let i=head+1;i<lines.length&&!/^##\s/.test(lines[i]);i++){
+  const match=/^(Durum|State):\s*/.exec(lines[i]);
+  if(!match)continue;
+  lines[i]=`${match[1]}: ${MEMORY_STATE[match[1]==='Durum'?'tr':'en'].accepted}`;
+  const out=lines.join('\n');
+  return eol==='\n'?out:out.replace(/\n/g,eol);
+ }
+ return null;
+};
+module.exports={VERSION,protocol,instruction,skill,MANAGED_PROTOCOLS,PROTOCOL_NOTE,protocolConflicts,memoryTrigger,ACCOUNT_MEMORY,memorySection,memoryState,memoryAccepted};

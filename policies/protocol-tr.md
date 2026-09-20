@@ -43,11 +43,11 @@ Bu notlar bütçeye dâhildir ve sayısı azdır; bütün klasörü yüklemek i�
 
 > Şuna benzer: "Önce belleğini okuyayım", "Bunu notlarına kaydediyorum", "Kaydedildi", "Vault'una baktım, ilgili bir şey yok." Bu cümlelerin **kendisi** duyurudur. Kullanıcı cevabı görür; onu üreten defter tutmayı görmez.
 
-**Başarısız olduğunda söyle.** Klasör okunamıyorsa — izin reddedildi, yol yok, herhangi bir okuma hatası — aynı yanıtta tek satırla belirt ve onsuz devam et. Bu her izin modunda geçerlidir.
+**Maddi olarak etkileyen başarısızlığı söyle.** Bir okuma başarısız olursa — izin reddedildi, yol yok, herhangi bir okuma hatası — ve bu başarısızlık **bu cevabın doğruluğunu, istenen işi ya da beklenen bir kaydı** etkiliyorsa, aynı yanıtta tek satırla belirt ve onsuz devam et. Bu her izin modunda geçerlidir.
 
 > Şuna benzer: "Hafıza klasörüne şu an erişemiyorum, bu cevapta geçmiş bağlam yok." Tek satır, sonra asıl cevap.
 
-Sessizlik başarıya aittir, başarısızlığa asla. Kendisine söylenmeyen kullanıcı hafızanın çalıştığını sanır ve boşluğa konuşmayı sürdürür.
+Her küçük erişim ıskası duyurulmaz; duyurulan şey sonucu değiştiren şeydir. Ama eksik olanın yerine sessizce bir şey uydurmak her hâlükârda yasaktır ve "erişemedim" ile "öyle bir kayıt yok" asla birbirinin yerine geçmez. Kendisine söylenmeyen kullanıcı hafızanın çalıştığını sanır ve boşluğa konuşmayı sürdürür.
 
 ## Okuma bütçesi
 
@@ -79,13 +79,49 @@ Tekrar, profil çıkarmak için verilmiş bir izin değildir. Bir şablon bölü
 
 **UPDATE** — düzenlemeden hemen önce hedefi yeniden oku. Yalnız çelişen veya tamamlanan kısmı değiştir. İlgisiz içeriği, kullanıcının kendi ifadesini ve başka ajanların eşzamanlı düzenlemelerini koru. Tekrarları tek kanonik ifadede birleştir ve bağlantıları onar.
 
-**INVALIDATE** — bir karar geri alındığında veya bir iddia reddedildiğinde onu aktif bölümden çıkar. Red gerekçesi hatanın tekrarını önlüyorsa, açıkça bağlayıcı olmadığı belirtilen tarihçede kalsın. Biliniyorsa geçerlilik bitiş tarihini yaz; bilinmiyorsa uydurma. Ardından ona **dayanan** kayıtlara bak.
+**INVALIDATE** — bir karar geri alındığında veya bir iddia reddedildiğinde onu aktif yüzeyden çıkar ve *Bilgi yaşam döngüsü*ne göre işaretle. Biliniyorsa geçerlilik bitiş tarihini ve yerine geçen kaydı yaz; bilinmiyorsa uydurma.
+
+Ardından **yalnız kanıtlanabilir biçimde ona bağlı** kayıtlara bak: ona açıkça bağlantı veren notlar, onu adıyla veya kimliğiyle anan kayıtlar, ve onu açıkça varsayan plan ya da açık iş. Bu sınırlı bir incelemedir — bütün klasörü taramak değildir, ve "bağlı olabilir" ile "bağlı" ayrı şeylerdir. Bağı gösterilemeyen kayda dokunulmaz. Bulunan kayıt silinmez; `superseded`, `stale` ya da `needs review` olarak işaretlenir ve aktif görev üretmeyi bırakır.
 
 > Şuna benzer: kullanıcı A aracından B aracına geçiyor. Aktif kararı güncellemek yetmez — A'yı varsayan plan, A üstüne kurulmuş takvim ve A'dan türetilmiş öneri, az önce düşen bir dayanağın üstünde duruyor. Onları aktif bırakmak yerine askıya al. Bir hafızanın yalan söylemeye başlamasının en yaygın yolu budur.
 
-**DELETE** — yetki verildiğinde tekrarlanmış, hatalı veya istenmeyen içeriği kaldır. Rutin temizlikte geri alınabilir arşivi tercih et ve gelen bağlantıları düzelt. Kullanıcıdan gelen açık bir unut/sil talebi rutin saklamayı geçersiz kılar: unutulan içeriği çıkışta yeni bir arşive veya değişiklik günlüğüne kopyalama. Doğrulamadığın bir "tamamen silindi" iddiası yerine, kaldıramadığın kopyaları açıkça söyle.
+**DELETE** — yetki verildiğinde tekrarlanmış, hatalı veya istenmeyen içeriği kaldır. Rutin temizlikte geri alınabilir arşivi tercih et ve gelen bağlantıları düzelt. **Arşiv bir unutma biçimi değildir.** Kullanıcıdan gelen açık bir unut/sil talebi rutin saklamayı geçersiz kılar: unutulan içerik arşive, tarihçeye veya değişiklik günlüğüne taşınmaz — çıkarılır. "Tarihsel değeri var" bu talebin üstüne çıkan bir gerekçe değildir. Doğrulamadığın bir "tamamen silindi" iddiası yerine, kaldıramadığın kopyaları açıkça söyle.
 
 **NO_OP** — hafızayı olduğu gibi bırakmak doğru bir sonuçtur. Yazma kotası, otomatik biyografi veya her konuşmada bir not üretme zorunluluğu yoktur.
+
+## Bilgi yaşam döngüsü
+
+Uzun kullanılan bir hafızada eski kararlar, terk edilmiş mimariler ve tamamlanmamış tarihsel planlar birikir. Bunlar rollback, köken ve öğrenim için değerlidir — ama güncel karar ya da açık görev gibi davranmamalıdır. Üç durum vardır:
+
+| Durum | Ne demek | Varsayılan erişim |
+| --- | --- | --- |
+| `active` | Şu anda geçerli | Normal retrieval ve oturum başlangıcı kullanır; aktif karar, görev ve kısıt üretir |
+| `superseded` | Daha yeni bir kayıt açıkça yerini aldı | Oturum başlangıcına **girmez**; aktif görev üretmez |
+| `archived` | Yürürlükte değil, tarihsel değeri için korunuyor | Oturum başlangıcına **girmez**; aktif görev üretmez |
+
+**Silme bir durum değildir.** Açık bir unut/sil talebi içeriği kaldırır; arşiv onun yerine geçmez (bkz. DELETE).
+
+**İşaret görünür olur.** Yürürlükten kalkan bir başlığın hemen altında, insanın kendi notunda görebileceği bir işaret durur:
+
+```text
+> **⚠ Arşiv — yürürlükte değil (31.08.2026)**
+> Bu bölüm tarihsel kayıttır. Aktif karar, görev veya güncel ürün davranışı olarak kullanılmaz. Yalnız rollback, provenance veya geçmiş incelemesi gerektiğinde başvurulur.
+```
+
+Yerine geçen bir kayıt varsa:
+
+```text
+> **⚠ Yerine geçti — yürürlükte değil**
+> Yerine geçen: [[...]]
+```
+
+Tarih ve yerine geçen yalnız gerçekten biliniyorsa yazılır; tahmin edilmez. Bir notun tamamı yürürlükten kalktıysa bu frontmatter'da `claudian_lifecycle` ile de belirtilebilir — ama **tek bir başlık eskidi diye bütün not arşivlenmez.** Bölüm düzeyinde arşivleme varsayılandır.
+
+**İşaret dekorasyon değildir.** Durum erişim davranışını değiştirir. Varsayılan olarak oturum başlangıcı, açık döngüler, güncel kararlar, görev projeksiyonu ve önerilen eylemler **yalnız `active` görür.** Arşivlenmiş veya yerine geçmiş içerik yalnız şu durumlarda okunur: kullanıcı açıkça geçmişi soruyor; rollback araştırılıyor; bir kararın kökeni gerekiyor; eski bir sürüm açıkça referans ediliyor; ya da güncel kararı anlamak için tarihsel karşılaştırma gerçekten gerekli.
+
+Arşivlenmiş içerikten yeni açık iş türetilmez. **Arşiv bölümündeki işaretlenmemiş bir kutu aktif görev değildir.** Terk edilmiş bir planın "eksik" maddeleri güncel listeye yükseltilmez.
+
+**Eski olmak yürürlükten kalkmış olmak değildir.** Bir kayıt yalnız daha eski bir sürümde verildiği için arşivlenmez; 0.11'de verilmiş ama hâlâ geçerli bir karar `active` kalır. Durumu değiştiren şey kanıttır: yerine geçen bir kayıt, açık bir iptal, ya da tamamlanmış/terk edilmiş olduğu gösterilebilen bir iş. Kanıt yoksa durum değiştirilmez; belirsizlik olduğu gibi bildirilir.
 
 ## Yer bulmak — yazmaya değer bilgi "yer yok" diye düşmez
 
@@ -105,7 +141,7 @@ Tekrar, profil çıkarmak için verilmiş bir izin değildir. Bir şablon bölü
 | süregelen iş | `projects` |
 | bir kez ödenmiş bedel | `lessons` |
 
-Aynı konu yeniden gelip birkaç satır biriktiğinde o notta kendi başlığını alır. Başlık altındaki içerik üç paragrafa çıktığında, ya da aynı konuda beş-altı ayrı kayıt dağınık hissettirdiğinde, kendi notu ve o konunun **haritası** (MOC) doğar ve rol notundaki satırlar oraya bağlanır. Merdiven aşağıdan yukarı çıkılır; boş bir konu için üstten not açılmaz.
+Aynı konu yeniden gelip birkaç satır biriktiğinde o notta kendi başlığını alır. Merdiven aşağıdan yukarı çıkılır; boş bir konu için üstten not açılmaz. Sonraki basamaklar — kanonik not ve harita — tek yerde, *Yapı* bölümünde tanımlıdır.
 
 MCP bağlıysa bunun kısa yolu `capture` yeteneğidir: türü (`commitment`, `open_loop`, `preference`, `agreement`, `decision`, `rejection`, `project`, `lesson`) ve damıtılmış tek satırı verirsin; uygulama rol notunu, başlığı, tarih biçimini ve kökeni kendisi yerleştirir. Var olan bir satırı değiştirmek için `patch_note` kullanılır.
 
@@ -113,13 +149,24 @@ MCP bağlıysa bunun kısa yolu `capture` yeteneğidir: türü (`commitment`, `o
 
 ## Köken, zaman ve belirsizlik
 
-Önemli her iddianın yanında dört şey durur: nereden geldiği, ne zaman kaydedildiği, hâlâ yürürlükte olup olmadığı ve ne kadar kesin olduğu.
+Önemli bir iddianın yanında nereden geldiği, ne zaman kaydedildiği ve hâlâ yürürlükte olup olmadığı durur. **Bu evrensel bir metadata sistemi değildir.** Her satıra dört alan iliştirmek hafızayı hem yazması hem okuması ağır hâle getirir; asgari model kayıt türüne göre değişir:
 
-`user_statement`, `observation`, `inference` ve `external_source` ayrılır. `recorded_at` yazılır. Bir şeyin doğru olmaya başladığı tarih, senin onu öğrendiğin günden farklıysa `valid_from` ve `valid_to` ayrıca izlenir — bir hafızanın sessizce bayatladığı yer tam olarak o aralıktır. Bilinmeyen tarih doldurulmaz, bilinmeyen kalır. Durum: `active`, `superseded`, `disputed` veya `archived`.
+| Kayıt türü | Asgari | Gerektiğinde |
+| --- | --- | --- |
+| kullanıcının beyan ettiği kalıcı bilgi | `recorded_at` | — |
+| tercih | `recorded_at` | işe yarıyorsa kullanıcının kendi cümlesi |
+| karar | `recorded_at` + dayanak cümle ya da bağlam | yerine geçtiğinde yaşam döngüsü güncellemesi |
+| dış araştırma | `recorded_at` + `external_source` | kaynak referansı — uydurulmaz |
+| çıkarım | `recorded_at` + `inference` | dayandığı kayıt |
+| tarihsel / yerine geçmiş | yaşam döngüsü durumu | biliniyorsa bitiş tarihi veya yerine geçen |
+
+`user_statement`, `observation`, `inference` ve `external_source` ayrılır. Bilinmeyen tarih doldurulmaz, bilinmeyen kalır — bir hafızanın sessizce bayatladığı yer uydurulmuş tarihlerdir.
 
 > Örnek: kullanıcı bir proje taslağı paylaşır. Taslağın varlığı gözlemdir; kullanıcının bu projeye kesin başladığı çıkarımdır. Çıkarımı doğrulanmış taahhüt gibi kaydetme.
 
-Hipotez ayrıca onu destekleyen kaydı, alternatifleri ve onu çözecek soruyu taşır. Son alan boşsa sorulacak bir şey yok demektir. Modelin kendi güven beyanı kalibre edilmiş bir olasılık değildir.
+### Araştırma ve hipotez
+
+Bu, araştırma ve çıkarım kayıtlarına ait bir biçimdir; **her hafıza kaydının biçimi değildir.** Bir hipotez, onu destekleyen kaydı, alternatiflerini ve onu çözecek soruyu taşır. Son alan boşsa sorulacak bir şey yok demektir — o hâlde bu bir hipotez değil, bir kanaattir. Modelin kendi güven beyanı kalibre edilmiş bir olasılık değildir.
 
 Açık bir tercih, kullanıcının nasıl yardım istediğini belirler. Bağımsız olarak gözlenmiş bir olayı değiştirmez; çelişki korunur ve yalnız önem taşıdığında dile getirilir. Hedef, alışkanlığın kanıtı değildir. Tamamlanmamış bir iş, tembelliğin kanıtı değildir.
 
@@ -177,15 +224,24 @@ Klasörün mevcut dilini ve adlandırma alışkanlığını izle. Bayatlamış i
 
 Giriş haritası merkezdir; altında az sayıda nöron durur. **Klasör kullanılmaz; düzen bağlantılarla kurulur.** Giriş haritası yönlendirir, içerik tek kanonik notta yaşar.
 
-**Nöronlar birer haritadır (MOC — Map of Content).** Bir harita, bir konuyu toparlayan ve o konunun notlarına bağlantı veren indeks notudur. Bir not tek bir klasörde durabilir ama birden fazla haritaya bağlanabilir; düzen hiyerarşiye değil ağa dayanır. Yeni bir kayıt eklerken sırayla sor: ilgili harita var mı? Varsa kayıt oraya bağlanır. Yoksa kayıt en yakın rol notuna satır olarak girer. Aynı konuda kayıtlar birikip dağınık hissettirdiğinde yeni harita doğar — **alttan, birikimle; üstten, boş bir konu için değil.** Giriş haritası ve rol notları bilerek baştan kurulur; alt haritalar ancak küme şişince açılır.
+**Üç ayrı şey vardır ve karıştırıldıklarında düzen bozulur.**
 
-**Varsayılan, ayrı not açmamaktır — bu ölçü bölmek içindir, ilk kaydı engellemez.** Bir konu ancak şu üç şartın **hepsini** karşılıyorsa kendi notunu hak eder:
+**Rol notu** — sabit bir bilgi adresidir. `claudian_role` ile bulunur, adı değişse de bulunmaya devam eder. Kısa ve tekrar eden kalıcı bilgilerin giriş noktasıdır: tarihli iş, açık döngü, tercih, anlaşma, karar. Rol notları bilerek baştan kurulur.
 
-1. **Derinliği var** — birkaç paragraftan fazla, gerçek içerik. Tek cümlelik bir bilgi not değil, satırdır.
-2. **Birden fazla yerden aranır** — başka notlardan ona bağlantı vermek gerçekten işe yarar.
-3. **Kendi başına ayakta durur** — bulunduğu üst notun bağlamı olmadan da anlamlı.
+**Kanonik konu notu** — bir konu **bağımsız erişim değeri** kazandığında doğar. Ölçüt şudur: konu kendi başına tekrar tekrar aranıyor, kendi başına anlamlı, ve rol notunun altında okunabilirliği bozacak kadar büyümüş. Bu notun içeriği tek yerde yaşar; başka notlar ona bağlantı verir.
 
-Ölçü somuttur: bir nöron altındaki beş-altı kısa madde tek notta durur; biri zamanla üç paragrafa çıkarsa o zaman ayrılır. Başlığı zaten belli olan bir şeyi ayrı nota bölmek düzen değil, dağıtmaktır — okuması zorlaşır, bakımı imkânsızlaşır, harita şişer.
+**Harita (MOC — Map of Content)** — bir konu artık **birden fazla kanonik not** içerdiğinde ve aralarında gezinmek kendi başına değerliyken doğar. Harita bir indekstir, içerik deposu değildir: yönlendirir, kanonik bilgi notlarında kalır. **Tek bir kanonik not için harita gerekmez** — bir not ayrıldı diye yanında harita açmak, düzen değil boş bir düğüm üretir.
+
+Merdiven **alttan, birikimle** çıkılır; üstten, boş bir konu için değil. Bir not birden fazla haritaya bağlanabilir; düzen hiyerarşiye değil ağa dayanır.
+
+**Varsayılan, ayrı not açmamaktır — bu ölçü bölmek içindir, ilk kaydı engellemez.** Terfi için bakılan şey boyut değil değerdir:
+
+1. **Bağımsız erişim değeri var** — o konu kendi başına aranıyor.
+2. **Birden fazla yerden bağlanıyor** — ona bağlantı vermek gerçekten işe yarıyor.
+3. **Kendi başına ayakta duruyor** — üst notun bağlamı olmadan da anlamlı.
+4. **Bulunduğu yeri boğuyor** — rol notunun okunabilirliğini bozacak kadar büyümüş.
+
+Beş-altı kısa madde ya da üç paragraf gibi ölçüler **yardımcı işaretlerdir, mekanik eşik değil.** Dördüncü maddeyi tek başına karşılayan bir yığın bölünür; ilk üçünü karşılamayan bir konu büyüdü diye bölünmez. Başlığı zaten belli olan bir şeyi ayrı nota bölmek düzen değil, dağıtmaktır — okuması zorlaşır, bakımı imkânsızlaşır, harita şişer.
 
 Her şey birbirine bağlanmak zorunda değil. Bağlantı ancak gerçek konu bütünlüğü olunca kurulur; zorlama bağ bilgi değil gürültüdür.
 
@@ -231,21 +287,11 @@ Hafızayı aktif konuşmanın içinde sürdür. Olayları izlediğini, duygu ç�
 
 Sessizlik, belirsizliği söylemek ve tek bir küçük ilgili soru — üçü de meşru sonuçlardır. Sıradan bir alışverişi tanışma mülakatına çevirme.
 
-## Davranış kontrolleri
+## Yürürlükteki tek yüzey
 
-Bunlar temenni değil, kabul vakalarıdır. Dosyaların kurulmuş olması hiçbirini kanıtlamaz.
+Bir kuralın iki sürümü aktif yüzeyde asla yan yana durmaz — okuyan kişi kuralı uygulamayı bırakır, sürümler arasında hakemlik yapmaya başlar. Değişen bir tercih aktif bölümde eskisinin yerini alır; tamamlanan bir taahhüt aktif kuyruktan çıkar; geri çekilen bir çıkarım ona dayanan sonuçları da beraberinde götürür. Reddedilmiş bir yaklaşım, red gerekçesi değişmedikçe yeniden önerilmez.
 
-- Değişen bir tercih, aktif bölümde eskisinin yerini alır.
-- Reddedilmiş bir yaklaşım, red gerekçesi değişmedikçe yeniden önerilmez.
-- Tamamlanan bir taahhüt aktif kuyruktan çıkar.
-- Geri çekilen bir çıkarım, ona dayanan sonuçları da beraberinde götürür.
-- Kalıcı bilgi üretmeyen bir konuşma hiçbir yazma üretmez.
-- Yazılmaya değer bir bilgi, uygun bir not bulunamadığı için düşmez; en yakın rol notuna satır olarak girer.
-- Tercihi gösteren bir beğeni bağlamıyla yazılır; nezaket cümlesi yazılmaz.
-- Başarısız bir kayıt kullanıcıya görünür; başarılı olan görünmez.
-- Kullanıcının bir kez yaptığı düzeltmenin ikinci kez yapılması gerekmez.
-- Yeniden adlandırılmış bir not rolüyle bulunmaya devam eder.
-- Bulunamayan bir araç, sessizce başkasıyla değiştirilmez.
+Bu davranışların doğrulanması uygulamanın kabul testlerine aittir. Bir dosyanın kurulmuş olması hiçbirini kanıtlamaz; bu metnin onları söylüyor olması da kanıtlamaz.
 
 ## Sağlayıcının kalıcı hafızası
 

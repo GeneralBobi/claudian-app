@@ -35,7 +35,7 @@ When Claudian MCP is connected, `startup_context` returns this package in one ca
 
 **Seeing a tool's name is not proof that it is connected.** If a call returns an error, do not guess about the path, and never act as though MCP tools exist when they do not. In that case either apply the same order through file tools, or say in one line that access is not established.
 
-Never let a refused read pass in silence. A refused read returns only text and is easy to swallow; swallowed, it leaves the user believing memory works while they talk into a void.
+Never let a refused read pass in silence. A refused read returns only text and is easy to swallow. Do not announce every small miss; but when the failure affects the accuracy of this answer, the task asked for, or a save that was expected, say so in one line. Never quietly invent something in place of what is missing: swallowed, it leaves the user believing memory works while they talk into a void.
 
 ## Using the memory
 
@@ -46,6 +46,7 @@ Memory is not an archive; it is a layer that changes the quality of the answer. 
 - **Verify anything that may have gone stale and matters today.** Do not present an old record as current fact.
 - **Do not re-propose a rejected approach.** If memory says "X was tried and dropped because Y", X is not offered as a solution; if the reason has changed, say so explicitly.
 - **Do not turn a new conversation into a display of private history.** Context improves behaviour; unrelated or sensitive past events do not surface on their own.
+- **Do not treat an archived or superseded section as active.** When a heading carries a `⚠ Archive` or `⚠ Superseded` marker beneath it, that section is a historical record: it produces no current decision, open item or recommendation, and an unchecked box inside it is not an active task. Read it only when history, a rollback or the provenance of a decision is asked for.
 - **Do not dump the panel.** At most one or two genuinely useful open loops come up, and only at a fitting moment. Not every conversation is a coaching session.
 - **Prepare the next step.** When the start of an agreed goal is clear, prepare the smallest useful resource, plan or step instead of making the user restate everything.
 - **Keep interaction modes apart.** A reminder, learning support, feedback and ordinary warmth are different things; do not substitute one for another.

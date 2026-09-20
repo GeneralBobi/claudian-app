@@ -35,9 +35,15 @@ test('the provider-memory instruction names the connection and the folder it was
  assert.match(made,/"claudian"/);
  assert.match(made,/C:\/Users\/Someone\/Notes/);
  assert.match(made,/startup_context/);
- assert.match(made,/never say/i,'silence is the behaviour it exists to carry');
+ assert.match(made,/silent/i,'silence is the behaviour it exists to carry');
  assert.match(made,/grants no permission/i,'a preference is not a permission');
- assert.ok(made.length<1800);
+ // 2.9.0: the seed calls the protocol, it does not restate it. Account memory follows the user
+ // to every device and cannot be updated with the protocol a copy was taken from, so a rule
+ // copied in here freezes. These are the rules that used to be duplicated into it.
+ assert.match(made,/Do not copy notes, protocol rules or behaviour lists/i,'the seed says it is not a place for rules');
+ assert.doesNotMatch(made,/decision, correction or rejection reason/i,'the write-policy list belongs to startup_context');
+ assert.doesNotMatch(made,/there is no quota/i,'the admission test belongs to startup_context');
+ assert.ok(made.length<1200,`the seed is a pointer, not a protocol: ${made.length} bytes`);
  // Without a connection it stays generic, so it can be shown before anything is installed.
  assert.doesNotMatch(memoryTrigger('en'),/C:\//);
 });

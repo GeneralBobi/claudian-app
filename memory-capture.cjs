@@ -29,7 +29,12 @@ const KINDS = {
   project: {role: 'projects', headings: []},
   lesson: {role: 'lessons', headings: []},
 };
-const SOURCES = ['user_statement', 'observation', 'inference'];
+// The protocol has named four kinds of provenance since 2.5.0 and this list carried three:
+// `external_source` was declared in the text and rejected by the tool, so a finding taken from
+// a document had to be recorded as an observation of the agent's own. Measured 20.09.2026.
+// An external source is the one kind that is worth nothing without a reference, so it asks
+// for one rather than accepting a claim about a document nobody can find again.
+const SOURCES = ['user_statement', 'observation', 'inference', 'external_source'];
 
 const today = () => new Date().toISOString().slice(0, 10);
 const oneLine = value => String(value || '').replace(/\s+/g, ' ').trim();
@@ -54,8 +59,9 @@ function entry(args, language) {
   if (args.kind === 'open_loop') line += ` · ${tr ? 'açıldı' : 'opened'}: ${today()}`;
   const lines = [line];
   if (oneLine(args.quote)) lines.push(`  > "${oneLine(args.quote)}"`);
-  const source = {user_statement: tr ? 'kullanıcının sözü' : 'user statement', observation: tr ? 'gözlem' : 'observation', inference: tr ? 'çıkarım' : 'inference'}[args.source || 'user_statement'];
-  lines.push(`  _${source} · ${tr ? 'kayıt' : 'recorded'}: ${today()}_`);
+  const source = {user_statement: tr ? 'kullanıcının sözü' : 'user statement', observation: tr ? 'gözlem' : 'observation', inference: tr ? 'çıkarım' : 'inference', external_source: tr ? 'dış kaynak' : 'external source'}[args.source || 'user_statement'];
+  const reference = oneLine(args.reference) ? ` · ${tr ? 'kaynak' : 'source'}: ${oneLine(args.reference)}` : '';
+  lines.push(`  _${source}${reference} · ${tr ? 'kayıt' : 'recorded'}: ${today()}_`);
   return lines.join('\n');
 }
 
@@ -109,6 +115,8 @@ async function capture(vault, args, actor = 'unknown', language = 'en') {
   const text = oneLine(args.text);
   if (!text || text.length > 400) throw Error('text is one distilled line of at most 400 characters, not a transcript.');
   if (args.source && !SOURCES.includes(args.source)) throw Error(`source must be one of: ${SOURCES.join(', ')}.`);
+  if (args.source === 'external_source' && !oneLine(args.reference)) throw Error('external_source needs a reference: the document, note or address the finding came from. Do not invent one.');
+  if (oneLine(args.reference).length > 200) throw Error('reference is one short pointer of at most 200 characters.');
   if (kind.dated && !args.date) throw Error('A commitment needs its date. If the date is unknown, capture it as an open_loop instead of inventing one.');
   const {roles: resolved} = await roles.resolve(vault);
   const note = resolved[kind.role];
@@ -128,4 +136,4 @@ async function capture(vault, args, actor = 'unknown', language = 'en') {
   return {status: 'written', note, kind: args.kind, receipt: receipt.id};
 }
 
-module.exports = {capture, KINDS, place, entry, longDate};
+module.exports = {capture, KINDS, SOURCES, place, entry, longDate};

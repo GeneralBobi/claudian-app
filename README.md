@@ -2,9 +2,9 @@
 
 A Windows application for a local, user-owned Markdown memory shared by AI tools.
 
-**Preview 0.19.0 — protocol 2.8.0.** The companion is under construction. A hosted device relay is available for account connectors; native account acceptance remains host-specific. This release improves local memory maintenance; it is not a guarantee that every AI host will automatically use memory.
+**Preview 0.19.1 — protocol 2.9.0.** The companion is under construction. A hosted device relay is available for account connectors; native account acceptance remains host-specific. This release improves local memory maintenance; it is not a guarantee that every AI host will automatically use memory.
 
-[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/download/v0.19.0/Claudian-Setup-0.19.0.exe) · [Website](https://claudian.app) · [Connection coverage](COMPATIBILITY.md)
+[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/download/v0.19.1/Claudian-Setup-0.19.1.exe) · [Website](https://claudian.app) · [Connection coverage](COMPATIBILITY.md)
 
 ## Setup and updates
 
@@ -66,6 +66,26 @@ Gemini Spark and Perplexity account acceptance remain pending. This release adds
 ChatGPT, Gemini Spark and Perplexity now open a focused setup guide. It prepares the device URL, provides ready-to-copy form values, puts matching-code approval in the connection window, and provides an explicit unavailable-account exit. OAuth approval returns to the AI automatically. Authorization alone cannot unlock testing: the required tools must have been requested. ChatGPT web tests and first reviews require their MCP receipt, never a local-file fallback.
 
 Provider-owned create-app forms and account eligibility still apply; this is not a marketplace-listed, one-click installation. Account acceptance is scheduled separately with Claude Code after publication.
+
+### 0.19.1: Memory and runtime reliability — protocol 2.9.0
+
+A patch release. 0.19.0 made Claudian point the user in the right direction; this one makes
+Claudian point its own memory in the right direction. No new architecture, no new service, and
+upgrading from 0.19.0 requires no migration beyond the protocol note the application rewrites
+itself.
+
+**History is preserved but no longer treated as current context.** Protocol 2.9.0 gives
+information a lifecycle — active, superseded, archived — with a visible marker under the
+heading it retires. Archived and superseded sections stay in the notes and stay searchable for
+rollback and provenance, and they no longer arrive as today's decisions. An unchecked box
+inside an abandoned plan is not an open task.
+
+Startup retrieval is bounded by whole records rather than by truncation, and a vault protocol
+copy identical to the one the application already carries is no longer requested a second time.
+Persistent memory setup records its answer once, so it stops asking after a successful first
+review. A memory turn opened by one connection's prompt hook can now be reviewed by the
+connection that actually did the writing, which is what a Claude Code session running inside
+the Claude application always was.
 
 ### 0.19.0: Setup, routing and connection reliability
 

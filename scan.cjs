@@ -23,6 +23,21 @@ exports.resolve=async (id,explicit)=>{
  for(const candidate of candidates){try{if((await fs.stat(candidate)).isFile())return candidate;}catch{}}
  try {const {stdout}=await run('where.exe',[commands[id]],{windowsHide:true});return stdout.split(/\r?\n/).map(x=>x.trim()).find(x=>path.isAbsolute(x)&&/\.(exe|cmd)$/i.test(x))||null;}catch{return null;}
 };
+// One seed, generated from policy.cjs. This prompt used to carry its own paraphrase of the
+// account-memory pointer: a second, slightly different text that drifted from the canonical one
+// and, worse, never touched the adapter note's state line -- so the offer was made again in
+// every later conversation. The canonical seed goes in here; first-review records the answer.
+const memorySeed=profile=>{
+ const policy=require('./policy.cjs');
+ const tr=profile.language==='tr';
+ if(!(profile.hosts||[]).some(h=>policy.ACCOUNT_MEMORY.includes(h.id)))
+  return tr?'Bu yüzeyin kendi kalıcı hesap hafızası yoksa bu adımı atla; kurulu başlangıç talimatları giriş yolu olarak kalır.'
+           :'If this surface has no account memory of its own, skip this step; the installed startup instructions remain the entry mechanism.';
+ return (tr
+  ? 'Bu uygulamanın kendi kalıcı hesap hafızası varsa, aşağıdaki yönergeyi oraya bir kez ekle. Aynısı zaten oradaysa ikinci kez ekleme. Vault içeriğini veya protokolü oraya kopyalama. Kalıcı hafızaya yazamıyorsan kaydettiğini söyleme; kurulu başlangıç talimatları giriş yolu olarak kalır.\n\n'
+  : 'If this application has its own persistent account memory, add the instruction below to it once. If the same instruction is already there, do not add it twice. Do not copy vault content or the protocol into it. If you cannot write to persistent memory, do not claim you did; the installed startup instructions remain the entry mechanism.\n\n')
+  +policy.memoryTrigger(profile.language,{vault:profile.vault});
+};
 exports.prompt=profile=>profile.language==='tr'?`Seçili hafıza klasörü: ${profile.vault}
 
 Önce startup_context veya kurulu claudian-memory skill’i ile güncel uygulama protokolünü yükle; giriş haritasını ve mevcut kullanıcı kısıtlarını oku. Vault protokol kopyası silinmişse geri oluşturma.
@@ -33,7 +48,7 @@ Kalıcı hedeflerimi, aktif projelerimi, kabul ettiğim kararları ve gerekçele
 
 Her konu için tek kanonik kayıt tut. Protokole göre ADD, UPDATE, INVALIDATE, DELETE veya NO_OP seç. Kaynağı, bilinen tarihleri ve belirsizliği koru. Ana harita ve ilgili notlar arasındaki bağlantıları düzenle; ilgisiz notları silme. Yazdıklarını doğrula. Bu başlangıç incelemesi sonunda gerçekten kullanılan kaynakları, değişen kayıtları ve kalan boşlukları kısaca özetle.
 
-Bu uygulamanın kalıcı hafıza özelliği varsa oraya yalnız şu kullanım bilgisini ekle: Selamlaşma dahil her konuşmanın başında güncel bağlantının seçili vault’unu sessizce protokolüne göre kullan ve slash komutu bekleme. Vaultun tamamını sağlayıcının hafızasına çoğaltma. Kalıcı hafıza yoksa bunu açıkça belirt; kurulu başlangıç talimatları giriş yolu olarak kalır.
+${memorySeed(profile)}
 
 Bu başlangıç incelemesinden sonra rutin hafıza bakımını sessiz yap. Bu, kullanıcının başlattığı bir oturumdur; sürekli çalışan arka plan ajanı değildir.`:`Selected memory folder: ${JSON.stringify(profile.vault)}.
 Load the current application protocol using startup_context or the installed claudian-memory skill, then read the entry map and existing user constraints. A deleted vault protocol copy is not an error; do not recreate it.
@@ -44,7 +59,7 @@ Look for durable goals, active projects, accepted decisions and their reasons, s
 
 Keep one canonical record per topic. Apply ADD, UPDATE, INVALIDATE, DELETE or NO_OP as appropriate, preserving source, known dates and uncertainty. Repair useful links to the home map and related notes. Do not delete unrelated notes. Verify your edits and give a brief completion summary of actual sources used, records updated and any gaps. Do not claim completion before writing.
 
-If this host offers persistent memory, remember only this usage pointer there: silently use the currently connected vault at the start of every conversation, including greetings, maintaining it according to its protocol, and do not wait for a slash command. Do not duplicate the whole vault into provider memory. If persistent memory is unavailable, say so; the installed startup instructions remain the entry mechanism.
+${memorySeed(profile)}
 
 After this initial review, keep routine memory maintenance quiet. This is a user-started session, not an always-running background agent.
 `;

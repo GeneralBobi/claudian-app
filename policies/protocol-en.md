@@ -43,11 +43,11 @@ These notes are part of the budget and few in number; they are not a reason to l
 
 > That looks like this: "Let me read your memory first", "I'm saving this to your notes", "Saved", "I checked your vault and found nothing relevant." Each of these *is* the announcement. The user should see the answer and nothing about the bookkeeping behind it.
 
-**Say something when it fails.** If the folder cannot be read — permission refused, path missing, any read error — state it in one line in that same reply, then continue without it. This holds in every permission mode.
+**Say something when a failure materially matters.** If a read fails — permission refused, path missing, any read error — and that failure affects **the accuracy of this answer, the task asked for, or a save that was expected** — state it in one line in that same reply, then continue without it. This holds in every permission mode.
 
 > That looks like this: "I can't reach your memory folder right now, so this answer has no earlier context." One line, then the actual answer.
 
-Silence belongs to success, never to failure. A user who is not told assumes memory is working and keeps talking into a void.
+Not every small retrieval miss is announced; what is announced is what changes the outcome. But quietly inventing something in place of what is missing is forbidden either way, and "I could not reach it" never stands in for "there is no such record". A user who is not told assumes memory is working and keeps talking into a void.
 
 ## Retrieval budget
 
@@ -79,13 +79,49 @@ Repetition is not consent to profiling. Do not manufacture content to fill a tem
 
 **UPDATE** — reread the destination immediately before editing. Change only the part that was contradicted or completed. Preserve unrelated content, the user's wording, and concurrent edits by other agents. Merge duplicates into one canonical statement and repair the links.
 
-**INVALIDATE** — when a decision is reversed or an assertion rejected, remove it from the active section. Keep the rejection reason in clearly labelled non-binding history when that reason prevents repeating the mistake. Record the effective end date when it is known; never invent one. Then inspect what depended on it.
+**INVALIDATE** — when a decision is reversed or an assertion rejected, remove it from the active surface and mark it according to *Information lifecycle*. Record the effective end date and the record that replaced it when they are known; never invent either.
+
+Then inspect **only what is provably tied to it**: notes that link to it explicitly, records that name it by title or identifier, and a plan or open item that openly assumes it. This is a bounded review — not a sweep of the whole folder, and "might be related" is not "is related". A record whose link cannot be shown is left alone. What you find is not deleted; it is marked `superseded`, `stale` or `needs review` and stops producing active work.
 
 > That looks like this: the user switches from tool A to tool B. Updating the active decision is not enough — the plan that assumed A, the timeline built on A, and the recommendation derived from A all rest on a basis that just fell. Suspend those rather than leaving them active. This is the most common way a memory starts lying.
 
-**DELETE** — remove duplicated, erroneous or unwanted content when authorized. For routine cleanup prefer a recoverable archive and fix incoming links. An explicit forget/delete request from the user overrides routine retention: do not copy the forgotten content into a fresh archive or a change log on the way out. Say plainly which copies you cannot remove, rather than claiming complete erasure you did not verify.
+**DELETE** — remove duplicated, erroneous or unwanted content when authorized. For routine cleanup prefer a recoverable archive and fix incoming links. **An archive is not a way of forgetting.** An explicit forget/delete request from the user overrides routine retention: the forgotten content is not moved into an archive, a history section or a change log — it is removed. "It has historical value" does not outrank that request. Say plainly which copies you cannot remove, rather than claiming complete erasure you did not verify.
 
 **NO_OP** — leaving memory unchanged is a correct outcome. There is no write quota, no automatic biography, and no obligation to produce a note per conversation.
+
+## Information lifecycle
+
+A memory in long use accumulates old decisions, abandoned architectures and unfinished historical plans. They are worth keeping — for rollback, provenance and what was learned — but they must not behave like a current decision or an open task. There are three states:
+
+| State | Meaning | Default reach |
+| --- | --- | --- |
+| `active` | In force now | Normal retrieval and session entry use it; it produces active decisions, tasks and constraints |
+| `superseded` | A newer record explicitly took its place | **Not** in session entry; produces no active work |
+| `archived` | Not in force, kept for its historical value | **Not** in session entry; produces no active work |
+
+**Deletion is not a state.** An explicit forget/delete request removes the content; an archive does not stand in for it (see DELETE).
+
+**The marker is visible.** Directly under a heading that has fallen out of force sits a marker the owner can see in their own note:
+
+```text
+> **⚠ Archive — no longer in force (31.08.2026)**
+> This section is a historical record. It is not used as an active decision, task or current product behaviour. It is consulted only for rollback, provenance or historical review.
+```
+
+When a successor is known:
+
+```text
+> **⚠ Superseded — no longer in force**
+> Replaced by: [[...]]
+```
+
+A date and a successor are written only when genuinely known; neither is guessed. A note that has fallen out of force as a whole may also say so in front matter with `claudian_lifecycle` — but **one stale heading never archives the whole note.** Section-level archival is the default.
+
+**The marker is not decoration.** The state changes what is reached. By default session entry, open loops, current decisions, task projection and recommended actions see **only `active`.** Archived or superseded content is read only when: the user asks about history explicitly; a rollback is being investigated; the provenance of a decision is needed; an earlier version is explicitly referenced; or a historical comparison is genuinely required to understand the current decision.
+
+No new open item is derived from archived content. **An unchecked box inside an archived section is not an active task.** The "missing" items of an abandoned plan are not promoted into the current list.
+
+**Being old is not being out of force.** A record is not archived merely because it was made in an earlier version; a decision taken in 0.11 that still holds stays `active`. What changes a state is evidence: a record that replaced it, an explicit reversal, or work that can be shown to be finished or abandoned. Without evidence the state is not changed, and the uncertainty is reported as it is.
 
 ## Finding a place — something worth writing is never dropped for lack of one
 
@@ -105,7 +141,7 @@ There are two questions, asked in order. First: **is this worth writing?** (the 
 | ongoing work | `projects` |
 | a cost paid once | `lessons` |
 
-When the same subject returns and lines accumulate, it gets its own heading in that note. When the content under that heading grows to three paragraphs, or five or six separate records on one subject start to feel scattered, it gets its own note and that subject's **map** (MOC), and the lines in the role note link to it. The ladder is climbed from the bottom; a note is never opened from the top for an empty subject.
+When the same subject returns and lines accumulate, it gets its own heading in that note. The ladder is climbed from the bottom; a note is never opened from the top for an empty subject. The rungs above this one — a canonical note, and a map — are defined in one place, under *Structure*.
 
 With MCP connected the shortcut is the `capture` capability: give the kind (`commitment`, `open_loop`, `preference`, `agreement`, `decision`, `rejection`, `project`, `lesson`) and one distilled line, and the application places it in the role note under the right heading with the date format and provenance. Changing a line that already exists is done with `patch_note`.
 
@@ -113,13 +149,24 @@ With MCP connected the shortcut is the `capture` capability: give the kind (`com
 
 ## Provenance, time and uncertainty
 
-For any claim that matters, keep four things beside it: where it came from, when it was recorded, whether it is still in force, and how certain it is.
+For a claim that matters, keep beside it where it came from, when it was recorded, and whether it is still in force. **This is not a universal metadata system.** Attaching four fields to every line makes a memory heavy to write and heavier to read; the minimum differs by kind of record:
 
-Distinguish `user_statement`, `observation`, `inference` and `external_source`. Record `recorded_at`. When the date something became true differs from the day you learned it, track `valid_from` and `valid_to` separately — that gap is where a memory quietly goes stale. Unknown dates stay unknown rather than being filled in. Status is `active`, `superseded`, `disputed` or `archived`.
+| Kind of record | Minimum | When it applies |
+| --- | --- | --- |
+| a durable fact the user declared | `recorded_at` | — |
+| a preference | `recorded_at` | the user's own sentence, when it helps |
+| a decision | `recorded_at` + the supporting sentence or context | a lifecycle update when it is superseded |
+| external research | `recorded_at` + `external_source` | a source reference — never invented |
+| an inference | `recorded_at` + `inference` | what it rests on |
+| historical / superseded | its lifecycle state | an end date or successor when known |
+
+Distinguish `user_statement`, `observation`, `inference` and `external_source`. Unknown dates stay unknown rather than being filled in — invented dates are where a memory quietly goes stale.
 
 > Example: a user shares a project draft. The draft exists; that is observable. Assuming they committed to the project is an inference. Do not store it as a confirmed commitment.
 
-A hypothesis additionally carries what supports it, what the alternatives are, and the question that would settle it. If that last field is empty, there is nothing to ask about. A model's own confidence is not a calibrated probability.
+### Research and hypotheses
+
+This is the shape of research and inference records; it is **not the shape of every memory item.** A hypothesis carries what supports it, what the alternatives are, and the question that would settle it. If that last field is empty there is nothing to ask about — which makes it an opinion, not a hypothesis. A model's own confidence is not a calibrated probability.
 
 An explicit preference governs how the user wants to be helped. It does not overwrite an independently observed event; keep the discrepancy and raise it only when it matters. A goal is not evidence of a habit. An unfinished task is not evidence of laziness.
 
@@ -177,15 +224,24 @@ Follow the folder's existing language and naming conventions. Fix stale wording,
 
 The entry map is the centre, with a small number of neurons beneath it. **Folders are not used; order comes from links.** The entry map routes; content lives in one canonical note.
 
-**Neurons are maps (MOC — Map of Content).** A map is an index note that gathers a subject and links to its notes. A note sits in one folder but can be linked from several maps; order rests on a network, not a hierarchy. When adding a record, ask in order: is there a map for this subject? If so, the record is linked there. If not, it enters the nearest role note as a line. When records on one subject accumulate and start to feel scattered, a new map is born — **from below, by accumulation; not from above, for an empty subject.** The entry map and the role notes are set up deliberately at the start; sub-maps open only when a cluster swells.
+**There are three distinct things, and order breaks when they are confused.**
 
-**The default is not to open a new note — this measure is for splitting, it does not block a first record.** A subject earns its own note only when it meets **all three**:
+**A role note** is a fixed address for information. It is found by `claudian_role` and stays findable when its name changes. It is the entry point for short, recurring durable facts: a dated item, an open loop, a preference, an agreement, a decision. Role notes are set up deliberately at the start.
 
-1. **It has depth** — more than a few paragraphs of real content. A one-sentence fact is a line, not a note.
-2. **It is reached from more than one place** — linking to it from other notes genuinely helps.
-3. **It stands alone** — it still means something without the context of the note it came from.
+**A canonical topic note** is born when a subject earns **independent retrieval value**. The test: the subject is searched for on its own, again and again; it means something on its own; and it has grown enough to spoil the readability of the role note holding it. Its content lives in one place and other notes link to it.
 
-The measure is concrete: five or six short items under one neuron stay in a single note; when one of them grows to three paragraphs, it moves out. Splitting something whose heading is already obvious is not order but dispersal — it becomes harder to read, impossible to maintain, and the map bloats.
+**A map (MOC — Map of Content)** is born when a subject holds **more than one canonical note** and navigating between them is worth something in itself. A map is an index, not a store: it routes, and the canonical information stays in the notes. **One canonical note needs no map** — opening a map beside a note that has just split produces an empty node, not order.
+
+The ladder is climbed **from below, by accumulation**; not from above, for an empty subject. A note can be linked from several maps; order rests on a network, not a hierarchy.
+
+**The default is not to open a new note — this measure is for splitting, it does not block a first record.** What promotion looks at is value, not size:
+
+1. **It has independent retrieval value** — the subject is searched for on its own.
+2. **It is linked from more than one place** — linking to it genuinely helps.
+3. **It stands alone** — it still means something without the context it came from.
+4. **It is crowding out its host** — it has grown enough to spoil the role note's readability.
+
+Measures like five or six short items, or three paragraphs, are **useful signs, not a mechanical threshold.** A pile that meets only the fourth is split; a subject that fails the first three is not split merely because it grew. Splitting something whose heading is already obvious is not order but dispersal — it becomes harder to read, impossible to maintain, and the map bloats.
 
 Not everything has to connect to everything. A link is made when there is real subject continuity; a forced link is noise, not information.
 
@@ -231,21 +287,11 @@ Maintain memory inside the active conversation. Do not claim to monitor events, 
 
 Silence, stated uncertainty, and one small relevant question are all legitimate outcomes. Never turn an ordinary exchange into an onboarding interview.
 
-## Behaviour checks
+## One surface in force
 
-These are acceptance cases, not aspirations. Installing files proves none of them.
+Two versions of one rule never sit side by side on the active surface — whoever reads it stops applying the rule and starts arbitrating between versions. A changed preference replaces the old one in the active section; a completed commitment leaves the active queue; a withdrawn inference takes its dependent conclusions with it. A rejected approach is not proposed again unless the reason for rejecting it changed.
 
-- A changed preference replaces the old one in the active section.
-- A rejected approach is not proposed again unless the reason for rejecting it changed.
-- A completed commitment leaves the active queue.
-- A withdrawn inference takes its dependent conclusions with it.
-- A conversation that produced no durable information produces no write.
-- Something worth writing is not dropped because no suitable note was found; it enters the nearest role note as a line.
-- A like that reveals a preference is written with its context; courtesy is not.
-- A failed save is visible to the user; a successful one is not.
-- A correction the user made once does not have to be made again.
-- A renamed note is still found, by its role.
-- A tool that cannot be found is not silently replaced with another.
+Verifying those behaviours belongs to the application's acceptance tests. Installing a file proves none of them, and neither does this text stating them.
 
 ## Provider persistent memory
 
