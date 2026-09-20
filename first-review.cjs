@@ -46,8 +46,22 @@ async function active(dataDir,vault,host){
  if(digest(await fs.readFile(r.input,'utf8'))!==r.inputHash)throw Error('Review instruction changed');
  return r;
 }
+// A superseded or abandoned request leaves its instruction file behind in the notes folder.
+// One is litter; a year of them is a folder the owner did not agree to. The instruction is
+// regenerable and contains nothing of theirs, so the previous one is removed when the next
+// request replaces it. A response file is never touched -- it may hold a report that was
+// actually received, and deleting that would destroy the one thing the review produced.
+async function clearPrevious(dataDir,host){
+ try{
+  const previous=JSON.parse(await fs.readFile(file(dataDir,host),'utf8'));
+  if(typeof previous?.input!=='string'||!/[/\\]\.claudian-review-[a-z-]+-[a-f0-9-]{36}\.md$/.test(previous.input))return;
+  await ordinary(previous.input);
+  await fs.rm(previous.input,{force:true});
+ }catch(error){if(error.code!=='ENOENT')throw error;}
+}
 exports.begin=async(dataDir,p,host)=>{
  await profileFor(dataDir,p.vault,host);
+ await clearPrevious(dataDir,host);
  const id=crypto.randomUUID(),nonce=crypto.randomBytes(16).toString('hex');
  const input=path.join(p.vault,`.claudian-review-${host}-${id}.md`),output=input.replace(/\.md$/,'-response.json');
  const receipt=JSON.stringify({request_id:id,value:nonce,status:'completed',summary:'Your actual sources, changes and remaining gaps'});

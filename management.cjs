@@ -18,10 +18,14 @@ module.exports = (Setup, {HOSTS, hash, assertOrdinaryPath, json, atomicJson, exi
   // not decide to. Stored beside the language because they are the same kind of fact -- how
   // this person wants the application to behave on this machine, not part of their memory.
   Setup.prototype.runtimePreference = async function(name, value) {
-    if (!['autoStart','background'].includes(name)) throw new Error('Unknown preference.');
+    if (!['autoStart','background','notifications'].includes(name)) throw new Error('Unknown preference.');
     const file = path.join(this.dataDir, 'preferences.json');
     if (value !== undefined) await atomicJson(file, {...await json(file, {}), [name]: value === true});
-    return (await json(file, {}))[name] === true;
+    const stored = (await json(file, {}))[name];
+    // Notifications are the one preference whose absence means yes: the rules that govern
+    // them are strict enough that the default can be on, and a person who wants silence
+    // turns it off once. The others stay off until asked for.
+    return name === 'notifications' ? stored !== false : stored === true;
   };
   Setup.prototype.useLanguage = async function(language, options={}) {
     if (!['en','tr'].includes(language)) throw new Error('Invalid language.');

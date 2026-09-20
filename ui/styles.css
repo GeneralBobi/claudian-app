@@ -118,6 +118,11 @@ textarea{width:100%;box-sizing:border-box;resize:vertical;background:var(--bg);c
 .panel-list{margin:0;padding-left:20px;max-width:72ch}
 .panel-list li{font-size:13px;line-height:1.8}
 .panel-list time{font:11px 'JetBrains Mono',monospace;color:var(--muted);margin-right:8px}
+/* A date that has passed reads differently from one that has not. Nothing else in the list
+   is coloured, so the two that matter are the two that stand out. */
+.panel-list li[data-due=overdue]{color:var(--orange)}
+.panel-list li[data-due=today]{color:#e0a75a}
+.panel-item[data-kind^=reminder] strong{font-family:Lora,Georgia,serif;font-size:13.5px;font-weight:600}
 .review-report{flex-basis:100%;padding:16px;background:var(--surface);border-radius:12px}
 .review-report pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;max-width:72ch;line-height:1.7}
 .setup-steps{padding-left:22px;max-width:72ch}.setup-steps li{padding:8px 0 14px}.setup-steps button{display:block;margin-top:10px}

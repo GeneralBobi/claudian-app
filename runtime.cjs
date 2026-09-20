@@ -49,8 +49,11 @@ function summary(state, language, waiting = 0) {
  * @param {(value:boolean)=>Promise<void>} deps.setAutoStart
  * @param {()=>boolean} deps.autoStart
  */
-function attach({ app, Tray, Menu, nativeImage, win, status, state, language, setAutoStart, autoStart }) {
-  let tray = null, quitting = false, lastTooltip = '';
+function attach({ app, Tray, Menu, nativeImage, win, status, state, language, setAutoStart, autoStart,
+  notifications, setNotifications }) {
+  let tray = null, quitting = false, lastTooltip = '', refreshPreferences = null;
+  // Set by the caller when a preference has to be re-read from disk before the menu is drawn.
+  const onBeforeRebuild = fn => { refreshPreferences = fn; };
 
   // Quit has to stay reachable and unambiguous. Everything else hides.
   const quit = () => { quitting = true; app.quit(); };
@@ -59,6 +62,8 @@ function attach({ app, Tray, Menu, nativeImage, win, status, state, language, se
   async function rebuild() {
     if (!tray) return;
     const lang = await language().catch(() => 'en');
+    // Read once per rebuild rather than per menu item: the menu is rebuilt on a timer.
+    await refreshPreferences?.().catch(() => {});
     const tr = lang === 'tr';
     const s = (() => { try { return status() || {}; } catch { return {}; } })();
     const derived = (() => { try { return state?.() || null; } catch { return null; } })();
@@ -78,6 +83,12 @@ function attach({ app, Tray, Menu, nativeImage, win, status, state, language, se
         type: 'checkbox',
         checked: autoStart(),
         click: async item => { await setAutoStart(item.checked).catch(() => {}); await rebuild(); },
+      },
+      {
+        label: tr ? 'Bildirimler' : 'Notifications',
+        type: 'checkbox',
+        checked: notifications ? notifications() : true,
+        click: async item => { await setNotifications?.(item.checked).catch(() => {}); await rebuild(); },
       },
       { type: 'separator' },
       { label: tr ? 'Claudian’dan çık' : 'Quit Claudian', click: quit },
@@ -105,7 +116,7 @@ function attach({ app, Tray, Menu, nativeImage, win, status, state, language, se
     return true;
   }
 
-  return { start, rebuild, onClose, quit, isQuitting: () => quitting, summary };
+  return { start, rebuild, onClose, quit, onBeforeRebuild, isQuitting: () => quitting, summary };
 }
 
 // One short phrase per kind of attention. No sentence has to be assembled by a model, and

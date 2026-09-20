@@ -15,6 +15,8 @@ const ready=(over={})=>({
   connections:[{id:'codex',status:'ready',access:{state:'granted'}},{id:'gemini',status:'ready',access:{state:'granted'}}],
   connector:{state:'online',enabled:true},
   reviews:{codex:{status:'completed'},gemini:{status:'completed'}},
+  selfCheck:null,
+  now:'2026-09-21T09:00:00.000Z',
   ...over});
 
 async function vault(t,notes={}){
@@ -138,4 +140,102 @@ test('no profile is a state, not a crash',async()=>{
   const s=await state.derive({profile:null});
   assert.equal(s.setup,'AI_NOT_SELECTED');
   assert.deepEqual(s.connections,[]);
+});
+
+// --- 0.21.0: the states Claudian could not derive -------------------------------------------
+
+test('a dated reminder is due, overdue or neither, and an unparseable one is neither',async t=>{
+  const root=await vault(t,{'Hatırlatıcılar.md':`---
+claudian_role: reminders
+---
+# Hatırlatıcılar
+
+## Yaklaşan
+
+- [ ] **Fatura** · **13.08.2026** · 1156,33 TL
+- [ ] **Sınav** · **21 Eylül 2026**
+- [ ] **Teslim** · 2026-09-25
+- [ ] **Uzak iş** · 2026-12-01
+- [ ] **Tarihsiz yükümlülük**
+- [x] **Ödendi** · **01.09.2026**
+`});
+  const s=await state.derive(ready({profile:profile({vault:root}),language:'tr',now:'2026-09-21T09:00:00.000Z'}));
+  assert.equal(s.today,'2026-09-21');
+  const by=Object.fromEntries(s.reminders.map(r=>[r.text,r]));
+  assert.equal(by['Fatura'].due,'overdue');
+  assert.equal(by['Sınav'].due,'today');
+  assert.equal(by['Sınav'].date,'2026-09-21');
+  assert.equal(by['Teslim'].due,'soon');
+  assert.equal(by['Uzak iş'].due,'later');
+  assert.equal(by['Tarihsiz yükümlülük'].date,null,'a date is never invented');
+  assert.equal(by['Ödendi'],undefined,'a checked box is done');
+
+  // Only today and past due interrupt. "Remind without drowning" is the note's own rule.
+  const kinds=s.attention.filter(a=>a.kind.startsWith('reminder')).map(a=>[a.kind,a.label]);
+  assert.deepEqual(kinds,[['reminder_overdue','Fatura'],['reminder_due','Sınav']]);
+});
+
+test('an invalid calendar day is not a reminder that happens to be due',async t=>{
+  const root=await vault(t,{'Hatırlatıcılar.md':`---
+claudian_role: reminders
+---
+# Hatırlatıcılar
+
+- [ ] **Bozuk tarih** · 31.02.2026
+`});
+  const s=await state.derive(ready({profile:profile({vault:root}),now:'2026-09-21T09:00:00.000Z'}));
+  assert.equal(s.reminders[0].date,null);
+  assert.equal(s.attention.some(a=>a.kind.startsWith('reminder')),false);
+});
+
+test('a named fault outranks "not verified yet", because one is broken and the other is unfinished',async()=>{
+  const s=await state.derive(ready({
+    health:{hosts:[{id:'codex',label:'Codex',state:'unverified'},{id:'gemini',label:'Spark',state:'verified'}],verifiedCount:1},
+    reviews:{},
+    selfCheck:{connections:[{id:'codex',failing:['files','server']}]}}));
+  const codex=s.attention.filter(a=>a.host==='codex');
+  assert.deepEqual(codex.map(a=>a.kind),['connection_broken']);
+  assert.equal(codex[0].detail,'files, server','the failing layers are named');
+});
+
+test('a verification that was started and abandoned is its own state',async()=>{
+  const started=await state.derive(ready({
+    profile:profile({hosts:[{id:'codex',challenge:{issuedAt:'2026-09-21T08:00:00.000Z'}},{id:'gemini'}]}),
+    health:{hosts:[{id:'codex',label:'Codex',state:'unverified'},{id:'gemini',label:'Spark',state:'verified'}],verifiedCount:1},
+    reviews:{}}));
+  const codex=started.attention.find(a=>a.host==='codex');
+  assert.equal(codex.kind,'verification_unfinished');
+  assert.equal(codex.detail,'2026-09-21T08:00:00.000Z');
+
+  // Never attempted is a different sentence.
+  const never=await state.derive(ready({
+    health:{hosts:[{id:'codex',label:'Codex',state:'unverified'},{id:'gemini',label:'Spark',state:'verified'}],verifiedCount:1},
+    reviews:{}}));
+  assert.equal(never.attention.find(a=>a.host==='codex').kind,'verification_pending');
+});
+
+test('a resolved state leaves the panel, and its leaving is recorded',async t=>{
+  const dir=await vault(t);
+  const before=await state.derive(ready({
+    health:{hosts:[{id:'codex',label:'Codex',state:'unverified'},{id:'gemini',label:'Spark',state:'unverified'}],verifiedCount:0},
+    reviews:{}}));
+  await state.persist(dir,before);
+  assert.ok(before.attention.some(a=>a.kind==='verification_pending'&&a.host==='codex'));
+
+  const after=await state.persist(dir,await state.derive(ready()));
+  // The list is rebuilt from the world, so nothing has to be "dismissed" for it to go.
+  assert.equal(after.state.attention.length,0,'a solved problem is simply not there any more');
+  const cleared=after.events.filter(e=>e.kind==='attention_cleared').map(e=>e.detail);
+  assert.ok(cleared.includes('verification_pending'));
+  assert.ok(cleared.includes('setup_incomplete'));
+});
+
+test('attention appearing is recorded once, not on every derivation',async t=>{
+  const dir=await vault(t);
+  const broken=()=>state.derive(ready({
+    health:{hosts:[{id:'codex',label:'Codex',state:'verified'},{id:'gemini',label:'Spark',state:'verified'}],verifiedCount:2},
+    selfCheck:{connections:[{id:'codex',failing:['files']}]}}));
+  await state.persist(dir,await broken());
+  const second=await state.persist(dir,await broken());
+  assert.deepEqual(second.events,[],'the same fault, still there, is not news again');
 });

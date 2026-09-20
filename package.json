@@ -1,7 +1,7 @@
 {
   "name": "claudian-desktop",
   "productName": "Claudian",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "private": true,
   "description": "Claudian ortak hafÄ±za uygulamasÄ±",
   "author": "Claudian",
@@ -70,6 +70,7 @@
       "lifecycle.cjs",
       "runtime.cjs",
       "state.cjs",
+      "notify.cjs",
       "first-review.cjs",
       "web-providers.cjs",
       "cloud-progress.cjs"

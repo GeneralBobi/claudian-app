@@ -122,7 +122,12 @@ async function start() {
       catch (error) { return { ok: false, error: error.message }; }
     });
   }
-  require('./companion-bridge.cjs').attach(handle,session);
+  // The client for the separate web Core is no longer attached. It reached claudian.app with
+  // an access code, which only answered while a Next server and a tunnel were running by hand
+  // on this machine -- so the panel's knowledge depended on development tooling. The Panel now
+  // derives that knowledge here (state.cjs) and asks for no code, which leaves this bridge as
+  // an unreachable IPC surface pointed at an external origin. The file is kept, not deleted:
+  // whether a remote Core is wanted at all is a product decision, not a cleanup.
   handle('app:snapshot', async () => {
     const view=entryView; entryView='';
     return {...await core.snapshot(),appVersion:app.getVersion(),migrationError,setupReview,entryView:view};
@@ -146,7 +151,7 @@ async function start() {
 
     No model is involved, and nothing is inferred. A value that cannot be derived is absent.
   */
-  let obsidianState = {}, lastState = null;
+  let obsidianState = {}, lastState = null, notificationsEnabled = true;
   async function refreshState() {
     const profile = (await core.snapshot()).profile;
     if (!profile) return null;
@@ -155,18 +160,34 @@ async function start() {
       try { reviews[host.id] = await require('./first-review.cjs').status(core.dataDir, profile.vault, host.id); }
       catch (error) { reviews[host.id] = { status: 'invalid', message: error.message }; }
     }
+    const language = (await core.preferences()).language;
     const next = await require('./state.cjs').derive({
       profile,
       health: await core.health().catch(() => null),
       connections: await core.connections().catch(() => []),
       connector: remoteConnector?.status() || {},
+      // The application's own check of its work: files, folder permission, and whether the
+      // server a host would launch actually answers.
+      selfCheck: await core.selfCheck().catch(() => null),
       reviews,
       obsidian: obsidianState,
-      language: (await core.preferences()).language,
+      language,
     });
     const result = await require('./state.cjs').persist(core.dataDir, next);
     lastState = result.state;
     if (runtime) void runtime.rebuild();
+    // A toast is caused by a transition, never by a level, and never by a model. The rules
+    // that keep it rare live in notify.cjs.
+    if (!smoke && Notification.isSupported()) {
+      const notices = await require('./notify.cjs').decide(core.dataDir, result.events, {
+        language, enabled: await core.runtimePreference('notifications'),
+      }).catch(() => []);
+      for (const notice of notices) {
+        const toast = new Notification({ title: 'Claudian', body: notice.body, urgency: notice.urgency, silent: notice.urgency !== 'critical' });
+        toast.on('click', () => { if (win && !win.isDestroyed()) { win.show(); win.focus(); } });
+        toast.show();
+      }
+    }
     return result;
   }
   handle('app:state', async () => ({ ...(await refreshState())?.state || null, recent: await require('./state.cjs').recent(core.dataDir) }));
@@ -494,6 +515,11 @@ async function start() {
         app, Tray, Menu, nativeImage, win,
         status: () => remoteConnector?.status() || {},
         state: () => lastState,
+        notifications: () => notificationsEnabled,
+        setNotifications: async value => {
+          await core.runtimePreference('notifications', value === true);
+          notificationsEnabled = value === true;
+        },
         language: async () => (await core.preferences()).language,
         autoStart: () => app.getLoginItemSettings().openAtLogin === true,
         setAutoStart: async value => {
@@ -503,6 +529,7 @@ async function start() {
           await core.runtimePreference('autoStart', value === true);
         },
       });
+      runtime.onBeforeRebuild(async () => { notificationsEnabled = await core.runtimePreference('notifications'); });
       runtime.start();
     } catch (error) { console.error('[claudian] tray:', error.message); runtime = null; }
   }

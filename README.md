@@ -2,9 +2,9 @@
 
 A Windows application for a local, user-owned Markdown memory shared by AI tools.
 
-**Preview 0.20.0 — protocol 2.9.0.** Claudian keeps running with its window closed and the panel derives your state from this computer. A hosted device relay is available for account connectors; native account acceptance remains host-specific. This is not a guarantee that every AI host will automatically use memory.
+**Preview 0.21.0 — protocol 2.9.0.** Claudian keeps running with its window closed, and the panel derives your state from this computer — including which reminders are due and which connections are broken. A hosted device relay is available for account connectors; native account acceptance remains host-specific. This is not a guarantee that every AI host will automatically use memory.
 
-[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/download/v0.20.0/Claudian-Setup-0.20.0.exe) · [Website](https://claudian.app) · [Connection coverage](COMPATIBILITY.md)
+[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/download/v0.21.0/Claudian-Setup-0.21.0.exe) · [Website](https://claudian.app) · [Connection coverage](COMPATIBILITY.md)
 
 ## Setup and updates
 
@@ -66,6 +66,24 @@ Gemini Spark and Perplexity account acceptance remain pending. This release adds
 ChatGPT, Gemini Spark and Perplexity now open a focused setup guide. It prepares the device URL, provides ready-to-copy form values, puts matching-code approval in the connection window, and provides an explicit unavailable-account exit. OAuth approval returns to the AI automatically. Authorization alone cannot unlock testing: the required tools must have been requested. ChatGPT web tests and first reviews require their MCP receipt, never a local-file fallback.
 
 Provider-owned create-app forms and account eligibility still apply; this is not a marketplace-listed, one-click installation. Account acceptance is scheduled separately with Claude Code after publication.
+
+### 0.21.0: A panel that knows more, and interrupts less
+
+The derived state now covers what it was missing: a dated reminder is due, overdue or neither
+(three date spellings, and an impossible date produces nothing rather than something
+invented); a connection that fails Claudian's own self-check is *broken* rather than merely
+unverified, with the failing layer named; a verification that was started and abandoned is its
+own state; and attention going away is recorded, so a solved problem simply leaves the list.
+
+Five kinds of transition may raise a Windows notification — an authorization awaiting
+approval, a broken connection, a dropped device connection, and a reminder due or overdue.
+Once a day per worry, three a day at most, silent on resolution, and switchable from the tray.
+
+The client for the separate web Core is no longer attached: nothing in the normal user's path
+needs `run.bat`, a tunnel or a source tree. A superseded first review no longer leaves its
+instruction file behind in your notes folder.
+
+Full notes: [release-notes-0.21.0.md](release-notes-0.21.0.md) · Parity: [CONNECTION-PARITY.md](CONNECTION-PARITY.md)
 
 ### 0.20.0: Background runtime and a panel that knows your state
 

@@ -1,7 +1,7 @@
 'use strict';
 const api=window.claudian, content=document.querySelector('#content'), errorBox=document.querySelector('#error');
 let challenge=null, verifyNotice='', verifyState='', firstScan=null, healthData=null, obsidianPresent=null, probeIssue='', cliReady={}, updateInfo=null, autoChallenge=false;
-let state, draft, plan, language='en', extending=false, busy=false, complete=false, events=[], view='home', removing=null, notice='', companionData=null, companionIssue='', panelState=null;
+let state, draft, plan, language='en', extending=false, busy=false, complete=false, events=[], view='home', removing=null, notice='', panelState=null;
 const setup=document.body.dataset.surface==='setup';
 let reviewing=false, reviewResult=null, selectedHosts=[], verifyRequest=0;
 // Claudian checks its own connections instead of handing the check back to the user.
@@ -450,6 +450,9 @@ async function renderContent(){header();if(reviewing){renderReview();return;}
 // sentence made an offline Core look like a wrong access code, so the reader concluded
 // their data was gone. Each case is named, and the unreachable case says the code was
 // never checked and nothing was changed.
+// Kept deliberately while `companion-bridge.cjs` is kept: nothing calls this today, because
+// the Panel derives its own state and asks for no access code. If a remote Core is ever
+// wanted again, these three sentences are the lesson, and deleting them would lose it.
 function coreIssue(error,stale){const code=String(error&&error.message||'');
  if(code==='CORE_AUTH_REQUIRED')return t('That access code was not accepted. Check it and try again.','Bu access code kabul edilmedi. Kodu kontrol edip tekrar dene.');
  if(code==='CORE_RATE_LIMIT')return t('Too many attempts. Wait a few minutes before trying again.','Çok fazla deneme yapıldı. Tekrar denemeden önce birkaç dakika bekle.');
@@ -492,9 +495,6 @@ document.addEventListener('click',async e=>{const nav=e.target.closest('[data-vi
  if(a==='gemini-web-guide'){await api.geminiGuide();notice=t('Manual-sharing guide copied and ordinary Gemini chat opened. This is not Spark and it does not connect or verify anything.','Manuel paylaşım yönergesi kopyalandı ve normal Gemini sohbeti açıldı. Bu Spark değildir; hiçbir şeyi bağlamaz veya doğrulamaz.');await render();return;}
  if(a==='connector-help'){await api.connectorSetupHelp(el.dataset.host);remoteStatus=await api.connectorStatus();notice=t('Setup instruction copied. Paste and send it in the AI chat that opened. Browser control depends on the tools available in that chat.','Kurulum yönergesi kopyalandı. Açılan AI sohbetine yapıştırıp gönder. Tarayıcıyı kullanabilmesi o sohbetin araçlarına bağlıdır.');await render();return;}
  if(a==='connector-export'){const result=await api.connectorExport(el.dataset.host);if(result){notice=t('Plugin package prepared. Installation in the provider is still required.','Eklenti paketi hazırlandı. Sağlayıcıda kurulması gerekiyor.');await render();}return;}
- if(a==='core-connect'){try{companionData=await api.companionConnect(document.querySelector('#core-code').value);companionIssue='';}catch(e){companionIssue=coreIssue(e,false);}await render();}
- if(a==='core-refresh'){try{companionData=await api.companionRefresh();companionIssue='';}catch(e){companionIssue=coreIssue(e,Boolean(companionData));}await render();}
- if(a==='core-disconnect'){await api.companionDisconnect();companionData=null;companionIssue='';await render();}
 
 
  if(a==='copy-memory-trigger'){await api.copy(await api.memoryTrigger(el.dataset.host));el.textContent=t('Copied — this is a preference, not a connection test','Kopyalandı — bu bir tercih, bağlantı testi değil');return;}
@@ -612,7 +612,9 @@ function panelAction(a){
  // Every line has to be actionable or it is just a status board.
  if(a.kind==='setup_incomplete')return btn('Continue setup','Kuruluma devam et','goto-connections',true);
  if(a.kind==='connector_offline')return btn('Connection settings','Bağlantı ayarları','goto-connections');
- if(a.host)return btn('Open','Aç','open-next-connection',a.kind.startsWith('verification'),`data-host="${esc(a.host)}"`);
+ // A reminder lives in the user's own notes, so the only honest action is to open them.
+ if(a.kind==='reminder_due'||a.kind==='reminder_overdue')return btn('Open notes','Notları aç','obsidian');
+ if(a.host)return btn('Open','Aç','open-next-connection',a.kind.startsWith('verification')||a.kind==='connection_broken',`data-host="${esc(a.host)}"`);
  return '';
 }
 // The panel says what is unfinished, not which constant the code used.
@@ -640,8 +642,15 @@ function panelLine(a){
   first_review_stale:t('The first review belongs to an older setup','İlk tarama eski bir kuruluma ait'),
   first_review_superseded:t('A Claudian update replaced the protocol after this review started','Tarama başladıktan sonra bir Claudian güncellemesi protokolü değiştirdi'),
   first_review_needs_input:t('The review is waiting for your answer','Tarama yanıtını bekliyor'),
+  connection_broken:t('This connection is broken','Bu bağlantı bozuk'),
+  verification_unfinished:t('A verification was started and never finished','Bir doğrulama başlatıldı ama tamamlanmadı'),
+  reminder_due:t('Due today','Bugün'),
+  reminder_overdue:t('Past due','Tarihi geçti'),
  }[a.kind]||a.kind;
- return `<div class="panel-item"><div><strong>${a.label?esc(a.label)+' · ':''}${esc(label)}</strong>${a.detail&&a.kind!=='setup_incomplete'?`<p>${esc(String(a.detail))}</p>`:''}</div>${panelAction(a)}</div>`;
+ const reminder=a.kind==='reminder_due'||a.kind==='reminder_overdue';
+ const heading=reminder?esc(a.label||''):`${a.label?esc(a.label)+' · ':''}${esc(label)}`;
+ const detail=reminder?esc(label)+(a.detail?' · '+esc(String(a.detail)):''):(a.detail&&a.kind!=='setup_incomplete'?esc(String(a.detail)):'');
+ return `<div class="panel-item" data-kind="${esc(a.kind)}"><div><strong>${heading}</strong>${detail?`<p>${detail}</p>`:''}</div>${panelAction(a)}</div>`;
 }
 function renderPanelView(){
  const s=panelState;
@@ -660,17 +669,12 @@ function renderPanelView(){
   +(s.connections||[]).map(c=>`<div class="panel-item"><div><strong>${esc(c.label)}</strong><p>${c.connected?t('Connected','Bağlı'):t('Not connected','Bağlı değil')} · ${c.verified?t('read/write verified','okuma/yazma doğrulandı'):t('access not verified','erişim doğrulanmadı')} · ${t('first review: ','ilk tarama: ')}${esc(c.review)}</p></div>${btn('Open','Aç','open-next-connection',false,`data-host="${esc(c.id)}"`)}</div>`).join('')
   +`</section>`
   +((s.openLoops||[]).length?`<section class="panel-section"><h2>${t('Open loops','Açık döngüler')}</h2><p class="hint">${t('Unchecked items in your own panel note. Archived sections are not read.','Kendi panel notundaki işaretsiz maddeler. Arşivlenmiş bölümler okunmaz.')}</p><ul class="panel-list">${s.openLoops.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></section>`:'')
-  +((s.reminders||[]).length?`<section class="panel-section"><h2>${t('Reminders','Hatırlatıcılar')}</h2><ul class="panel-list">${s.reminders.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></section>`:'')
+  +((s.reminders||[]).length?`<section class="panel-section"><h2>${t('Reminders','Hatırlatıcılar')}</h2><p class="hint">${t('Dated items from your own reminders note. Only today and past due are listed above as needing you.','Kendi hatırlatıcı notundaki tarihli maddeler. Yukarıda seni bekleyen olarak yalnız bugün ve geçmiş tarihliler görünür.')}</p><ul class="panel-list">${s.reminders.map(x=>`<li data-due="${esc(x.due||'none')}">${esc(x.text)}${x.date?` <time>${esc(x.date)}</time>`:''}</li>`).join('')}</ul></section>`:'')
   +((s.recent||[]).length?`<details class="panel-section"><summary>${t('What changed recently','Son değişenler')}</summary><ul class="panel-list">${s.recent.slice(0,10).map(e=>`<li><time>${esc(new Date(e.at).toLocaleString(language==='tr'?'tr-TR':'en-GB'))}</time> ${esc(e.kind)}${e.host?' · '+esc(e.host):''}${e.to?' → '+esc(e.to):''}</li>`).join('')}</ul></details>`:'');
 }
-function renderCompanion(){
- const cards=Array.isArray(companionData?.cards)?companionData.cards.slice(0,3):[];
- content.innerHTML=`<section class="empty companion-native"><div class="caption development-label">${t('UNDER DEVELOPMENT','GELİŞTİRİLİYOR')}</div><div class="wordmark">claudian<span>.</span>app</div><h1>${t('From an assistant to a companion.','Bir asistandan, yol arkadaşına.')}</h1><p>${t('A layer that understands your notes, time and changing circumstances together — and is there at the right moment.','Notlarını, zamanını ve değişen koşullarını birlikte anlayan; doğru anda yanında olan bir katman.')}</p><p>${t('This system is not ready yet. Shared memory works today; we are building the companion on top of it.','Bu sistem henüz hazır değil. Ortak hafıza bugün çalışıyor; yol arkadaşını bunun üzerine geliştiriyoruz.')}</p>${companionIssue?`<p role="status">${esc(companionIssue)}</p>`:''}${!companionData?`<form id="core-form"><label for="core-code">${t('Access code','Access code')}</label><div class="row"><input id="core-code" type="password" autocomplete="off" maxlength="128" required placeholder="•••• — ••••"><button type="submit" class="primary">${t('Connect','Bağlan')} →</button></div></form>`:`<div class="companion-feed"><div class="toolbar"><span>${t('Last received','Son alınan')}: ${esc(companionData.generatedAt?new Date(companionData.generatedAt).toLocaleString(language):'—')}</span>${btn('Refresh','Yenile','core-refresh')}${btn('Disconnect','Bağlantıyı kes','core-disconnect')}</div>${companionData.focus?`<h2>${esc(companionData.focus)}</h2>`:''}${cards.length?cards.map(c=>`<article class="companion-contact"><small>${esc(c.sourceLabel)}</small><h2>${esc(c.title)}</h2><p>${esc(c.body)}</p></article>`).join(''):`<p>${t('No new contact to show.','Gösterilecek yeni temas yok.')}</p>`}</div>`}</section>`;
- const form=document.querySelector('#core-form');if(form)form.addEventListener('submit',e=>{e.preventDefault();const button=form.querySelector('button');button.dataset.action='core-connect';button.type='button';button.click();});
-}
 api.onVerify(async event=>{if(!challenge||event.host!==challenge.host||event.requestId!==verifyRequest)return;const message=event.message||verifyNotice;if(verifyState===event.state&&verifyNotice===message)return;verifyState=event.state;verifyNotice=message;await render();});
-setInterval(async()=>{if(view==='companion'&&!busy){try{panelState=await api.state();renderPanelView();}catch(e){error(e);}}
- if(view!=='companion'||!companionData||busy)return;try{companionData=await api.companionRefresh();companionIssue='';}catch(e){companionIssue=coreIssue(e,Boolean(companionData));}if(view==='companion')renderCompanion();},60000);
+// The panel re-derives while it is open. Nothing is polled from a remote service.
+setInterval(async()=>{if(view!=='companion'||busy)return;try{panelState=await api.state();renderPanelView();}catch(e){error(e);}},60000);
 
 // The line a user pastes to open a Claudian conversation on a skill-file host. Same text for
 // every entry point of the same provider -- the entry point changes where it is pasted, not

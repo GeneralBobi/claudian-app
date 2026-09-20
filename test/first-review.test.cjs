@@ -157,3 +157,35 @@ test('a review issued under the current protocol is untouched by the distinction
   {request_id:begun.id,value,status:'completed',summary:'Read the entry map.'},()=>({startup_context:'now'}));
  assert.equal((await review.status(dataDir,vault,'gemini')).status,'completed');
 });
+
+test('replacing a superseded request removes its instruction but never a received report',async t=>{
+  const {p,vault,dataDir}=await webFixture(t);
+  const first=await review.begin(dataDir,p,'gemini');
+  const firstRecord=JSON.parse(await fs.readFile(path.join(dataDir,'reviews','gemini.json'),'utf8'));
+  await fs.access(firstRecord.input);
+
+  // A Claudian update supersedes it, exactly as 0.19.1 did to a real Spark review.
+  await fs.writeFile(path.join(dataDir,'profile.json'),JSON.stringify({...p,protocolVersion:'3.0.0'}));
+  assert.equal((await review.status(dataDir,vault,'gemini')).status,'superseded');
+
+  // Starting the clean new scan takes the abandoned instruction with it.
+  await fs.writeFile(path.join(dataDir,'profile.json'),JSON.stringify(p));
+  const second=await review.begin(dataDir,p,'gemini');
+  assert.notEqual(second.id,first.id);
+  await assert.rejects(fs.access(firstRecord.input),{code:'ENOENT'},'the stale instruction is gone from the notes folder');
+  const secondRecord=JSON.parse(await fs.readFile(path.join(dataDir,'reviews','gemini.json'),'utf8'));
+  await fs.access(secondRecord.input);
+  assert.equal((await review.status(dataDir,vault,'gemini')).status,'waiting','and the new request is live');
+});
+
+test('a report that was received is not destroyed by starting another review',async t=>{
+  const {p,vault,dataDir}=await webFixture(t);
+  const first=await review.begin(dataDir,p,'gemini');
+  const value=/value: ([0-9a-f]{32})/.exec(first.prompt)[1];
+  await review.submit(dataDir,vault,'gemini',
+    {request_id:first.id,value,status:'completed',summary:'The report that was actually returned.'},scanned);
+  const record=JSON.parse(await fs.readFile(path.join(dataDir,'reviews','gemini.json'),'utf8'));
+  await review.begin(dataDir,p,'gemini');
+  // The response file holds the one thing the review produced. Only the instruction goes.
+  assert.match(await fs.readFile(record.output,'utf8'),/actually returned/);
+});

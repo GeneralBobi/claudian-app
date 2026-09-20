@@ -47,9 +47,53 @@ const REVIEW_ATTENTION = {
   needs_input: 'first_review_needs_input',
 };
 
+/*
+  Dates, in the three spellings this memory actually uses.
+
+  The reminders note is the one place the vault holds an obligation with a moment attached,
+  and "due" was the state the panel could not derive: it listed unchecked boxes and left the
+  reading of them to a person, or to a model, which is the thing this engine exists to stop
+  needing. Nothing is guessed — a line with no recognisable date is a reminder without a date,
+  never a reminder that happens to be due today.
+*/
+const AYLAR = ['ocak','şubat','mart','nisan','mayıs','haziran','temmuz','ağustos','eylül','ekim','kasım','aralık'];
+const MONTHS = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+const TWO = value => String(value).padStart(2, '0');
+const isoOf = (y, m, d) => {
+  const probe = new Date(Date.UTC(y, m - 1, d));
+  // 31.02 is not a date, and a memory that accepts it starts reporting obligations that
+  // cannot arrive.
+  if (probe.getUTCFullYear() !== y || probe.getUTCMonth() !== m - 1 || probe.getUTCDate() !== d) return null;
+  return y + '-' + TWO(m) + '-' + TWO(d);
+};
+function findDate(text) {
+  const value = String(text);
+  const iso = /(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (iso) return isoOf(+iso[1], +iso[2], +iso[3]);
+  const dotted = /(\d{1,2})\.(\d{1,2})\.(\d{4})/.exec(value);
+  if (dotted) return isoOf(+dotted[3], +dotted[2], +dotted[1]);
+  // The spelling `capture` writes: "20 Eylül 2026" / "20 September 2026".
+  const named = /(\d{1,2})\s+([A-Za-zÇĞİÖŞÜçğıöşü]+)\s+(\d{4})/.exec(value);
+  if (named) {
+    const lower = named[2].toLocaleLowerCase('tr');
+    const month = AYLAR.indexOf(lower) >= 0 ? AYLAR.indexOf(lower) + 1
+      : MONTHS.indexOf(named[2].toLowerCase()) >= 0 ? MONTHS.indexOf(named[2].toLowerCase()) + 1 : 0;
+    if (month) return isoOf(+named[3], month, +named[1]);
+  }
+  return null;
+}
+/** overdue · today · soon (within a week) · later. Only the first two are worth interrupting for. */
+function whenIs(iso, todayIso) {
+  if (!iso) return null;
+  if (iso < todayIso) return 'overdue';
+  if (iso === todayIso) return 'today';
+  const days = (Date.parse(iso) - Date.parse(todayIso)) / 86400000;
+  return days <= 7 ? 'soon' : 'later';
+}
+
 // Checked boxes are done; an unchecked one inside an archived section is not a task at all,
 // which is why the note is read through the lifecycle filter rather than raw.
-function openItems(body, limit = 20) {
+function openItems(body, limit = 20, todayIso = null) {
   const out = [];
   for (const line of String(body).split(/\r?\n/)) {
     const m = /^\s*[-*]\s+\[ \]\s+(.+?)\s*$/.exec(line);
@@ -58,7 +102,15 @@ function openItems(body, limit = 20) {
     // item; the paragraph after it is context the panel does not need.
     const bold = /^\*\*(.+?)\*\*/.exec(m[1]);
     const text = (bold ? bold[1] : m[1]).replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g, '$1').trim();
-    if (text) out.push(text.length > 160 ? text.slice(0, 157) + '…' : text);
+    if (!text) continue;
+    const short = text.length > 160 ? text.slice(0, 157) + '…' : text;
+    if (todayIso === null) out.push(short);
+    else {
+      // The whole entry is searched for the date, not only the thesis sentence: the date is
+      // usually the segment just after it.
+      const date = findDate(m[1]);
+      out.push({ text: short, date, due: whenIs(date, todayIso) });
+    }
     if (out.length >= limit) break;
   }
   return out;
@@ -80,8 +132,10 @@ async function activeBody(vault, note, language) {
  * The whole picture, from disk. Pure with respect to its inputs: every caller passes the
  * same objects the panel already loads, so this adds no extra work to a render.
  */
-async function derive({ profile, health, connections = [], connector = {}, reviews = {}, obsidian = {}, language = 'en' }) {
-  const now = new Date().toISOString();
+async function derive({ profile, health, connections = [], connector = {}, reviews = {}, obsidian = {},
+  selfCheck = null, language = 'en', now: injected = null }) {
+  const now = injected || new Date().toISOString();
+  const todayIso = now.slice(0, 10);
   if (!profile) return { setup: 'AI_NOT_SELECTED', connections: [], attention: [], openLoops: [], reminders: [], connector: {}, updatedAt: now };
 
   const usable = id => {
@@ -90,8 +144,16 @@ async function derive({ profile, health, connections = [], connector = {}, revie
   };
   const hostState = id => (health?.hosts || []).find(h => h.id === id) || null;
 
+  // The application already checks its own work: files, folder permission, and whether the
+  // server a host would launch actually answers. That verdict was shown on one screen and
+  // never became state, so "a connection is broken" could not be known with the window shut.
+  const checkOf = id => (selfCheck?.connections || []).find(c => c.id === id) || null;
   const list = (profile.hosts || []).map(h => {
-    const info = hostState(h.id), review = reviews[h.id] || null;
+    const info = hostState(h.id), review = reviews[h.id] || null, check = checkOf(h.id);
+    // A challenge was issued and the answer never came back. That is a verification someone
+    // started and did not finish -- distinct from one never attempted, and the only reason
+    // the panel can say which.
+    const attempted = h.challenge?.issuedAt || null;
     return {
       id: h.id,
       label: info?.label || h.label || h.id,
@@ -99,6 +161,8 @@ async function derive({ profile, health, connections = [], connector = {}, revie
       verified: info?.state === 'verified',
       verificationStale: info?.state === 'stale',
       verifiedAt: info?.verifiedAt || null,
+      verificationAttemptedAt: info?.state === 'verified' ? null : attempted,
+      failing: check?.failing?.length ? check.failing : null,
       review: review?.status || 'not_started',
       reviewReason: review?.message || (review?.status === 'superseded' ? `${review.from} → ${review.to}` : null),
     };
@@ -123,8 +187,13 @@ async function derive({ profile, health, connections = [], connector = {}, revie
   if (connector.enabled && connector.state === 'offline')
     attention.push({ kind: 'connector_offline', detail: connector.lastError || null });
   for (const c of list) {
-    if (c.connected && !c.verified && !health?.skippedAt)
-      attention.push({ kind: c.verificationStale ? 'verification_stale' : 'verification_pending', host: c.id, label: c.label });
+    // A named fault outranks "not verified yet": one is broken, the other is unfinished.
+    if (c.failing) attention.push({ kind: 'connection_broken', host: c.id, label: c.label, detail: c.failing.join(', ') });
+    else if (c.connected && !c.verified && !health?.skippedAt)
+      attention.push({
+        kind: c.verificationStale ? 'verification_stale'
+          : c.verificationAttemptedAt ? 'verification_unfinished' : 'verification_pending',
+        host: c.id, label: c.label, detail: c.verificationAttemptedAt || null });
     const why = REVIEW_ATTENTION[c.review];
     if (why) attention.push({ kind: why, host: c.id, label: c.label, detail: c.reviewReason });
   }
@@ -132,7 +201,11 @@ async function derive({ profile, health, connections = [], connector = {}, revie
 
   const roles = profile.vault ? await require('./roles.cjs').resolve(profile.vault).catch(() => ({ roles: {} })) : { roles: {} };
   const openLoops = openItems(await activeBody(profile.vault, roles.roles?.panel, language));
-  const reminders = openItems(await activeBody(profile.vault, roles.roles?.reminders, language));
+  const reminders = openItems(await activeBody(profile.vault, roles.roles?.reminders, language), 20, todayIso);
+  // The reminders note says it itself: remind without drowning, only the near ones. A date
+  // that has passed or is today is worth a line in "needs you"; next week is a list entry.
+  for (const r of reminders) if (r.due === 'overdue' || r.due === 'today')
+    attention.push({ kind: r.due === 'today' ? 'reminder_due' : 'reminder_overdue', label: r.text, detail: r.date });
 
   return {
     setup,
@@ -147,15 +220,25 @@ async function derive({ profile, health, connections = [], connector = {}, revie
     attention,
     openLoops,
     reminders,
+    today: todayIso,
     updatedAt: now,
   };
 }
+
+/** A stable identity for one item of attention, so the same worry is not reported twice. */
+const key = a => [a.kind, a.host || '', a.label || ''].join('|');
 
 /** Everything that is different, and nothing that is not. */
 function diff(before, after) {
   if (!before) return [];
   const events = [];
   const at = after.updatedAt;
+  // Attention appearing and attention going away are both news, and the second one is what
+  // makes the panel a working surface rather than a list that only grows.
+  const had = new Map((before.attention || []).map(a => [key(a), a]));
+  const has = new Map((after.attention || []).map(a => [key(a), a]));
+  for (const [k, a] of has) if (!had.has(k)) events.push({ kind: 'attention_raised', detail: a.kind, host: a.host || null, label: a.label || null, at });
+  for (const [k, a] of had) if (!has.has(k)) events.push({ kind: 'attention_cleared', detail: a.kind, host: a.host || null, label: a.label || null, at });
   if (before.setup !== after.setup) events.push({ kind: 'setup_changed', from: before.setup, to: after.setup, at });
   if (before.connector?.state !== after.connector?.state) {
     const restored = after.connector?.state === 'online';
@@ -206,4 +289,4 @@ async function recent(dataDir, limit = 20) {
   } catch (error) { if (error.code === 'ENOENT') return []; throw error; }
 }
 
-module.exports = { derive, diff, persist, recent, openItems, SETUP, REVIEW_ATTENTION };
+module.exports = { derive, diff, persist, recent, openItems, findDate, whenIs, key, SETUP, REVIEW_ATTENTION };
