@@ -30,10 +30,6 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 
-/** The order matters: the first unmet condition is the one to fix. */
-const SETUP = ['VAULT_MISSING', 'OBSIDIAN_RESTART_REQUIRED', 'OBSIDIAN_MISSING', 'AI_NOT_SELECTED',
-  'CONNECTION_FAILED', 'AI_SELECTED_NOT_CONNECTED', 'VERIFY_PENDING', 'READY'];
-
 /** Connections that reach their provider over the device relay rather than a local file. */
 const REMOTE = ['chatgpt', 'gemini', 'perplexity'];
 
@@ -93,7 +89,7 @@ function whenIs(iso, todayIso) {
 
 // Checked boxes are done; an unchecked one inside an archived section is not a task at all,
 // which is why the note is read through the lifecycle filter rather than raw.
-function openItems(body, limit = 20, todayIso = null) {
+function unchecked(body, limit) {
   const out = [];
   for (const line of String(body).split(/\r?\n/)) {
     const m = /^\s*[-*]\s+\[ \]\s+(.+?)\s*$/.exec(line);
@@ -103,18 +99,22 @@ function openItems(body, limit = 20, todayIso = null) {
     const bold = /^\*\*(.+?)\*\*/.exec(m[1]);
     const text = (bold ? bold[1] : m[1]).replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g, '$1').trim();
     if (!text) continue;
-    const short = text.length > 160 ? text.slice(0, 157) + '…' : text;
-    if (todayIso === null) out.push(short);
-    else {
-      // The whole entry is searched for the date, not only the thesis sentence: the date is
-      // usually the segment just after it.
-      const date = findDate(m[1]);
-      out.push({ text: short, date, due: whenIs(date, todayIso) });
-    }
+    out.push({ text: text.length > 160 ? text.slice(0, 157) + '\u2026' : text, whole: m[1] });
     if (out.length >= limit) break;
   }
   return out;
 }
+
+/** Open loops carry no date by design -- the panel note is where the undated work lives. */
+const openItems = (body, limit = 20) => unchecked(body, limit).map(i => i.text);
+
+/** Reminders do carry dates, so they arrive as records rather than sentences. */
+const datedItems = (body, todayIso, limit = 20) => unchecked(body, limit).map(i => {
+  // The whole entry is searched for the date, not only the thesis sentence: the date is
+  // usually the segment just after it.
+  const date = findDate(i.whole);
+  return { text: i.text, date, due: whenIs(date, todayIso) };
+});
 
 async function activeBody(vault, note, language) {
   if (!note) return '';
@@ -201,7 +201,7 @@ async function derive({ profile, health, connections = [], connector = {}, revie
 
   const roles = profile.vault ? await require('./roles.cjs').resolve(profile.vault).catch(() => ({ roles: {} })) : { roles: {} };
   const openLoops = openItems(await activeBody(profile.vault, roles.roles?.panel, language));
-  const reminders = openItems(await activeBody(profile.vault, roles.roles?.reminders, language), 20, todayIso);
+  const reminders = datedItems(await activeBody(profile.vault, roles.roles?.reminders, language), todayIso);
   // The reminders note says it itself: remind without drowning, only the near ones. A date
   // that has passed or is today is worth a line in "needs you"; next week is a list entry.
   for (const r of reminders) if (r.due === 'overdue' || r.due === 'today')
@@ -228,33 +228,38 @@ async function derive({ profile, health, connections = [], connector = {}, revie
 /** A stable identity for one item of attention, so the same worry is not reported twice. */
 const key = a => [a.kind, a.host || '', a.label || ''].join('|');
 
-/** Everything that is different, and nothing that is not. */
+/*
+  Everything that is different, and nothing that is not.
+
+  One change used to produce up to five lines, two of them saying the same thing in different
+  words: a verification completing was reported both as `verification_completed` and as the
+  clearing of `verification_pending`, and a finished setup both as `setup_changed` and as the
+  clearing of `setup_incomplete`. A history that says one event twice is read as two events.
+
+  So there is now one vocabulary for worries -- `attention_raised` and `attention_cleared`,
+  which cover every kind uniformly and are what notifications key off -- plus two events for
+  the things that are levels rather than worries:
+
+    setup_changed       the setup level, with both ends. `setup_incomplete` is therefore not
+                        diffed as attention: it IS this level, and would only repeat it.
+    connection_restored the connector coming back. Its going away is already a worry
+                        (`connector_offline`), so only the good news needs its own line.
+*/
 function diff(before, after) {
   if (!before) return [];
   const events = [];
   const at = after.updatedAt;
+  if (before.setup !== after.setup) events.push({ kind: 'setup_changed', from: before.setup, to: after.setup, at });
+  if (before.connector?.state !== 'online' && after.connector?.state === 'online')
+    events.push({ kind: 'connection_restored', to: 'online', at });
+
   // Attention appearing and attention going away are both news, and the second one is what
   // makes the panel a working surface rather than a list that only grows.
-  const had = new Map((before.attention || []).map(a => [key(a), a]));
-  const has = new Map((after.attention || []).map(a => [key(a), a]));
-  for (const [k, a] of has) if (!had.has(k)) events.push({ kind: 'attention_raised', detail: a.kind, host: a.host || null, label: a.label || null, at });
-  for (const [k, a] of had) if (!has.has(k)) events.push({ kind: 'attention_cleared', detail: a.kind, host: a.host || null, label: a.label || null, at });
-  if (before.setup !== after.setup) events.push({ kind: 'setup_changed', from: before.setup, to: after.setup, at });
-  if (before.connector?.state !== after.connector?.state) {
-    const restored = after.connector?.state === 'online';
-    events.push({ kind: restored ? 'connection_restored' : 'connection_changed', to: after.connector?.state, detail: after.connector?.lastError || null, at });
-  }
-  const was = new Map((before.connections || []).map(c => [c.id, c]));
-  for (const c of after.connections || []) {
-    const old = was.get(c.id);
-    if (!old) continue;
-    if (!old.verified && c.verified) events.push({ kind: 'verification_completed', host: c.id, at });
-    if (old.verified && !c.verified) events.push({ kind: 'verification_lost', host: c.id, at });
-    if (old.review !== c.review) {
-      if (c.review === 'completed') events.push({ kind: 'first_review_completed', host: c.id, at });
-      else if (REVIEW_ATTENTION[c.review]) events.push({ kind: 'first_review_attention', host: c.id, detail: c.review, at });
-    }
-  }
+  const worry = list => new Map((list || []).filter(a => a.kind !== 'setup_incomplete').map(a => [key(a), a]));
+  const had = worry(before.attention), has = worry(after.attention);
+  const line = (kind, a) => ({ kind, attention: a.kind, host: a.host || null, label: a.label || null, detail: a.detail ?? null, at });
+  for (const [k, a] of has) if (!had.has(k)) events.push(line('attention_raised', a));
+  for (const [k, a] of had) if (!has.has(k)) events.push(line('attention_cleared', a));
   return events;
 }
 
@@ -289,4 +294,4 @@ async function recent(dataDir, limit = 20) {
   } catch (error) { if (error.code === 'ENOENT') return []; throw error; }
 }
 
-module.exports = { derive, diff, persist, recent, openItems, findDate, whenIs, key, SETUP, REVIEW_ATTENTION };
+module.exports = { derive, diff, persist, recent, openItems, datedItems, findDate, whenIs, key, REVIEW_ATTENTION };

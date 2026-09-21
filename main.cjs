@@ -115,10 +115,26 @@ async function start() {
     // it -- silently, while every connector kept its saved app and its grant.
     if (runtime) runtime.onClose(event);
   });
+  /*
+    Calls that change the installation also change what needs the user, so the derivation
+    follows them immediately rather than waiting for the next tick. Without this the tray and
+    its notifications trailed by up to a minute -- still reporting a problem the person had
+    just finished fixing, which is the one thing a status surface must never do.
+
+    Reads are deliberately absent: `app:state` derives on demand anyway, and re-deriving after
+    every list or health call would be work with no change behind it.
+  */
+  const MUTATES = new Set(['setup:install','setup:review','memory:verify','memory:remove','memory:repair',
+    'memory:relocate','memory:skip-verification','memory:adopt-protocol','memory:review-start','memory:challenge',
+    'connector:start','connector:stop','connector:approve','connector:revoke']);
   function handle(name, fn) {
     ipcMain.handle(name, async (event, ...args) => {
       if (event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame || !event.senderFrame.url.startsWith(origin + '/')) throw new Error('Geçersiz uygulama isteği.');
-      try { return { ok: true, value: await fn(...args) }; }
+      try {
+        const value = await fn(...args);
+        if (MUTATES.has(name)) setTimeout(() => void refreshState().catch(() => {}), 250);
+        return { ok: true, value };
+      }
       catch (error) { return { ok: false, error: error.message }; }
     });
   }
@@ -191,7 +207,13 @@ async function start() {
     return result;
   }
   handle('app:state', async () => ({ ...(await refreshState())?.state || null, recent: await require('./state.cjs').recent(core.dataDir) }));
-  handle('app:obsidian-state', value => { obsidianState = { ...obsidianState, ...value }; return true; });
+  handle('app:obsidian-state', value => {
+    const next = { ...obsidianState, ...value };
+    const moved = next.present !== obsidianState.present || next.needsClose !== obsidianState.needsClose;
+    obsidianState = next;
+    if (moved) setTimeout(() => void refreshState().catch(() => {}), 250);
+    return true;
+  });
   handle('memory:connections', () => core.connections());
   remoteConnector = await new (require('./remote-connector.cjs').RemoteConnector)({dataDir:core.dataDir,profile:async()=>(await core.snapshot()).profile,safeStorage}).load();
   handle('connector:status',async()=>({...await remoteConnector.status(),desktopExtension:await require('./connector-package.cjs').desktopStatus(home,core.dataDir,{launcher:core.launcher,mcpScript:core.mcpScript})}));

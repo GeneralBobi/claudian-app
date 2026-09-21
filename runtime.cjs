@@ -135,6 +135,10 @@ function describe(kind, language) {
     first_review_stale: tr ? 'ilk tarama eskidi' : 'first review is stale',
     first_review_superseded: tr ? 'ilk tarama yenilenmeli' : 'first review must be run again',
     first_review_needs_input: tr ? 'yanıtın gerekiyor' : 'your answer is needed',
+    connection_broken: tr ? 'bağlantı bozuk' : 'connection is broken',
+    verification_unfinished: tr ? 'doğrulama yarım kaldı' : 'verification was left unfinished',
+    reminder_due: tr ? 'bugün' : 'due today',
+    reminder_overdue: tr ? 'tarihi geçti' : 'past due',
   }[kind] || kind;
 }
 

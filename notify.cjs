@@ -73,7 +73,7 @@ async function save(dataDir, value) {
  */
 async function decide(dataDir, events, { language = 'en', now = Date.now(), enabled = true } = {}) {
   if (!enabled) return [];
-  const raised = (events || []).filter(e => e.kind === 'attention_raised' && ALLOWED[e.detail]);
+  const raised = (events || []).filter(e => e.kind === 'attention_raised' && ALLOWED[e.attention]);
   if (!raised.length) return [];
 
   const book = await ledger(dataDir);
@@ -83,14 +83,14 @@ async function decide(dataDir, events, { language = 'en', now = Date.now(), enab
   const out = [];
   for (const event of raised) {
     if (book.count >= DAILY_BUDGET) break;
-    const id = [event.detail, event.host || '', event.label || ''].join('|');
+    const id = [event.attention, event.host || '', event.label || ''].join('|');
     const last = book.sent[id];
     if (last && now - Date.parse(last) < COOLDOWN_MS) continue;
-    const body = text(event.detail, event.label, language);
+    const body = text(event.attention, event.label, language);
     if (!body) continue;
     book.sent[id] = new Date(now).toISOString();
     book.count += 1;
-    out.push({ kind: event.detail, host: event.host || null, label: event.label || null, body, urgency: ALLOWED[event.detail].urgency || 'normal' });
+    out.push({ kind: event.attention, host: event.host || null, label: event.label || null, body, urgency: ALLOWED[event.attention].urgency || 'normal' });
   }
 
   // Keep the ledger from growing forever: a record older than a week can no longer suppress
@@ -98,6 +98,9 @@ async function decide(dataDir, events, { language = 'en', now = Date.now(), enab
   const cutoff = now - 7 * COOLDOWN_MS;
   for (const [id, at] of Object.entries(book.sent)) if (Date.parse(at) < cutoff) delete book.sent[id];
 
+  // Only a decision to notify is worth a write. A day that rolled over without anything being
+  // raised did not spend any budget, and the roll-over above happens again the next time one
+  // is -- so the window is always right at the moment it is used.
   if (out.length) await save(dataDir, book);
   return out;
 }

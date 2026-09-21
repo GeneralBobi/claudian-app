@@ -384,6 +384,10 @@ async function renderPanel(){const p=state.profile;
  if(view==='settings'){content.innerHTML=`<h1>${t('Settings','Ayarlar')}</h1><p>${t('The application and newly installed memory files use the setup language. Updates and protocol maintenance are collected here.','Uygulama ve yeni kurulan hafıza dosyaları kurulum dilini kullanır. Güncelleme ve protokol bakımı burada toplanır.')}</p>`;return;}
  const hosts=mergedConnections(await api.connections());connectionList=hosts;healthData=await api.health();if(api.reviewStatus)for(const h of hosts)reviewResults[h.id]=await api.reviewStatus(h.id).catch(e=>({status:'invalid',message:e.message}));if(view==='connections')remoteStatus=await api.connectorStatus();
  if(obsidianPresent===null)obsidianPresent=await api.obsidianInstalled().catch(()=>null);
+ // Only the renderer learns this, and the derived state needs it: without it Claudian could
+ // never report a missing note application or one that has to be restarted, because those two
+ // states existed in state.cjs with nothing to set them.
+ api.reportObsidian({present:obsidianPresent,needsClose:obsidianNeedsClose}).catch(()=>{});
  if(updateInfo===null)updateInfo=await api.updates().catch(()=>({available:false}));
  // The proof round trip should not be a copy-paste chore when we can open the CLI ourselves.
  try{const preview=await api.scanPreview(language);cliReady=Object.fromEntries(preview.hosts.map(h=>[h.id,h.available]));}catch{cliReady={};}
@@ -445,7 +449,10 @@ async function renderContent(){header();if(reviewing){renderReview();return;}
  // The panel reads the application's own derivation, not the renderer's live guesses, so it
  // is the same answer the tray shows and the same answer that was true while the window was
  // closed. Loaded on entry rather than on every render of every other screen.
- if(view==='companion'&&!panelState){try{panelState=await api.state();}catch(e){error(e);}}const result=await (setup||extending?renderSetup():renderPanel());if(state.profile&&view==='settings'&&!extending&&!setup){content.insertAdjacentHTML('beforeend',`<section class="updates"><p>Claudian ${esc(state.appVersion)} · Protocol ${esc(state.profile.protocolVersion)}</p>${state.protocolConflicts?.length?`<div class="health-row health-warn"><div><span>${t('Protocol','Protokol')}</span><p>${t('Your memory protocol is older than this version and was left untouched because it differs from what Claudian installed.','Hafıza protokolün bu sürümden eski ve Claudian kurulumundan farklı olduğu için değiştirilmedi.')}</p><p class="path">${state.protocolConflicts.map(f=>esc(f.split(/[\\/]/).pop())).join(' · ')}</p></div>${btn('Install the current protocol','Güncel protokolü kur','adopt-protocol',true)}</div>`:''}${state.connectionConflicts?.length?`<div class="health-row health-warn"><div><span>${t('Connection files','Bağlantı dosyaları')}</span><p>${t('These files carry changes Claudian did not write, so they were left alone. Repair the connection to reinstall them.','Bu dosyalarda Claudian’ın yazmadığı değişiklikler var, bu yüzden dokunulmadı. Yeniden kurmak için bağlantıyı onar.')}</p><p class="path">${state.connectionConflicts.map(f=>esc(f.split(/[\/]/).pop())).join(' · ')}</p></div>${btn('Go to connections','Bağlantılara git','goto-connections')}</div>`:''}${btn('Check for updates','Güncellemeleri kontrol et','updates')}<span id="update-status" role="status"></span></section>`);}return result;}
+ // Re-read on every entry, not only the first. The panel's whole claim is that a solved
+ // problem is not there any more; keeping the first answer until a timer fired meant coming
+ // back from fixing something and still being told about it.
+ if(view==='companion'){try{panelState=await api.state();}catch(e){error(e);}}const result=await (setup||extending?renderSetup():renderPanel());if(state.profile&&view==='settings'&&!extending&&!setup){content.insertAdjacentHTML('beforeend',`<section class="updates"><p>Claudian ${esc(state.appVersion)} · Protocol ${esc(state.profile.protocolVersion)}</p>${state.protocolConflicts?.length?`<div class="health-row health-warn"><div><span>${t('Protocol','Protokol')}</span><p>${t('Your memory protocol is older than this version and was left untouched because it differs from what Claudian installed.','Hafıza protokolün bu sürümden eski ve Claudian kurulumundan farklı olduğu için değiştirilmedi.')}</p><p class="path">${state.protocolConflicts.map(f=>esc(f.split(/[\\/]/).pop())).join(' · ')}</p></div>${btn('Install the current protocol','Güncel protokolü kur','adopt-protocol',true)}</div>`:''}${state.connectionConflicts?.length?`<div class="health-row health-warn"><div><span>${t('Connection files','Bağlantı dosyaları')}</span><p>${t('These files carry changes Claudian did not write, so they were left alone. Repair the connection to reinstall them.','Bu dosyalarda Claudian’ın yazmadığı değişiklikler var, bu yüzden dokunulmadı. Yeniden kurmak için bağlantıyı onar.')}</p><p class="path">${state.connectionConflicts.map(f=>esc(f.split(/[\/]/).pop())).join(' · ')}</p></div>${btn('Go to connections','Bağlantılara git','goto-connections')}</div>`:''}${btn('Check for updates','Güncellemeleri kontrol et','updates')}<span id="update-status" role="status"></span></section>`);}return result;}
 // companion-bridge.cjs throws one of three exact codes. Collapsing them into a single
 // sentence made an offline Core look like a wrong access code, so the reader concluded
 // their data was gone. Each case is named, and the unreachable case says the code was
@@ -533,6 +540,7 @@ document.addEventListener('click',async e=>{const nav=e.target.closest('[data-vi
  if(a==='obsidian'){const result=await api.obsidian();
   // Only the application's own answer sets these. Claudian never guesses that a restart is needed.
   obsidianNeedsClose=!!result?.needsClose;
+  api.reportObsidian({present:obsidianPresent,needsClose:obsidianNeedsClose}).catch(()=>{});
   if(result?.notInstalled){obsidianPresent=false;notice='';await render();}
   if(result?.needsClose){notice='';await render();}
   if(result&&!result.notInstalled&&!result.needsClose)obsidianNeedsClose=false;}
@@ -629,7 +637,7 @@ function setupReason(code){
   VERIFY_PENDING:t('Files are installed, but no AI has proven it can read them','Dosyalar kurulu, ancak hiçbir AI okuyabildiğini kanıtlamadı'),
  }[code]||t('Setup is not finished','Kurulum tamamlanmadı');
 }
-function panelLine(a){
+function panelLabel(a){
  const label={
   setup_incomplete:setupReason(a.detail),
   connector_offline:t('This device is not reachable by your AI accounts','Bu cihaza AI hesaplarından ulaşılamıyor'),
@@ -646,11 +654,24 @@ function panelLine(a){
   verification_unfinished:t('A verification was started and never finished','Bir doğrulama başlatıldı ama tamamlanmadı'),
   reminder_due:t('Due today','Bugün'),
   reminder_overdue:t('Past due','Tarihi geçti'),
- }[a.kind]||a.kind;
+ }[a.kind];
+ return label||String(a.kind||'');
+}
+function panelLine(a){
+ const label=panelLabel(a);
  const reminder=a.kind==='reminder_due'||a.kind==='reminder_overdue';
  const heading=reminder?esc(a.label||''):`${a.label?esc(a.label)+' · ':''}${esc(label)}`;
  const detail=reminder?esc(label)+(a.detail?' · '+esc(String(a.detail)):''):(a.detail&&a.kind!=='setup_incomplete'?esc(String(a.detail)):'');
  return `<div class="panel-item" data-kind="${esc(a.kind)}"><div><strong>${heading}</strong>${detail?`<p>${detail}</p>`:''}</div>${panelAction(a)}</div>`;
+}
+// The history is read by the same person as the rest of the panel, so it says what happened
+// rather than which identifier the code used.
+function eventLine(e){
+ if(e.kind==='setup_changed')return t('Setup: ','Kurulum: ')+setupReason(e.to);
+ if(e.kind==='connection_restored')return t('This device is reachable again','Bu cihaza yeniden ulaşılabiliyor');
+ const what=panelLabel({kind:e.attention,label:e.label,detail:e.detail});
+ const who=e.label&&!String(e.attention||'').startsWith('reminder')?esc(e.label)+' · ':'';
+ return (e.kind==='attention_cleared'?t('Resolved — ','Çözüldü — '):t('Needs you — ','Bekliyor — '))+who+what;
 }
 function renderPanelView(){
  const s=panelState;
@@ -670,7 +691,7 @@ function renderPanelView(){
   +`</section>`
   +((s.openLoops||[]).length?`<section class="panel-section"><h2>${t('Open loops','Açık döngüler')}</h2><p class="hint">${t('Unchecked items in your own panel note. Archived sections are not read.','Kendi panel notundaki işaretsiz maddeler. Arşivlenmiş bölümler okunmaz.')}</p><ul class="panel-list">${s.openLoops.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></section>`:'')
   +((s.reminders||[]).length?`<section class="panel-section"><h2>${t('Reminders','Hatırlatıcılar')}</h2><p class="hint">${t('Dated items from your own reminders note. Only today and past due are listed above as needing you.','Kendi hatırlatıcı notundaki tarihli maddeler. Yukarıda seni bekleyen olarak yalnız bugün ve geçmiş tarihliler görünür.')}</p><ul class="panel-list">${s.reminders.map(x=>`<li data-due="${esc(x.due||'none')}">${esc(x.text)}${x.date?` <time>${esc(x.date)}</time>`:''}</li>`).join('')}</ul></section>`:'')
-  +((s.recent||[]).length?`<details class="panel-section"><summary>${t('What changed recently','Son değişenler')}</summary><ul class="panel-list">${s.recent.slice(0,10).map(e=>`<li><time>${esc(new Date(e.at).toLocaleString(language==='tr'?'tr-TR':'en-GB'))}</time> ${esc(e.kind)}${e.host?' · '+esc(e.host):''}${e.to?' → '+esc(e.to):''}</li>`).join('')}</ul></details>`:'');
+  +((s.recent||[]).length?`<details class="panel-section"><summary>${t('What changed recently','Son değişenler')}</summary><ul class="panel-list">${s.recent.slice(0,10).map(e=>`<li><time>${esc(new Date(e.at).toLocaleString(language==='tr'?'tr-TR':'en-GB'))}</time> ${esc(eventLine(e))}</li>`).join('')}</ul></details>`:'');
 }
 api.onVerify(async event=>{if(!challenge||event.host!==challenge.host||event.requestId!==verifyRequest)return;const message=event.message||verifyNotice;if(verifyState===event.state&&verifyNotice===message)return;verifyState=event.state;verifyNotice=message;await render();});
 // The panel re-derives while it is open. Nothing is polled from a remote service.

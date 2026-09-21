@@ -18,7 +18,10 @@ module.exports = (Setup, {HOSTS, hash, assertOrdinaryPath, json, atomicJson, exi
   // not decide to. Stored beside the language because they are the same kind of fact -- how
   // this person wants the application to behave on this machine, not part of their memory.
   Setup.prototype.runtimePreference = async function(name, value) {
-    if (!['autoStart','background','notifications'].includes(name)) throw new Error('Unknown preference.');
+    // `background` was accepted here and read nowhere: the tray decides whether Claudian keeps
+    // running, and there was never a second switch behind it. A stored value nothing consults
+    // is a promise the product does not keep.
+    if (!['autoStart','notifications'].includes(name)) throw new Error('Unknown preference.');
     const file = path.join(this.dataDir, 'preferences.json');
     if (value !== undefined) await atomicJson(file, {...await json(file, {}), [name]: value === true});
     const stored = (await json(file, {}))[name];

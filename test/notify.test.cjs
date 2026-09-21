@@ -10,7 +10,7 @@ async function dir(t){
   t.after(()=>fs.rm(root,{recursive:true,force:true}));
   return root;
 }
-const raised=(detail,over={})=>({kind:'attention_raised',detail,host:null,label:null,at:'2026-09-21T09:00:00.000Z',...over});
+const raised=(attention,over={})=>({kind:'attention_raised',attention,host:null,label:null,at:'2026-09-21T09:00:00.000Z',...over});
 const DAY=24*60*60*1000;
 const T0=Date.parse('2026-09-21T09:00:00.000Z');
 
@@ -53,7 +53,7 @@ test('a daily ceiling holds even when everything breaks at once',async t=>{
 test('resolution is silent',async t=>{
   const d=await dir(t);
   await notify.decide(d,[raised('connector_offline')],{now:T0});
-  const cleared=await notify.decide(d,[{kind:'attention_cleared',detail:'connector_offline',at:'x'}],{now:T0+DAY+1000});
+  const cleared=await notify.decide(d,[{kind:'attention_cleared',attention:'connector_offline',at:'x'}],{now:T0+DAY+1000});
   assert.deepEqual(cleared,[],'good news does not interrupt');
 });
 

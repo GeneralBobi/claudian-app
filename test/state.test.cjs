@@ -106,7 +106,7 @@ claudian_role: panel
   assert.deepEqual(s.openLoops,['Bir açık iş']);
 });
 
-test('only changes are recorded, and a repeated level is not news',async t=>{
+test('one change is one line, and a repeated level is not news',async t=>{
   const dir=await vault(t);
   const first=await state.persist(dir,await state.derive(ready({
     health:{hosts:[{id:'codex',label:'Codex',state:'unverified'}],verifiedCount:0},reviews:{}})));
@@ -116,24 +116,33 @@ test('only changes are recorded, and a repeated level is not news',async t=>{
     health:{hosts:[{id:'codex',label:'Codex',state:'unverified'}],verifiedCount:0},reviews:{}})));
   assert.deepEqual(same.events,[],'the same picture twice is not an event');
 
+  // This used to produce five lines, two pairs of which said the same thing in different
+  // words -- a verification completing was both `verification_completed` and the clearing of
+  // `verification_pending`. A history that says one event twice is read as two events.
   const verified=await state.persist(dir,await state.derive(ready()));
-  const kinds=verified.events.map(e=>e.kind);
-  assert.ok(kinds.includes('verification_completed'));
-  assert.ok(kinds.includes('setup_changed'));
-  assert.ok(kinds.includes('first_review_completed'));
+  assert.deepEqual(verified.events.map(e=>e.kind+':'+(e.attention||e.to)+(e.host?'@'+e.host:'')),
+    ['setup_changed:READY',
+     'attention_cleared:verification_pending@codex',
+     'attention_cleared:verification_pending@gemini'],
+    'the setup level once, and one line per connection whose worry left');
 
   const recent=await state.recent(dir);
-  assert.ok(recent.length>=3);
+  assert.equal(recent.length,3);
   assert.ok(recent.every(e=>e.at),'every transition carries when it happened');
 });
 
-test('a connection that drops and comes back is two transitions, in order',async t=>{
+test('a connection that drops and comes back is two transitions, and the reason survives',async t=>{
   const dir=await vault(t);
   await state.persist(dir,await state.derive(ready()));
   const down=await state.persist(dir,await state.derive(ready({connector:{state:'offline',enabled:true,lastError:'relay timeout'}})));
-  assert.equal(down.events.find(e=>e.kind==='connection_changed')?.detail,'relay timeout');
+  const dropped=down.events.find(e=>e.attention==='connector_offline');
+  assert.equal(dropped.kind,'attention_raised');
+  // `detail` belongs to the worry, not to its name: losing the relay's own words would leave
+  // the history saying only that something went wrong.
+  assert.equal(dropped.detail,'relay timeout');
   const up=await state.persist(dir,await state.derive(ready()));
-  assert.ok(up.events.some(e=>e.kind==='connection_restored'));
+  assert.ok(up.events.some(e=>e.kind==='connection_restored'),'the good news has its own line');
+  assert.ok(up.events.some(e=>e.kind==='attention_cleared'&&e.attention==='connector_offline'));
 });
 
 test('no profile is a state, not a crash',async()=>{
@@ -225,9 +234,12 @@ test('a resolved state leaves the panel, and its leaving is recorded',async t=>{
   const after=await state.persist(dir,await state.derive(ready()));
   // The list is rebuilt from the world, so nothing has to be "dismissed" for it to go.
   assert.equal(after.state.attention.length,0,'a solved problem is simply not there any more');
-  const cleared=after.events.filter(e=>e.kind==='attention_cleared').map(e=>e.detail);
+  const cleared=after.events.filter(e=>e.kind==='attention_cleared').map(e=>e.attention);
   assert.ok(cleared.includes('verification_pending'));
-  assert.ok(cleared.includes('setup_incomplete'));
+  // The setup level is reported by `setup_changed`, which carries both ends, so it is not
+  // also diffed as a worry.
+  assert.ok(!cleared.includes('setup_incomplete'));
+  assert.equal(after.events.find(e=>e.kind==='setup_changed')?.to,'READY');
 });
 
 test('attention appearing is recorded once, not on every derivation',async t=>{
@@ -238,4 +250,53 @@ test('attention appearing is recorded once, not on every derivation',async t=>{
   await state.persist(dir,await broken());
   const second=await state.persist(dir,await broken());
   assert.deepEqual(second.events,[],'the same fault, still there, is not news again');
+});
+
+// --- 0.21.1: gaps that were claims without wires --------------------------------------------
+
+test('the note application states are derivable, not decorative',async()=>{
+  // These two lived in the engine with nothing able to set them: only the renderer learns
+  // whether Obsidian is installed or running, and it never told the main process. A state the
+  // panel can name and never reach is worse than one it does not offer.
+  const obsidian=over=>state.derive(ready({profile:profile({storage:'obsidian'}),...over}));
+  assert.equal((await obsidian({obsidian:{present:false}})).setup,'OBSIDIAN_MISSING');
+  assert.equal((await obsidian({obsidian:{present:true,needsClose:true}})).setup,'OBSIDIAN_RESTART_REQUIRED');
+  assert.equal((await obsidian({obsidian:{present:true,needsClose:false}})).setup,'READY');
+  // Unknown is not absent: before the probe answers, nothing is claimed.
+  assert.equal((await obsidian({obsidian:{}})).setup,'READY');
+  // And a vault kept as plain Markdown is never asked about a note application.
+  assert.equal((await state.derive(ready({obsidian:{present:false}}))).setup,'READY');
+});
+
+test('a missing folder still outranks the note application',async()=>{
+  const s=await state.derive(ready({profile:profile({storage:'obsidian'}),
+    obsidian:{present:false},health:{hosts:[],verifiedCount:0,vaultMissing:true}}));
+  assert.equal(s.setup,'VAULT_MISSING','the first unmet condition is the one to fix');
+});
+
+test('every worry the engine can raise has words in both surfaces',async()=>{
+  // The tray printed `connection_broken` while the panel said "This connection is broken".
+  // One vocabulary, two renderers, and nothing that only the code can read.
+  const tray=require('../runtime.cjs').describe;
+  const renderer=require('node:fs').readFileSync(path.join(__dirname,'..','ui','renderer.js'),'utf8');
+  const panel=renderer.slice(renderer.indexOf('function panelLabel('),renderer.indexOf('function panelLine('));
+  const kinds=[...new Set([...Object.values(state.REVIEW_ATTENTION),
+    'setup_incomplete','connector_offline','verification_pending','verification_stale',
+    'verification_unfinished','connection_broken','authorization_waiting','reminder_due','reminder_overdue'])];
+  for(const kind of kinds){
+    assert.notEqual(tray(kind,'en'),kind,`the tray has no phrase for ${kind}`);
+    assert.notEqual(tray(kind,'tr'),kind,`the tray has no Turkish phrase for ${kind}`);
+    assert.ok(panel.includes(kind+':'),`the panel has no sentence for ${kind}`);
+  }
+});
+
+test('open loops and reminders have one shape each, and it is the right one',async t=>{
+  // One function returning strings or records depending on an argument is a shape nobody can
+  // rely on. Open loops are undated by design; reminders are not.
+  const root=await vault(t,{
+    'Kontrol Paneli.md':'---\nclaudian_role: panel\n---\n\n- [ ] **Açık iş**\n',
+    'Hatırlatıcılar.md':'---\nclaudian_role: reminders\n---\n\n- [ ] **Vadeli** · 2026-09-21\n'});
+  const s=await state.derive(ready({profile:profile({vault:root}),now:'2026-09-21T09:00:00.000Z'}));
+  assert.deepEqual(s.openLoops,['Açık iş'],'sentences');
+  assert.deepEqual(s.reminders,[{text:'Vadeli',date:'2026-09-21',due:'today'}],'records');
 });
