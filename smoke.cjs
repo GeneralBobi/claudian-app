@@ -8,6 +8,13 @@ exports.run=async({win,core,app,home})=>{const output=process.env.CLAUDIAN_SMOKE
  // every other complaint. Setting that aside is what lets the pending-verification
  // banner be the thing under test here.
  await click('[data-action=enter-verify]');await wait('!!document.querySelector(".connection-grid")');
+ await click('[data-action=connection-open][data-host=chatgpt]');
+ await wait('!!document.querySelector("#tunnel-key")');
+ assert.equal(await js('document.querySelector("#tunnel-key").type'),'password');
+ assert.equal(await js('document.querySelector("[data-action=tunnel-start]").disabled'),true);
+ assert.ok(await js('!document.querySelector("dialog").textContent.includes("boranbirtanir.workers.dev")'));
+ await fs.writeFile(path.join(output,'secure-tunnel.png'),(await win.webContents.capturePage()).toPNG());
+ await click('[data-action=connection-close]');
  await js('obsidianPresent=true;obsidianNeedsClose=false;render()');
  // 4. The pending banner and its action. This is the control that did nothing in 0.19.1: it
  //    said "Verify access", it lived on the connections screen, and its action was "go to the
@@ -138,5 +145,36 @@ await click('[data-action=connection-close]');await wait('!document.querySelecto
  await fs.writeFile(path.join(output,'review-removing.png'),(await win.webContents.capturePage()).toPNG());
  await js('reviewing=false;selectedHosts=state.profile.hosts.map(h=>h.id);void render()');
  await wait('!!document.querySelector("[data-view=connections]")');
+ // Real renderer, illustrative fixture: narrow and maximized layouts must retain content.
+ await click('[data-view=companion]');
+ await js('renderQueue');
+ await wait('!!document.querySelector(".panel-layout")');
+ const loopFixture=['Dönem projesinin sunumunu tamamla','Yeni bağlantı akışını gözden geçir',
+   'Başvuru dosyasındaki belgeleri kontrol et',
+   'Çalışma planında hangi adımların tamamlandığını ve hangilerinin beklediğini gözden geçir; eksik kalan noktaları ilgili notlarla birlikte değerlendir ve bir sonraki toplantıda konuşulacak konuları belirle.',
+   'Araştırma notlarını düzenle','Haftalık çalışma saatlerini ayır','Tasarım geri bildirimlerini topla'];
+ await js(`language='tr';header();panelState={updatedAt:new Date().toISOString(),openLoops:${JSON.stringify(loopFixture)},attention:[],reminders:[{text:'Proje taslağını gönder',date:'2026-09-25',due:'future'}],connections:[{id:'codex',label:'Codex',connected:true,verified:true,review:'completed'},{id:'chatgpt',label:'ChatGPT',connected:true,verified:false,review:'none'},{id:'gemini',label:'Spark',connected:false,verified:false,review:'none'}],recent:[]};renderPanelView();window.scrollTo(0,0)`);
+ const originalBounds=win.getBounds();
+ for(const [name,width,height] of [['panel-window',940,760],['panel-wide',1600,1000]]){
+   win.setSize(width,height);
+   await new Promise(r=>setTimeout(r,250));
+   assert.ok(await js('document.documentElement.scrollWidth<=innerWidth'),'no horizontal scrolling at '+width);
+   const columns=await js('getComputedStyle(document.querySelector(".panel-layout")).gridTemplateColumns.split(" ").length');
+   assert.equal(columns,width>=1120?2:1,'panel adapts to available width');
+   assert.equal(await js('document.querySelectorAll(".open-loops>.loop-list>.loop-row").length'),5,'first five open loops stay scannable');
+   assert.equal(await js('document.querySelectorAll(".open-loops input[type=checkbox]").length'),0,'no pretend completion controls');
+   await fs.writeFile(path.join(output,name+'.png'),(await win.webContents.capturePage()).toPNG());
+ }
+ await click('.more-loops>summary');
+ assert.ok(await js('document.querySelector(".more-loops").open'),'remaining items open');
+ await click('.loop-row details>summary');
+ assert.equal(await js('document.querySelector(".loop-row details[open] p").textContent'),loopFixture[3],'full long text is available');
+ await js('renderPanelView()');
+ assert.ok(await js('document.querySelector(".more-loops").open&&!!document.querySelector(".loop-row details[open]")'),'refresh preserves expanded content');
+ await js('panelState.openLoops=["<img src=x onerror=alert(1)>"];renderPanelView()');
+ assert.equal(await js('document.querySelectorAll(".loop-list img").length'),0,'note text cannot inject HTML');
+ await js('panelState.openLoops=[];renderPanelView()');
+ assert.ok(await js('document.querySelector(".open-loops").textContent.includes("Açık işin yok.")'),'empty state is explicit');
+ win.setBounds(originalBounds);
 console.log('SMOKE PASS '+output);app.exit(0);
  }catch(e){console.error(e);try{console.error('RENDERER ERROR: '+await win.webContents.executeJavaScript('(document.querySelector("#error")||{}).textContent||"(bos)"'));console.error('VIEW: '+await win.webContents.executeJavaScript('(document.querySelector("nav .active")||{}).dataset?.view||"(yok)"'));console.error('ACTIONS: '+await win.webContents.executeJavaScript('[...document.querySelectorAll("[data-action]")].map(n=>n.dataset.action).join(",")'));}catch{}await fs.writeFile(path.join(output,'failure.png'),(await win.webContents.capturePage()).toPNG());app.exit(1);}};

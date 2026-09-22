@@ -1,4 +1,4 @@
-# Connection coverage — 0.21.1
+# Connection coverage — 0.21.2
 
 Installation and actual conversation behavior are separate checks. Connections offers a file-access challenge; it is not a complete long-conversation acceptance test.
 
@@ -11,7 +11,7 @@ Installation and actual conversation behavior are separate checks. Connections o
 | Perplexity | Hosted device relay, guided account OAuth | **Untested.** Never exercised with a real account; setup support is not evidence of a working connection |
 | Gemini CLI (legacy) | Preserved existing files; no new connections | Earlier local file receipts are not Gemini web acceptance |
 | Antigravity | One connection, two entry points (IDE and terminal); skill and shared context file | Configuration tests; real conversation acceptance pending |
-| ChatGPT | Hosted device relay, guided account OAuth | Live HTTPS OAuth/read/write/revoke passed with synthetic client; real account acceptance pending |
+| ChatGPT | Personal OpenAI Secure MCP Tunnel | Local process, readiness and renderer tests passed. Real ChatGPT account acceptance remains pending; running a tunnel is not proof of access. |
 
 Claude Code and Codex acceptance explicitly supplied generated settings and instructions in isolated synthetic vaults. Codex hook trust was explicitly enabled for that controlled fixture. Neither result proves that a freshly installed native host automatically activates the connection.
 

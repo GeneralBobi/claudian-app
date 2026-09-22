@@ -23,7 +23,7 @@ if(acceptanceRoot && (!path.isAbsolute(acceptanceRoot)||!require('node:fs').exis
 if (smoke) app.setPath('userData', require('node:fs').mkdtempSync(path.join(os.tmpdir(), 'claudian-smoke-profile-')));
 if (smoke) app.disableHardwareAcceleration();
 const origin = 'claudian://app';
-let win, core, remoteConnector, runtime=null, migrationError='', setupReview=false, installStamp='';
+let win, core, remoteConnector, secureTunnel, tunnelQuitting=false, runtime=null, migrationError='', setupReview=false, installStamp='';
 // app:enter reloads the window, which destroys every bit of renderer state -- including the
 // view the person just asked for. "Set up AI connections" therefore landed them on Memory,
 // the one screen that makes an unfinished setup look finished. The requested view is handed
@@ -182,6 +182,7 @@ async function start() {
       health: await core.health().catch(() => null),
       connections: await core.connections().catch(() => []),
       connector: remoteConnector?.status() || {},
+      tunnel: secureTunnel ? await secureTunnel.inspect() : {},
       // The application's own check of its work: files, folder permission, and whether the
       // server a host would launch actually answers.
       selfCheck: await core.selfCheck().catch(() => null),
@@ -216,6 +217,18 @@ async function start() {
   });
   handle('memory:connections', () => core.connections());
   remoteConnector = await new (require('./remote-connector.cjs').RemoteConnector)({dataDir:core.dataDir,profile:async()=>(await core.snapshot()).profile,safeStorage}).load();
+  secureTunnel = await new (require('./secure-tunnel.cjs').SecureTunnel)({dataDir:core.dataDir,safeStorage,profile:async()=>(await core.snapshot()).profile}).load();
+  handle('tunnel:status',()=>secureTunnel.inspect());
+  handle('tunnel:save',input=>secureTunnel.save(input));
+  handle('tunnel:start',()=>secureTunnel.start());
+  handle('tunnel:stop',()=>secureTunnel.stop());
+  handle('tunnel:forget',()=>secureTunnel.forget());
+  handle('tunnel:choose',async()=>{
+    const result=await dialog.showOpenDialog(win,{title:'OpenAI tunnel-client.exe',properties:['openFile'],filters:[{name:'OpenAI tunnel client',extensions:['exe']}]});
+    return result.canceled?null:result.filePaths[0];
+  });
+  handle('tunnel:guide',()=>shell.openExternal('https://developers.openai.com/api/docs/guides/secure-mcp-tunnels'));
+  if(!smoke&&secureTunnel.status().autoStart)await secureTunnel.start().catch(()=>{});
   handle('connector:status',async()=>({...await remoteConnector.status(),desktopExtension:await require('./connector-package.cjs').desktopStatus(home,core.dataDir,{launcher:core.launcher,mcpScript:core.mcpScript})}));
   handle('connector:desktop-install',async()=>{
     const profile=(await core.snapshot()).profile;
@@ -248,6 +261,7 @@ async function start() {
     await shell.openExternal(require('./web-providers.cjs').providers.gemini.manual);return {prompt};
   });
   const prepareProvider=async provider=>{
+    if(provider==='chatgpt')throw Error('Use the personal Secure MCP Tunnel in ChatGPT connection settings.');
     if(!['chatgpt','claude-desktop','gemini','perplexity'].includes(provider))throw Error('Unknown provider');
     let status=remoteConnector.status();
     if(!status.enabled)status=await remoteConnector.start();
@@ -535,7 +549,9 @@ async function start() {
     try {
       runtime = require('./runtime.cjs').attach({
         app, Tray, Menu, nativeImage, win,
-        status: () => remoteConnector?.status() || {},
+        status: () => secureTunnel?.status().running
+          ? {state: secureTunnel.status().phase === 'ready' ? 'online' : 'connecting'}
+          : remoteConnector?.status() || {},
         state: () => lastState,
         notifications: () => notificationsEnabled,
         setNotifications: async value => {
@@ -570,9 +586,11 @@ app.on('window-all-closed', () => { if (!runtime || smoke) app.quit(); });
 // The poll loop holds the device connection. Stopping it before exit is the difference
 // between a clean disconnect and a relay that keeps a dead device registered.
 app.on('before-quit', async event => {
-  if (!remoteConnector || remoteConnector.stopping) return;
+  if (tunnelQuitting) return;
   event.preventDefault();
-  remoteConnector.stopping = true;
-  try { await remoteConnector.stop({ persist: false }); } catch { /* exit anyway */ }
+  tunnelQuitting = true;
+  try { await secureTunnel?.stop(); } catch { /* exit anyway */ }
+  if(remoteConnector)remoteConnector.stopping = true;
+  try { await remoteConnector?.stop({ persist: false }); } catch { /* exit anyway */ }
   app.quit();
 });

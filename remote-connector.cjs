@@ -2,7 +2,6 @@
 const fs=require('node:fs/promises'),path=require('node:path');
 const {random,hash}=require('./remote-auth.cjs');
 const {RemoteHttp}=require('./remote-http.cjs');
-const DEFAULT_RELAY='https://claudian-device-relay.boranbirtanir.workers.dev';
 class RemoteConnector {
   constructor({dataDir,profile,safeStorage,fetch:request=fetch,allowLoopback=false}) {
     Object.assign(this,{dataDir,profile,safeStorage,request,allowLoopback});
@@ -23,7 +22,7 @@ class RemoteConnector {
     if(url.username||url.password||url.search||url.hash||!(url.protocol==='https:'||(this.allowLoopback&&url.protocol==='http:'&&url.hostname==='127.0.0.1')))throw Error('A trusted HTTPS relay URL is required.');
     return url.href.replace(/\/$/,'');
   }
-  async start(value=DEFAULT_RELAY) {
+  async start(value=this.state.relay) {
     if(this.controller)throw Error('Disconnect the current relay before changing it.');
     const relay=this.relayUrl(value),profile=await this.profile();
     if(!profile?.vault)throw Error('Select your vault in Claudian first.');

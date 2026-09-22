@@ -6,6 +6,13 @@ const invoke = async (channel, ...args) => {
   return result.value;
 };
 contextBridge.exposeInMainWorld('claudian', {
+  tunnelStatus: () => invoke('tunnel:status'),
+  tunnelSave: input => invoke('tunnel:save',input),
+  tunnelStart: () => invoke('tunnel:start'),
+  tunnelStop: () => invoke('tunnel:stop'),
+  tunnelForget: () => invoke('tunnel:forget'),
+  tunnelChoose: () => invoke('tunnel:choose'),
+  tunnelGuide: () => invoke('tunnel:guide'),
   geminiLogin: () => invoke('memory:gemini-login'),
   geminiGuide:()=>invoke('connector:gemini-guide'),
   connectorSetupHelp: provider => invoke('connector:setup-help',provider),

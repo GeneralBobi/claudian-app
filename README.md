@@ -2,9 +2,9 @@
 
 A Windows application for a local, user-owned Markdown memory shared by AI tools.
 
-**Preview 0.21.1 — protocol 2.9.0.** Claudian keeps running with its window closed, and the panel derives your state from this computer — including which reminders are due and which connections are broken. A hosted device relay is available for account connectors; native account acceptance remains host-specific. This is not a guarantee that every AI host will automatically use memory.
+**0.21.2 — protocol 2.9.0.** Claudian keeps running with its window closed, and the panel derives your state from this computer — including which reminders are due and which connections are broken. A hosted device relay is available for account connectors; native account acceptance remains host-specific. This is not a guarantee that every AI host will automatically use memory.
 
-[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/download/v0.21.1/Claudian-Setup-0.21.1.exe) · [Website](https://claudian.app) · [Connection coverage](COMPATIBILITY.md)
+[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/download/v0.21.2/Claudian-Setup-0.21.2.exe) · [Website](https://claudian.app) · [Connection coverage](COMPATIBILITY.md)
 
 ## Setup and updates
 

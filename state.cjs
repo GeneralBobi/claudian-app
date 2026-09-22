@@ -99,7 +99,7 @@ function unchecked(body, limit) {
     const bold = /^\*\*(.+?)\*\*/.exec(m[1]);
     const text = (bold ? bold[1] : m[1]).replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g, '$1').trim();
     if (!text) continue;
-    out.push({ text: text.length > 160 ? text.slice(0, 157) + '\u2026' : text, whole: m[1] });
+    out.push({ text, whole: m[1] });
     if (out.length >= limit) break;
   }
   return out;
@@ -132,13 +132,14 @@ async function activeBody(vault, note, language) {
  * The whole picture, from disk. Pure with respect to its inputs: every caller passes the
  * same objects the panel already loads, so this adds no extra work to a render.
  */
-async function derive({ profile, health, connections = [], connector = {}, reviews = {}, obsidian = {},
+async function derive({ profile, health, connections = [], connector = {}, tunnel = {}, reviews = {}, obsidian = {},
   selfCheck = null, language = 'en', now: injected = null }) {
   const now = injected || new Date().toISOString();
   const todayIso = now.slice(0, 10);
   if (!profile) return { setup: 'AI_NOT_SELECTED', connections: [], attention: [], openLoops: [], reminders: [], connector: {}, updatedAt: now };
 
   const usable = id => {
+    if (id === 'chatgpt') return tunnel.phase === 'ready';
     const c = connections.find(x => x.id === id);
     return !!c && c.status === 'ready' && c.access?.state !== 'unavailable';
   };
@@ -213,6 +214,7 @@ async function derive({ profile, health, connections = [], connector = {}, revie
     access: profile.access,
     protocolVersion: profile.protocolVersion,
     connector: { state: connector.state || 'stopped', enabled: !!connector.enabled, lastError: connector.lastError || null },
+    tunnel: { phase: tunnel.phase || 'stopped', running: tunnel.running === true },
     // A deliberate skip is honoured -- and stated. Nothing waiting because the check was
     // skipped is not the same as nothing waiting because everything was proven.
     verificationSkipped: !!health?.skippedAt,

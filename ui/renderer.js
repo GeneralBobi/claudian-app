@@ -46,10 +46,27 @@ function saveSetupStep(id,step){try{localStorage.setItem(setupKey(id),step);}cat
 // MCPs with read/fetch permissions in developer mode." and "Are MCP apps available on
 // mobile? No - web only."
 const hostRequirement=id=>({
- chatgpt:t('Custom MCP app on ChatGPT web only. Read and write needs Business or Enterprise/Edu; Pro can connect read-only in developer mode.','Yalnızca ChatGPT web üzerinde özel MCP uygulaması. Okuma ve yazma için Business veya Enterprise/Edu gerekir; Pro, developer mode ile yalnızca okuma bağlayabilir.'),
- gemini:t('Runs inside Spark, not ordinary Gemini chat. Needs Spark custom apps on your Google account.','Normal Gemini sohbetinde değil, Spark içinde çalışır. Google hesabında Spark özel uygulamaları gerekir.'),
- perplexity:t('Needs custom connectors; not offered on every account.','Özel bağlantı ekleme özelliği gerekir; her hesapta sunulmaz.')}[id]||'');
+ chatgpt:t('Web only · Pro: read · Business / Enterprise / Edu: read + write','Yalnız web · Pro: okuma · Business / Enterprise / Edu: okuma + yazma'),
+ gemini:t('Spark custom apps access required','Spark özel uygulama erişimi gerekir'),
+ perplexity:t('Custom connectors access required','Özel bağlantı ekleme erişimi gerekir')}[id]||'');
+let tunnelState=null;
+function tunnelCard(h){
+ const s=tunnelState||{};
+ const phase={ready:t('Tunnel ready — verify access in ChatGPT','Tünel hazır — ChatGPT erişimini doğrula'),stopped:t('Stopped','Durduruldu'),starting:t('Starting','Başlatılıyor'),running:t('Process running','Süreç çalışıyor'),failed:t('Process failed — check your key and tunnel','Süreç durdu — anahtarını ve tünelini kontrol et'),'configuration-error':t('Settings could not be read','Ayarlar okunamadı')}[s.phase]||'';
+ return `<div class="connection"><h3>OpenAI Secure MCP Tunnel</h3><p>${t('Connect your own OpenAI tunnel to the selected vault on this computer. No Claudian relay account is used.','Kendi OpenAI tünelini bu bilgisayardaki seçili vault’a bağla. Claudian relay hesabı kullanılmaz.')}</p><p role="status">${esc(phase)}</p><p>${t('Process status does not verify ChatGPT access. After starting, select this tunnel when adding an app in ChatGPT and run the connection test.','Süreç durumu ChatGPT erişimini doğrulamaz. Başlattıktan sonra ChatGPT’de uygulama eklerken bu tüneli seç ve bağlantı testini çalıştır.')}</p>
+ <label>Tunnel ID<input id="tunnel-id" value="${esc(s.tunnelId||'')}" placeholder="tunnel_…" autocomplete="off" ${s.running?'disabled':''}></label>
+ <label>API key<input id="tunnel-key" type="password" autocomplete="new-password" spellcheck="false" placeholder="${s.hasKey?t('Saved — leave empty to keep','Kayıtlı — korumak için boş bırak'):'sk-…'}" ${s.running?'disabled':''}></label>
+ <p>${t('Your key is encrypted by the operating system outside the project. It is not included in the app package.','Anahtarın proje dışında işletim sistemi tarafından şifrelenir. Uygulama paketine dahil edilmez.')}</p>
+ <label>OpenAI tunnel-client.exe<input id="tunnel-binary" value="${esc(s.binary||'')}" readonly></label>${btn('Choose tunnel client','Tünel istemcisini seç','tunnel-choose',false,s.running?'disabled':'')}
+ <label><input id="tunnel-auto" type="checkbox" ${s.autoStart?'checked':''} ${s.running?'disabled':''}>${t('Start when Claudian opens','Claudian açılınca başlat')}</label>
+ <div class="toolbar">${btn('Save settings','Ayarları kaydet','tunnel-save',false,s.running?'disabled':'')}${s.running?btn('Stop','Durdur','tunnel-stop',true):btn('Start tunnel','Tüneli başlat','tunnel-start',true,s.hasKey?'':'disabled')}${btn('Refresh status','Durumu yenile','tunnel-refresh')}${btn('Remove saved key','Kayıtlı anahtarı kaldır','tunnel-forget')}${btn('OpenAI setup guide','OpenAI kurulum rehberi','tunnel-guide')}</div><p>${t('Keep Claudian and your computer running. Closing the window keeps the app in the tray; quitting stops the tunnel.','Claudian ve bilgisayarın açık kalsın. Pencereyi kapatmak uygulamayı sistem tepsisinde tutar; uygulamadan çıkmak tüneli durdurur.')}</p></div>`;
+}
 function webHostCard(h){
+ if(h.id==='chatgpt'){
+  const ready=tunnelState?.phase==='ready';
+  const access={state:ready?'ready':'unavailable',scope:state.profile?.access||h.access?.scope||'read'};
+  return tunnelCard(h)+(ready?verifyRow({...h,access})+firstScanRow(h):'')+memoryRow(h);
+ }
  const p=remoteStatus?.progress?.[h.id]||{phase:'setup',canTest:false};
  const verified=healthData?.hosts?.find(x=>x.id===h.id)?.state==='verified';
  const pending=(remoteStatus?.requests||[]).filter(r=>r.host===h.id);
@@ -122,6 +139,7 @@ function mergedConnections(list){
  });
 }
 function connectionUsable(id){
+ if(id==='chatgpt')return tunnelState?.phase==='ready';
  if(remoteId(id))return remoteStatus?.progress?.[id]?.canTest===true;
  const c=connectionList.find(x=>x.id===id);
  return !!c&&c.status==='ready'&&c.access?.state!=='unavailable';
@@ -229,7 +247,7 @@ function healthRow(){
  const proven=hosts.length?`${verifiedCount}/${hosts.length}`:'0/0';
  const warn=hosts.length&&verifiedCount===0;
  const skipped=healthData.skippedAt&&!healthData.everVerified;
- return `<div class="health-row${warn?' health-warn':''}"><div><span>${t('Last change in your notes','Notlarında son değişiklik')}</span><p class="path">${changed}</p></div><div><span>${t('Connections proven in the AI','AI içinde kanıtlanan bağlantı')}</span><p class="path">${proven}</p></div>${warn?`<p>${skipped?t('Setup finished without proof. You skipped the check — run it in Connections whenever you are ready.','Kurulum kanıtsız bitti. Kontrolü atladın — hazır olduğunda Bağlantılar’dan çalıştır.'):t('Nothing has been proven yet. Open Connections and run the read/write check.','Henüz hiçbir şey kanıtlanmadı. Bağlantılar’ı aç ve okuma/yazma kontrolünü çalıştır.')}</p>`:''}</div>`;
+ return `<div class="health-row${warn?' health-warn':''}"><div><span>${t('Last change in your notes','Notlarında son değişiklik')}</span><p class="path">${changed}</p></div><div><span>${t('Connections proven in the AI','AI içinde kanıtlanan bağlantı')}</span><p class="path">${proven}</p></div>${warn?`<p>${skipped?t('Access check skipped.','Erişim kontrolü atlandı.'):t('Access check pending.','Erişim kontrolü bekliyor.')}</p>`:''}</div>`;
 }
 // Dogrulama artik bir dugmeye basilarak sorulmuyor; uygulama yaniti kendisi bekliyor ve ne
 // oldugunu soyluyor. Eski akista erken basilan "Sonucu kontrol et" dugmesi "AI henuz yanit
@@ -382,7 +400,7 @@ async function renderPanel(){const p=state.profile;
  if(!p)throw new Error('Memory is not configured.');
  if(view==='companion'){renderPanelView();return;}
  if(view==='settings'){content.innerHTML=`<h1>${t('Settings','Ayarlar')}</h1><p>${t('The application and newly installed memory files use the setup language. Updates and protocol maintenance are collected here.','Uygulama ve yeni kurulan hafıza dosyaları kurulum dilini kullanır. Güncelleme ve protokol bakımı burada toplanır.')}</p>`;return;}
- const hosts=mergedConnections(await api.connections());connectionList=hosts;healthData=await api.health();if(api.reviewStatus)for(const h of hosts)reviewResults[h.id]=await api.reviewStatus(h.id).catch(e=>({status:'invalid',message:e.message}));if(view==='connections')remoteStatus=await api.connectorStatus();
+ const hosts=mergedConnections(await api.connections());connectionList=hosts;healthData=await api.health();if(api.reviewStatus)for(const h of hosts)reviewResults[h.id]=await api.reviewStatus(h.id).catch(e=>({status:'invalid',message:e.message}));tunnelState=await api.tunnelStatus();if(view==='connections'){remoteStatus=await api.connectorStatus();}
  if(obsidianPresent===null)obsidianPresent=await api.obsidianInstalled().catch(()=>null);
  // Only the renderer learns this, and the derived state needs it: without it Claudian could
  // never report a missing note application or one that has to be restarted, because those two
@@ -412,12 +430,11 @@ function connectionDetail(h){if(h.id==='gemini-cli')return `<div class="connecti
 // codebase, and inventing one would be a claim the product cannot stand behind.
 function providerBadge(id){
  if(id==='gemini')return `<span class="provider-badge" title="${t('Spark is an early-access Google product reached from the Gemini web app. Ordinary Gemini chat cannot use this connection.','Spark, Gemini web uygulamasından ulaşılan erken erişim Google ürünüdür. Normal Gemini sohbeti bu bağlantıyı kullanamaz.')}">Beta</span>`;
- if(id==='perplexity')return `<span class="provider-badge provider-badge-untested" title="${t('This integration has not been exercised with a real account. It may work; it is not proven.','Bu entegrasyon gerçek bir hesapla çalıştırılmadı. Çalışabilir; kanıtlanmış değil.')}">${t('Untested','Denenmedi')}</span>`;
  return '';
 }
 function connectionTile(h){
  const info=healthData?.hosts?.find(x=>x.id===h.id), review=reviewResults[h.id];
- const cloudReady=remoteStatus?.progress?.[h.id]?.canTest===true;
+ const cloudReady=h.id==='chatgpt'?tunnelState?.phase==='ready':remoteStatus?.progress?.[h.id]?.canTest===true;
  const broken=(['chatgpt','gemini','perplexity'].includes(h.id)?!cloudReady:h.status!=='ready')||['invalid','failed','expired','stale','superseded'].includes(review?.status);
  const verified=info?.state==='verified', done=verified&&review?.status==='completed'&&!broken;
  const tone=h.id==='gemini-cli'?'pending':broken?'issue':done?'complete':verified?'verified':'pending';
@@ -430,7 +447,7 @@ function connectionTile(h){
 }
 function connectionDialog(hosts){
  const host=hosts.find(h=>h.id===selectedConnection);if(!host)return '';
- return `<dialog id="connection-dialog" aria-labelledby="connection-title"><header class="connection-dialog-header"><h2 id="connection-title">${esc(host.label)}</h2>${btn('Close','Kapat','connection-close')}</header><div class="connection-dialog-body">${connectionDetail(host)}${remoteHost(host)?remoteSettings():''}</div></dialog>`;
+ return `<dialog id="connection-dialog" aria-labelledby="connection-title"><header class="connection-dialog-header"><h2 id="connection-title">${esc(host.label)}</h2>${btn('Close','Kapat','connection-close')}</header><div class="connection-dialog-body">${connectionDetail(host)}${remoteHost(host)&&host.id!=='chatgpt'?remoteSettings():''}</div></dialog>`;
 }
 
 let renderedView=null,renderQueue=Promise.resolve();
@@ -477,6 +494,13 @@ document.addEventListener('change',async e=>{
  }
 });
 document.addEventListener('click',async e=>{const nav=e.target.closest('[data-view]');if(nav&&!busy){view=nav.dataset.view;selectedConnection=null;notice='';await render();return;}const el=e.target.closest('[data-action]');if(!el||busy&&el.dataset.action!=='cancel')return;el.disabled=true;errorBox.hidden=true;try{const a=el.dataset.action;
+ if(a==='tunnel-choose'){const file=await api.tunnelChoose();if(file)document.querySelector('#tunnel-binary').value=file;return;}
+ if(a==='tunnel-guide'){await api.tunnelGuide();return;}
+ if(a==='tunnel-save'){const key=document.querySelector('#tunnel-key');const input={tunnelId:document.querySelector('#tunnel-id').value,binary:document.querySelector('#tunnel-binary').value,apiKey:key.value,autoStart:document.querySelector('#tunnel-auto').checked};key.value='';try{await api.tunnelSave(input);}finally{input.apiKey='';}await render();return;}
+ if(a==='tunnel-start'){await api.tunnelStart();await render();return;}
+ if(a==='tunnel-stop'){await api.tunnelStop();await render();return;}
+ if(a==='tunnel-forget'){await api.tunnelForget();await render();return;}
+ if(a==='tunnel-refresh'){await render();return;}
  if(a==='cloud-step'){saveSetupStep(el.dataset.host,el.dataset.step);await render();return;}
  if(a==='cloud-name'){await api.copy('Claudian — Bu cihaz');el.textContent=t('Name copied','Ad kopyalandı');return;}
  if(a==='cloud-open'){await api.openAiApp(el.dataset.host);return;}
@@ -673,26 +697,44 @@ function eventLine(e){
  const who=e.label&&!String(e.attention||'').startsWith('reminder')?esc(e.label)+' · ':'';
  return (e.kind==='attention_cleared'?t('Resolved — ','Çözüldü — '):t('Needs you — ','Bekliyor — '))+who+what;
 }
+// Long entries remain available in full; disclosure only changes their presentation.
+function loopRow(text){
+ const value=String(text);
+ if(value.length<=130)return `<li class="loop-row">${esc(value)}</li>`;
+ const cut=value.slice(0,130).replace(/\s+\S*$/,'');
+ return `<li class="loop-row"><details data-panel-fold="${esc(value)}"><summary><span>${esc(cut)}…</span></summary><p>${esc(value)}</p></details></li>`;
+}
+function panelConnectionStatus(c){
+ if(!c.connected)return t('Not connected','Bağlı değil');
+ if(!c.verified)return t('Connected · verify access','Bağlı · erişimi doğrula');
+ if(c.review==='completed')return t('Verified · review complete','Doğrulandı · tarama tamamlandı');
+ return t('Verified · review pending','Doğrulandı · tarama bekliyor');
+}
 function renderPanelView(){
  const s=panelState;
- if(!s)return content.innerHTML=`<h1>${t('Panel','Panel')}</h1><p>${t('Reading this device’s state…','Bu cihazın durumu okunuyor…')}</p>`;
- const when=s.updatedAt?new Date(s.updatedAt).toLocaleTimeString(language==='tr'?'tr-TR':'en-GB'):'—';
- const attention=s.attention||[];
- content.innerHTML=`<h1>${t('Panel','Panel')}</h1>`
-  +`<p class="hint">${t('Derived by Claudian from this computer. No AI has to be open for this to be current.','Claudian bunu bu bilgisayardan türetir. Güncel olması için bir AI’ın açık olması gerekmez.')} · ${t('Updated ','Güncellendi ')}${esc(when)}</p>`
+ if(!s)return content.innerHTML=`<h1>Panel</h1><p>${t('Loading…','Yükleniyor…')}</p>`;
+ const expanded=new Set([...content.querySelectorAll('details[data-panel-fold][open]')].map(el=>el.dataset.panelFold));
+ const when=s.updatedAt?new Date(s.updatedAt).toLocaleTimeString(language==='tr'?'tr-TR':'en-GB',{hour:'2-digit',minute:'2-digit'}):'—';
+ const attention=s.attention||[],loops=s.openLoops||[];
+ content.innerHTML=`<div class="panel-heading"><h1>Panel</h1><span class="panel-updated">${t('Updated','Güncellendi')}<time>${esc(when)}</time></span></div>`
+  +`<div class="panel-layout"><div class="panel-primary">`
+  +`<section class="panel-section open-loops"><div class="panel-section-heading"><h2>${t('Open loops','Açık döngüler')}</h2><span>${loops.length}</span></div>`
+  +(loops.length?`<ul class="loop-list">${loops.slice(0,5).map(loopRow).join('')}</ul>`
+    +(loops.length>5?`<details class="more-loops" data-panel-fold="more-loops"><summary>${t('Show remaining','Kalanları göster')} (${loops.length-5})</summary><ul class="loop-list">${loops.slice(5).map(loopRow).join('')}</ul></details>`:'')
+    :`<p class="panel-clear">${t('No open items.','Açık işin yok.')}</p>`)
+  +`</section>`
   +`<section class="panel-section"><h2>${t('Needs you','Seni bekleyen')}${attention.length?` (${attention.length})`:''}</h2>`
-  +(attention.length?attention.map(panelLine).join('')
-    :`<p class="panel-clear">${s.verificationSkipped
-        ? t('Nothing needs you. You skipped the access check, so no connection has proven itself inside an AI — run it from Connections whenever you want to.','Seni bekleyen bir şey yok. Erişim kontrolünü atladın, yani hiçbir bağlantı kendini AI içinde kanıtlamadı — istediğin zaman Bağlantılar’dan çalıştırabilirsin.')
-        : t('Nothing needs you right now.','Şu an seni bekleyen bir şey yok.')}</p>`)
+  +(attention.length?attention.map(panelLine).join(''):`<p class="panel-clear">${t('Nothing needs you right now.','Şu an seni bekleyen bir şey yok.')}</p>`)
   +`</section>`
-  +`<section class="panel-section"><h2>${t('Connections','Bağlantılar')}</h2>`
-  +(s.connections||[]).map(c=>`<div class="panel-item"><div><strong>${esc(c.label)}</strong><p>${c.connected?t('Connected','Bağlı'):t('Not connected','Bağlı değil')} · ${c.verified?t('read/write verified','okuma/yazma doğrulandı'):t('access not verified','erişim doğrulanmadı')} · ${t('first review: ','ilk tarama: ')}${esc(c.review)}</p></div>${btn('Open','Aç','open-next-connection',false,`data-host="${esc(c.id)}"`)}</div>`).join('')
-  +`</section>`
-  +((s.openLoops||[]).length?`<section class="panel-section"><h2>${t('Open loops','Açık döngüler')}</h2><p class="hint">${t('Unchecked items in your own panel note. Archived sections are not read.','Kendi panel notundaki işaretsiz maddeler. Arşivlenmiş bölümler okunmaz.')}</p><ul class="panel-list">${s.openLoops.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></section>`:'')
-  +((s.reminders||[]).length?`<section class="panel-section"><h2>${t('Reminders','Hatırlatıcılar')}</h2><p class="hint">${t('Dated items from your own reminders note. Only today and past due are listed above as needing you.','Kendi hatırlatıcı notundaki tarihli maddeler. Yukarıda seni bekleyen olarak yalnız bugün ve geçmiş tarihliler görünür.')}</p><ul class="panel-list">${s.reminders.map(x=>`<li data-due="${esc(x.due||'none')}">${esc(x.text)}${x.date?` <time>${esc(x.date)}</time>`:''}</li>`).join('')}</ul></section>`:'')
-  +((s.recent||[]).length?`<details class="panel-section"><summary>${t('What changed recently','Son değişenler')}</summary><ul class="panel-list">${s.recent.slice(0,10).map(e=>`<li><time>${esc(new Date(e.at).toLocaleString(language==='tr'?'tr-TR':'en-GB'))}</time> ${esc(eventLine(e))}</li>`).join('')}</ul></details>`:'');
+  +((s.recent||[]).length?`<details class="panel-section panel-history" data-panel-fold="history"><summary>${t('What changed recently','Son değişenler')}</summary><ul class="panel-list">${s.recent.slice(0,10).map(e=>`<li><time>${esc(new Date(e.at).toLocaleString(language==='tr'?'tr-TR':'en-GB'))}</time> ${esc(eventLine(e))}</li>`).join('')}</ul></details>`:'')
+  +`</div><aside class="panel-secondary">`
+  +((s.reminders||[]).length?`<section class="panel-section"><h2>${t('Reminders','Hatırlatıcılar')}</h2><ul class="panel-list reminder-list">${s.reminders.map(x=>`<li data-due="${esc(x.due||'none')}"><span>${esc(x.text)}</span>${x.date?`<time>${esc(x.date)}</time>`:''}</li>`).join('')}</ul></section>`:'')
+  +`<section class="panel-section panel-connections"><h2>${t('Connections','Bağlantılar')}</h2>`
+  +(s.connections||[]).map(c=>`<div class="panel-item"><div><strong>${esc(c.label)}</strong><p>${panelConnectionStatus(c)}</p></div>${btn('Open','Aç','open-next-connection',false,`data-host="${esc(c.id)}" aria-label="${esc(c.label)} ${t('connection','bağlantısını aç')}"`)}</div>`).join('')
+  +`</section></aside></div>`;
+ for(const el of content.querySelectorAll('details[data-panel-fold]'))el.open=expanded.has(el.dataset.panelFold);
 }
+
 api.onVerify(async event=>{if(!challenge||event.host!==challenge.host||event.requestId!==verifyRequest)return;const message=event.message||verifyNotice;if(verifyState===event.state&&verifyNotice===message)return;verifyState=event.state;verifyNotice=message;await render();});
 // The panel re-derives while it is open. Nothing is polled from a remote service.
 setInterval(async()=>{if(view!=='companion'||busy)return;try{panelState=await api.state();renderPanelView();}catch(e){error(e);}},60000);

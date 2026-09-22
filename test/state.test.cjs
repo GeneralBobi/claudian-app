@@ -6,6 +6,12 @@ const {test}=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os');
 const state=require('../state.cjs');
 
+test('long open-loop titles remain readable in full after disclosure',()=>{
+  const title='Ayrıntılarıyla takip edilecek uzun bir iş. '.repeat(8)+'Son adım kaybolmamalı.';
+  assert.deepEqual(state.openItems('- [ ] **'+title+'** · ek bağlam'),[title]);
+  assert.deepEqual(state.openItems('- [ ] '+title),[title]);
+});
+
 const profile=(over={})=>({vault:'V',access:'write',storage:'markdown',protocolVersion:'2.9.0',
   hosts:[{id:'codex'},{id:'gemini'}],...over});
 const ready=(over={})=>({
@@ -32,6 +38,22 @@ test('a finished installation asks for nothing',async()=>{
   assert.deepEqual(s.attention,[],'nothing is waiting, and the panel says so by being empty');
   assert.equal(s.verificationSkipped,false);
   assert.ok(s.updatedAt,'the panel always states when it was derived');
+});
+
+test('ChatGPT derives transport readiness from its own tunnel, never the legacy relay',async()=>{
+  const input=ready({profile:profile({hosts:[{id:'chatgpt'}]}),
+    connections:[{id:'chatgpt',status:'attention',access:{state:'unavailable'}}],
+    health:{hosts:[{id:'chatgpt',state:'unverified'}],verifiedCount:0},reviews:{}});
+  assert.equal((await state.derive(input)).setup,'AI_SELECTED_NOT_CONNECTED');
+  let result=await state.derive({...input,tunnel:{phase:'running',running:true}});
+  assert.equal(result.connections[0].connected,false);
+  result=await state.derive({...input,tunnel:{phase:'ready',running:true}});
+  assert.equal(result.connections[0].connected,true);
+  assert.equal(result.connections[0].verified,false);
+  assert.equal(result.setup,'VERIFY_PENDING');
+  assert.deepEqual(result.tunnel,{phase:'ready',running:true});
+  result=await state.derive({...input,tunnel:{phase:'stopped',running:false}});
+  assert.equal(result.setup,'AI_SELECTED_NOT_CONNECTED');
 });
 
 test('a skipped check is quiet and still says it was skipped',async()=>{

@@ -16,9 +16,9 @@ function renderFixture(){
  const context={state:{profile:{vault:'fixture'}},localStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v)},remoteStatus:{progress:{},requests:[]},healthData:{hosts:[]},t:(en,tr)=>tr,esc:s=>String(s),checkIcon:'<svg></svg>',btn:(en,tr,action,primary,extra='')=>`<button class="${primary?'primary':''}" data-action="${action}" ${extra}>${tr}</button>`,verifyRow:()=>'<p>ACTUAL_TEST</p>',firstScanRow:()=>'',memoryRow:()=>''};
  vm.createContext(context);vm.runInContext(source.slice(source.indexOf('function setupKey('),source.indexOf('function remoteHostCard(')),context);return context;
 }
-test('all three guides start with setup, stop on missing option, and keep repair reachable',()=>{
+test('relay guides start with setup, stop on missing option, and keep repair reachable',()=>{
  const c=renderFixture();
- for(const id of ['chatgpt','gemini','perplexity']){
+ for(const id of ['gemini','perplexity']){
   const h={id,label:id};let html=c.webHostCard(h);
   assert.match(html,/Kuruluma başla/);assert.doesNotMatch(html,/ACTUAL_TEST/);
   assert.equal((html.match(/class="primary"/g)||[]).length,1);
@@ -28,4 +28,26 @@ test('all three guides start with setup, stop on missing option, and keep repair
   c.remoteStatus.progress[id]={phase:'tools',canTest:true};assert.match(c.webHostCard(h),/ACTUAL_TEST/);
  }
 });
+test('ChatGPT offers a personal tunnel without directing users to the shared relay',()=>{
+ const html=renderFixture().webHostCard({id:'chatgpt',label:'ChatGPT'});
+ assert.match(html,/OpenAI Secure MCP Tunnel/);assert.match(html,/type="password"/);
+ assert.match(html,/data-action="tunnel-start" disabled/);
+ assert.doesNotMatch(html,/cloud-begin|workers\.dev|MCP sunucu URL/);
+});
 module.exports={renderFixture};
+
+test('a ready personal tunnel exposes verification and first review without changing the granted scope',()=>{
+ const c=renderFixture();
+ c.state.profile.access='write';
+ c.verifyRow=h=>`<p>VERIFY:${h.access.state}:${h.access.scope}</p>`;
+ c.firstScanRow=()=>'<p>FIRST_REVIEW</p>';
+ const h={id:'chatgpt',label:'ChatGPT',access:{state:'unavailable',scope:'write'}};
+ assert.doesNotMatch(c.webHostCard(h),/VERIFY:|FIRST_REVIEW/);
+ vm.runInContext("tunnelState={phase:'ready',running:true}",c);
+ assert.match(c.webHostCard(h),/VERIFY:ready:write/);
+ assert.match(c.webHostCard(h),/FIRST_REVIEW/);
+ c.state.profile.access='read';
+ assert.match(c.webHostCard(h),/VERIFY:ready:read/);
+ vm.runInContext("tunnelState={phase:'running',running:true}",c);
+ assert.doesNotMatch(c.webHostCard(h),/VERIFY:|FIRST_REVIEW/);
+});

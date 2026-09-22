@@ -15,9 +15,8 @@
  *   hide-close  closing the window hides it instead of quitting; Quit is explicit
  *   auto-start  opt-in, off by default, a login item rather than a scheduled task
  *
- * What it deliberately does NOT do: start a Next server, a tunnel, or anything from a source
- * tree. `run.bat` starts development tooling for the web Core; Claudian Desktop has no
- * business supervising it and does not.
+ * This tray does not start the legacy web Core. main.cjs separately owns an opt-in
+ * personal OpenAI Secure MCP Tunnel through secure-tunnel.cjs.
  */
 const path = require('node:path');
 

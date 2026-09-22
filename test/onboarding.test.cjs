@@ -9,7 +9,7 @@ const {MemorySetup,HOSTS,KNOWN}=require('../core.cjs');
 function machine(overrides={}){
   const source=fs.readFileSync(path.join(__dirname,'../ui/renderer.js'),'utf8');
   const slice=source.slice(source.indexOf('const remoteId='),source.indexOf('const recommended='));
-  const context={state:{profile:null},healthData:null,remoteStatus:{progress:{}},reviewResults:{},
+  const context={state:{profile:null},healthData:null,remoteStatus:{progress:{}},tunnelState:null,reviewResults:{},
     connectionList:[],obsidianPresent:true,obsidianNeedsClose:false,
     t:(en,tr)=>en,esc:s=>String(s)};
   Object.assign(context,overrides);
@@ -35,6 +35,8 @@ test('setup is not complete while a selected AI has no usable connection',()=>{
   c.healthData={hosts:[],verifiedCount:0};
   assert.equal(c.setupState(),'AI_SELECTED_NOT_CONNECTED','selected is not connected');
   c.remoteStatus={progress:{chatgpt:{canTest:true}}};
+  assert.equal(c.setupState(),'AI_SELECTED_NOT_CONNECTED','a legacy relay does not prove the personal tunnel');
+  c.tunnelState={phase:'ready'};
   assert.equal(c.setupState(),'VERIFY_PENDING','connected is not verified');
   c.healthData={hosts:[{id:'chatgpt',state:'verified'}],verifiedCount:1};
   assert.equal(c.setupState(),'READY');

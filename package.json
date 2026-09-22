@@ -1,7 +1,7 @@
 {
   "name": "claudian-desktop",
   "productName": "Claudian",
-  "version": "0.21.1",
+  "version": "0.21.2",
   "private": true,
   "description": "Claudian ortak hafÄ±za uygulamasÄ±",
   "author": "Claudian",
@@ -26,6 +26,8 @@
     },
     "files": [
       "main.cjs",
+      "secure-tunnel.cjs",
+      "secure-tunnel-entry.cjs",
       "preload.cjs",
       "core.cjs",
       "profile-lock.cjs",
