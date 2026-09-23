@@ -262,7 +262,6 @@ async function start() {
     await shell.openExternal(require('./web-providers.cjs').providers.gemini.manual);return {prompt};
   });
   const prepareProvider=async provider=>{
-    if(provider==='chatgpt')throw Error('Use the personal Secure MCP Tunnel in ChatGPT connection settings.');
     if(!['chatgpt','claude-desktop','gemini','perplexity'].includes(provider))throw Error('Unknown provider');
     let status=remoteConnector.status();
     if(!status.enabled)status=await remoteConnector.start();
@@ -511,6 +510,9 @@ async function start() {
   handle('ring:devices', () => ring.devices());
   handle('ring:live-start', options => ring.liveStart(options));
   handle('ring:live-stop', () => ring.liveStop());
+  handle('ring:phone-status', () => ring.phoneStatus());
+  handle('ring:phone-start', () => ring.phoneStart());
+  handle('ring:phone-pair', () => ring.phonePair());
   handle('app:open', async kind => {
     const target = kind === 'logs' ? path.join(core.dataDir, 'logs') : kind === 'vault' ? (await core.snapshot()).profile?.vault : null;
     if (!target) throw new Error('Klasör henüz hazır değil.');

@@ -1,7 +1,7 @@
 {
   "name": "claudian-desktop",
   "productName": "Claudian",
-  "version": "0.23.0",
+  "version": "0.24.0",
   "private": true,
   "description": "Claudian ortak hafÄ±za uygulamasÄ±",
   "author": "Claudian",
@@ -105,6 +105,7 @@
     }
   },
   "dependencies": {
+    "qrcode": "^1.5.4",
     "smol-toml": "1.8.0"
   }
 }

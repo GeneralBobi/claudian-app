@@ -28,16 +28,23 @@ test('relay guides start with setup, stop on missing option, and keep repair rea
   c.remoteStatus.progress[id]={phase:'tools',canTest:true};assert.match(c.webHostCard(h),/ACTUAL_TEST/);
  }
 });
-test('ChatGPT offers a personal tunnel without directing users to the shared relay',()=>{
- const html=renderFixture().webHostCard({id:'chatgpt',label:'ChatGPT'});
- assert.match(html,/OpenAI Secure MCP Tunnel/);assert.match(html,/type="password"/);
- assert.match(html,/data-action="tunnel-start" disabled/);
- assert.doesNotMatch(html,/cloud-begin|workers\.dev|MCP sunucu URL/);
+test('ChatGPT keeps tunnel and MCP terminal setup as separate choices',()=>{
+ const c=renderFixture(),h={id:'chatgpt',label:'ChatGPT'};
+ let html=c.webHostCard(h);
+ assert.match(html,/Tunnel ile devam et/);assert.match(html,/MCP \/ terminal ile devam et/);
+ c.setChatgptChoice('tunnel');html=c.webHostCard(h);
+ assert.match(html,/type="password"/);assert.match(html,/data-action="tunnel-start" disabled/);
+ assert.doesNotMatch(html,/workers\.dev|MCP sunucu URL/);
+ c.setChatgptChoice('mcp');html=c.webHostCard(h);
+ assert.match(html,/MCP sunucusu \/ terminal/);assert.doesNotMatch(html,/tunnel-key|cloud-begin/);
+ c.remoteStatus.relay='https://own-service.example';html=c.webHostCard(h);
+ assert.match(html,/cloud-begin/);assert.doesNotMatch(html,/tunnel-key/);
 });
 module.exports={renderFixture};
 
 test('a ready personal tunnel exposes verification and first review without changing the granted scope',()=>{
  const c=renderFixture();
+ c.setChatgptChoice('tunnel');
  c.state.profile.access='write';
  c.verifyRow=h=>`<p>VERIFY:${h.access.state}:${h.access.scope}</p>`;
  c.firstScanRow=()=>'<p>FIRST_REVIEW</p>';
