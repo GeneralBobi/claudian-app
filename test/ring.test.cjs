@@ -77,3 +77,29 @@ test('every script the panel loads is served by the app protocol', async () => {
   const main = await fs.readFile(path.join(__dirname, '..', 'main.cjs'), 'utf8');
   for (const [, src] of html.matchAll(/<script src="([^"]+)"/g)) assert.match(main, new RegExp(`'/${src.replace('.', '\.')}': '${src.replace('.', '\.')}'`), src);
 });
+
+test('live listening writes straight to one session note, links known notes and dates reminders', async t => {
+  const {vault, ring} = await setup(t);
+  await fs.writeFile(path.join(vault, 'Claudian.md'), '# Claudian (örnek)\n');
+  ring._setLive({startedAt: Date.parse('2026-09-23T10:30:00'), note: null, receipts: [], written: 0, reminders: 0, model: 'laya-yuzuk-v3', last: []});
+  await ring.liveWrite({metin: 'Claudian için sessiz saat özelliği eklenecek (örnek).', saat: '10:31', yeni_konu: true, tarihler: []});
+  await ring.liveWrite({metin: 'Rapor teslimi 7 Ekim (örnek).', saat: '10:32', yeni_konu: false, tarihler: [{ifade: '7 Ekim', zaman: '2026-10-07T00:00'}]});
+  const notes = (await fs.readdir(vault)).filter(n => n.startsWith('Yüzük · 2026-09-23'));
+  assert.equal(notes.length, 1, 'one session, one note');
+  const body = await fs.readFile(path.join(vault, notes[0]), 'utf8');
+  assert.match(body, /## 10:31 · Claudian için sessiz saat özelliği eklenecek \(örnek\)\./);
+  assert.match(body, /- Claudian için sessiz saat özelliği eklenecek \(örnek\)\. `10:31` · \[\[Claudian\]\]/);
+  assert.match(body, /- Rapor teslimi 7 Ekim \(örnek\)\. `10:32`\n/);
+  assert.match(await fs.readFile(path.join(vault, 'Hatırlatıcılar.md'), 'utf8'), /Rapor teslimi 7 Ekim \(örnek\)/);
+});
+
+test('a note title links only as a whole, same-case word', async t => {
+  const {vault, ring} = await setup(t);
+  for (const n of ['Sistem.md', 'Claudian.md']) await fs.writeFile(path.join(vault, n), '# x (örnek)\n');
+  ring._setLive({startedAt: Date.parse('2026-09-23T11:00:00'), note: null, receipts: [], written: 0, reminders: 0, model: 'v3', last: []});
+  await ring.liveWrite({metin: 'Bilgiyi işleyen sistemde darboğaz var (örnek).', saat: '11:00', yeni_konu: true, tarihler: []});
+  await ring.liveWrite({metin: "Claudian'ın paneli yenilenecek (örnek).", saat: '11:01', yeni_konu: false, tarihler: []});
+  const body = await fs.readFile(path.join(vault, (await fs.readdir(vault)).find(n => n.startsWith('Yüzük ·'))), 'utf8');
+  assert.doesNotMatch(body, /\[\[Sistem\]\]/, '"sistemde" is not the note "Sistem"');
+  assert.match(body, /paneli yenilenecek \(örnek\)\. `11:01` · \[\[Claudian\]\]$/m);
+});

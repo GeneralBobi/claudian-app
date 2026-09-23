@@ -297,3 +297,22 @@ body[data-surface="panel"]>header,body[data-surface="panel"]>nav{padding-inline:
 .ring-addr{font:12px 'JetBrains Mono',monospace;background:#08080a;border:1px solid var(--line);border-radius:6px;padding:10px 12px;margin:0 0 12px;overflow-wrap:anywhere;user-select:all}
 .ring-list{font-size:12px;line-height:1.9;padding-left:18px;margin:0 0 14px;color:var(--muted)}
 @media(max-width:780px){.ring-steps{grid-template-columns:1fr 1fr}.ring-two,.ring-fields{grid-template-columns:1fr}}
+
+
+/* Yüzük — canlı dinleme. The level bar reflects measured input; no transition or keyframes. */
+.ring-live{margin:22px 0 0}.ring-live .toolbar{margin:0 0 6px}.ring-live p{font-size:12px}
+.ring-live[data-on="true"]{border-color:var(--orange)}
+.ring-rec{font:11px 'JetBrains Mono',monospace;color:var(--orange);margin-left:8px}
+.ring-level-track{height:6px;background:#26262c;border-radius:3px;overflow:hidden;margin:6px 0 12px}
+#ring-level{height:100%;width:0;background:#5a5650}#ring-level[data-speaking="true"]{background:var(--orange)}
+.ring-ara{min-height:22px;font:13px/1.6 Lora,Georgia,serif;color:var(--muted);font-style:italic;margin:0 0 12px}
+.ring-decs,.ring-written{list-style:none;padding:0;margin:0}
+.ring-dec,.ring-written li{display:grid;grid-template-columns:62px 14px minmax(0,1fr);gap:8px;align-items:baseline;padding:7px 0;border-bottom:1px solid var(--line);font-size:12px}
+.ring-written li{grid-template-columns:44px minmax(0,1fr) auto}
+.ring-dec time,.ring-written time{font:11px 'JetBrains Mono',monospace;color:var(--muted)}
+.ring-dec small{grid-column:3;font-size:11px;color:var(--muted)}
+.ring-dec b{color:var(--muted);font-weight:400}.ring-dec[data-k="kaydet"] b,.ring-dec[data-k="bekle"] b{color:var(--orange)}
+.ring-dec[data-k="at"] span{color:var(--muted)}.ring-dec i{font-style:normal;color:var(--muted)}
+.ring-written small{font-size:11px;color:var(--orange)}
+.ring-live-fields{grid-template-columns:1fr}
+.ring-block>h2{margin:0 0 10px}

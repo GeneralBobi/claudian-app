@@ -5,9 +5,10 @@
   The engine is not bundled: it is a Python folder (Whisper + Laya, ~3 GB of models) that the
   person installs once. This module only finds it, runs it, and turns its drafts into memory.
 
-  Two rules hold everywhere below:
-  - Nothing reaches the memory without an explicit approval. A draft is a file in the engine's
-    `taslaklar/` folder until the person approves it; approval is the only writer.
+  Rules that hold below:
+  - A recorded FILE becomes a draft in the engine's `taslaklar/` folder and reaches memory only
+    through approval. LIVE listening (0.23) writes straight to the vault, as asked; what must never
+    be written is decided before that by the engine's privacy layer, and every write has a receipt.
   - Audio and text never leave this machine. The phone receiver listens on the local network
     only, requires a one-time token, and stores what it receives in the engine folder.
 */
@@ -104,6 +105,8 @@ function createRing({core, send, dialog, getWindow, notify}) {
     }
     return {dir, ready: checks.engine && checks.python && checks.whisper, checks, training, model,
       running: job ? {file: job.file, events: job.events.slice(-40)} : null,
+      live: live ? {startedAt: live.startedAt, note: live.note, written: live.written, reminders: live.reminders, model: live.model, last: live.last.slice(-12)} : null,
+      liveCapable: await exists(path.join(dir, 'canli.py')),
       receiver: receiver ? {url: receiver.url, received: receiver.received} : null};
   }
 
@@ -297,9 +300,125 @@ d.textContent=r&&r.ok?'Gönderildi. Bilgisayarında işleniyor.':'Gönderilemedi
     return {target};
   }
 
-  function shutdown() { cancel(); if (receiver) receiver.server.close(); }
+  /* ---- live listening: the engine hears, decides, and memory is written as it speaks ----
 
-  return {status, chooseEngine, chooseAudio, run, cancel, drafts, draft, approve, discard, receiverStart, receiverStop, packageFor, shutdown, engineDir};
+    Boran's instruction for 0.23: notes appear in Obsidian directly, without an approval step.
+    The engine's own safety layer (mahremiyet.py + Laya's "mahrem" class) decides what is never
+    written; this side only turns "yaz" events into guarded writes with receipts. */
+  let live = null;
+
+  async function devices() {
+    const dir = await engineDir();
+    return new Promise((resolve, reject) => {
+      const child = spawn(path.join(dir, '.venv', 'Scripts', 'python.exe'), [path.join(dir, 'canli.py'), '--cihazlar'],
+        {cwd: dir, windowsHide: true, env: {...process.env, PYTHONIOENCODING: 'utf-8'}});
+      let out = '';
+      child.stdout.setEncoding('utf8'); child.stdout.on('data', c => { out += c; });
+      child.on('close', code => { try { resolve(JSON.parse(out.trim().split('\n').pop())); } catch { reject(Error(`Mikrofonlar okunamadı (${code}).`)); } });
+    });
+  }
+
+  const pad = n => String(n).padStart(2, '0');
+  const heading = text => { const w = clean(text).replace(/^[-–—.…\s]+/, '').split(' '); return w.slice(0, 8).join(' ') + (w.length > 8 ? '…' : ''); };
+
+  async function liveWrite(ev) {
+    const profile = (await core.snapshot()).profile;
+    if (!profile?.vault) throw Error('Hafıza klasörü kurulu değil.');
+    const vault = profile.vault;
+    if (!live.note) {
+      const d = new Date(live.startedAt);
+      live.note = `Yüzük · ${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}.${pad(d.getMinutes())} Canlı dinleme.md`;
+      const body = ['---', 'tags: [yüzük, canlı]', 'tür: log', `güncellenme: ${d.toISOString().slice(0, 10)}`, '---', '',
+        `# Canlı dinleme · ${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`, '',
+        `_Yüzük bu bilgisayarda dinleyip yazdı (Whisper + ${live.model || 'Laya'}). Onay adımı yok; mahrem olan yazılmadı. Ses saklanmadı._`, ''].join('\n');
+      const r = await store.mutate(vault, {note: live.note, operation: 'create', body, reason: 'Yüzük canlı dinleme oturumu başladı'}, 'yuzuk');
+      live.receipts.push(r.id);
+      live.titles = (await store.list(vault).catch(() => [])).map(n => (n.note || n.name || String(n)).replace(/\.md$/, '').split('/').pop())
+        .filter(t => t && t.length >= 4 && !/^(00 -|Yüzük ·)/.test(t));
+    }
+    // Whole word, same capitalisation as the note's title, optionally followed by an apostrophe
+    // suffix ("Claudian'ın"): "sistemde" must not link to a note called "Sistem".
+    const links = [...new Set(live.titles || [])].filter(t => new RegExp(`(^|[^\\p{L}])${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=$|['’]|[^\\p{L}])`, 'u').test(ev.metin)).slice(0, 3);
+    const lines = [];
+    if (ev.yeni_konu) lines.push('', `## ${ev.saat} · ${heading(ev.metin)}`, '');
+    lines.push(`- ${clean(ev.metin)} \`${ev.saat}\`${links.length ? ' · ' + links.map(t => `[[${t}]]`).join(' ') : ''}`);
+    const current = await store.read(vault, live.note);
+    const r = await store.mutate(vault, {note: live.note, operation: 'append', expected_sha256: current.sha256, body: lines.join('\n') + '\n',
+      reason: 'Yüzük canlı dinleme: yeni madde'}, 'yuzuk');
+    live.receipts.push(r.id); live.written += 1;
+    const date = ev.tarihler?.[0]?.zaman?.slice(0, 10);
+    if (date) {
+      const c = await capture(vault, {kind: 'commitment', text: clean(ev.metin).slice(0, 380), date, source: 'user_statement',
+        reference: live.note.replace(/\.md$/, '').slice(0, 200), reason: 'Yüzük canlı dinlemede duyulan tarih'}, 'yuzuk', profile.language === 'en' ? 'en' : 'tr');
+      if (c.receipt) { live.receipts.push(c.receipt); live.reminders += 1; }
+    }
+    send('ring:live', {olay: 'yazildi', not: live.note, saat: ev.saat, metin: ev.metin, baglanti: links, hatirlatici: !!date});
+  }
+
+  async function liveStart(options = {}) {
+    if (live) throw Error('Canlı dinleme zaten açık.');
+    if (job) throw Error('Önce işlenen kaydın bitmesini bekle.');
+    const dir = await engineDir();
+    if (!await exists(path.join(dir, 'canli.py'))) throw Error('Motor canlı dinlemeyi desteklemiyor; motoru güncelle.');
+    const args = [path.join(dir, 'canli.py'), '--json-ilerleme'];
+    if (Number.isInteger(options.device)) args.push('--cihaz', String(options.device));
+    // Acceptance runs have no microphone: a marked test profile may stream a file as if it were live.
+    if (process.env.CLAUDIAN_ACCEPTANCE_ROOT && process.env.CLAUDIAN_RING_TEST_FILE) args.push('--dosya', process.env.CLAUDIAN_RING_TEST_FILE, '--hiz', '4');
+    if (options.training === true) {
+      await fs.mkdir(path.join(dir, 'egitim'), {recursive: true});
+      args.push('--egitim', path.join(dir, 'egitim', `canli_${new Date().toISOString().slice(0, 10)}.jsonl`));
+    }
+    const child = spawn(path.join(dir, '.venv', 'Scripts', 'python.exe'), args, {cwd: dir, windowsHide: true,
+      env: {...process.env, USE_TF: '0', HF_HUB_OFFLINE: '1', PYTHONIOENCODING: 'utf-8', PYTHONUNBUFFERED: '1'}});
+    live = {child, startedAt: Date.now(), note: null, receipts: [], written: 0, reminders: 0, model: null, stderr: '', queue: Promise.resolve(), last: []};
+    let buffer = '';
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', chunk => {
+      buffer += chunk;
+      let i;
+      while ((i = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, i).trim(); buffer = buffer.slice(i + 1);
+        if (!line.startsWith('@@')) continue;
+        let ev; try { ev = JSON.parse(line.slice(2)); } catch { continue; }
+        if (ev.olay === 'hazir') live.model = ev.model;
+        if (ev.olay === 'yaz') {
+          // Writes are serialised: each append reads the note's current hash first.
+          live.queue = live.queue.then(() => liveWrite(ev)).catch(e => send('ring:live', {olay: 'hata', mesaj: e.message}));
+          continue;
+        }
+        if (ev.olay === 'karar') { live.last.push(ev); live.last = live.last.slice(-40); }
+        send('ring:live', ev);
+      }
+    });
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', c => { if (live) live.stderr = (live.stderr + c).slice(-4000); });
+    child.on('close', async code => {
+      const l = live; live = null;
+      await l?.queue.catch(() => {});
+      const tail = l?.stderr.split('\n').filter(x => x.trim() && !/warn/i.test(x)).slice(-3).join('\n');
+      send('ring:live', {olay: 'kapandi', kod: code, not: l?.note, yazilan: l?.written || 0, hatirlatici: l?.reminders || 0,
+        mesaj: code && code !== 0 ? (tail || `Motor ${code} koduyla kapandı.`) : null});
+      if (l?.written) notify?.('Yüzük', `Canlı dinleme bitti: ${l.written} madde nota yazıldı.`);
+    });
+    return true;
+  }
+
+  async function liveStop() {
+    if (!live) return false;
+    const child = live.child;
+    try { child.stdin.write('dur\n'); } catch {}
+    setTimeout(() => { if (!child.killed && child.exitCode === null) child.kill(); }, 15000);
+    return true;
+  }
+
+  function liveStatus() {
+    return live ? {startedAt: live.startedAt, note: live.note, written: live.written, reminders: live.reminders, model: live.model, last: live.last.slice(-12)} : null;
+  }
+
+  function shutdown() { cancel(); if (live) live.child.kill(); if (receiver) receiver.server.close(); }
+
+  return {status, chooseEngine, chooseAudio, run, cancel, drafts, draft, approve, discard, receiverStart, receiverStop, packageFor,
+    devices, liveStart, liveStop, liveStatus, liveWrite: ev => liveWrite(ev), _setLive: v => { live = v; }, shutdown, engineDir};
 }
 
 module.exports = {createRing, sessionNote, noteName, draftDir};

@@ -508,6 +508,9 @@ async function start() {
   handle('ring:receiver-start', () => ring.receiverStart());
   handle('ring:receiver-stop', () => ring.receiverStop());
   handle('ring:package', () => ring.packageFor());
+  handle('ring:devices', () => ring.devices());
+  handle('ring:live-start', options => ring.liveStart(options));
+  handle('ring:live-stop', () => ring.liveStop());
   handle('app:open', async kind => {
     const target = kind === 'logs' ? path.join(core.dataDir, 'logs') : kind === 'vault' ? (await core.snapshot()).profile?.vault : null;
     if (!target) throw new Error('Klasör henüz hazır değil.');

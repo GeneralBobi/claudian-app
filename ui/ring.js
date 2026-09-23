@@ -4,7 +4,8 @@
   Every number on this screen comes from the engine's own events or files; there is no
   simulated progress, and nothing reaches the memory except through "Approve".
 */
-const ring = {status: null, drafts: [], file: null, running: null, open: null, openId: null, result: null, bound: false};
+const ring = {status: null, drafts: [], file: null, running: null, open: null, openId: null, result: null, bound: false,
+  live: {devices: null, device: null, training: false, on: false, level: 0, speaking: false, ara: '', decisions: [], written: [], note: null, error: null, summary: null}};
 const KIND_LABEL = {
   odev: ['Assignments and deadlines', 'Ödev ve teslimler'], sinav: ['Exam emphasis', 'Sınav vurguları'],
   hazirlik: ['Preparation', 'Hazırlık'], karar: ['Decisions, plans and promises', 'Kararlar, planlar ve sözler'],
@@ -27,6 +28,18 @@ function ringBind() {
       if (done) { ring.openId = done.taslak; ring.open = null; ring.file = null; }
     }
     if (view === 'ring') await renderRing();
+  });
+  api.onRingLive(ev => {
+    const L = ring.live;
+    if (ev.olay === 'seviye') { L.level = ev.rms; L.speaking = ev.konusuyor; liveMeter(); return; }
+    if (ev.olay === 'ara') { L.ara = ev.metin; const el = document.querySelector('#ring-ara'); if (el) el.textContent = ev.metin; return; }
+    if (ev.olay === 'soylendi' || ev.olay === 'yukleniyor') return;
+    if (ev.olay === 'hazir') { L.on = true; L.model = ev.model; }
+    if (ev.olay === 'karar') { L.decisions.push(ev); L.decisions = L.decisions.slice(-8); L.ara = ''; }
+    if (ev.olay === 'yazildi') { L.note = ev.not; L.written.push(ev); L.written = L.written.slice(-6); }
+    if (ev.olay === 'hata') L.error = ev.mesaj;
+    if (ev.olay === 'kapandi') { L.on = false; L.error = ev.mesaj || null; L.summary = ev; }
+    if (view === 'ring' && !ring.open) renderRing();
   });
   document.addEventListener('click', async e => {
     const el = e.target.closest('[data-ring]');
@@ -65,18 +78,61 @@ async function ringAction(a, el) {
   else if (a === 'receiver-start') ring.status = await api.ringReceiverStart();
   else if (a === 'receiver-stop') ring.status = await api.ringReceiverStop();
   else if (a === 'copy-url') await api.copy?.(ring.status.receiver.url);
+  else if (a === 'live-start') {
+    const L = ring.live, mic = document.querySelector('#ring-mic');
+    L.device = mic && mic.value !== '' ? Number(mic.value) : null;
+    L.training = !!document.querySelector('#ring-train')?.checked;
+    Object.assign(L, {decisions: [], written: [], note: null, error: null, summary: null, ara: '', on: true});
+    await api.ringLiveStart({device: L.device, training: L.training});
+  }
+  else if (a === 'live-stop') await api.ringLiveStop();
   else if (a === 'package') { const r = await api.ringPackage(); if (r) ring.result = {packaged: r.target}; }
   await renderRing();
 }
 
 function howItWorks() {
   const steps = [
-    [t('Record', 'Kayıt'), t('Swipe the ring, send from your phone, or choose an audio file.', 'Yüzükte kaydır, telefondan gönder ya da bir ses dosyası seç.')],
+    [t('Listen', 'Dinleme'), t('Start live listening, send from your phone, or choose a recording.', 'Canlı dinlemeyi başlat, telefondan gönder ya da bir kayıt seç.')],
     [t('Transcribe', 'Yazıya dökme'), t('Whisper turns the speech into text on this computer.', 'Whisper konuşmayı bu bilgisayarda metne çevirir.')],
-    [t('Select', 'Ayıklama'), t('Laya decides for every sentence whether it is worth keeping.', 'Laya her cümle için tutmaya değer mi diye karar verir.')],
-    [t('Approve', 'Onay'), t('You correct the draft. Only what you approve is written to memory.', 'Taslağı sen düzeltirsin. Hafızaya yalnız onayladığın yazılır.')],
+    [t('Decide', 'Karar'), t('Laya reads each sentence with what came before it: keep, wait for the rest, drop, or private.', 'Laya her cümleyi öncesiyle birlikte okur: kaydet, devamını bekle, at ya da mahrem.')],
+    [t('Write', 'Yazma'), t('What is worth keeping goes into a note in Obsidian; private things are never written.', 'Tutmaya değer olan Obsidian’daki bir nota girer; mahrem olanlar hiç yazılmaz.')],
   ];
   return `<details class="ring-how" open><summary>${t('How it works', 'Nasıl çalışır')}</summary><ol class="ring-steps">${steps.map(([h, p], i) => `<li><b>${i + 1}</b>${h}<span>${p}</span></li>`).join('')}</ol></details>`;
+}
+
+function liveMeter() {
+  const bar = document.querySelector('#ring-level');
+  if (!bar) return;
+  bar.style.width = `${Math.min(100, Math.round(Math.sqrt(ring.live.level) * 260))}%`;
+  bar.dataset.speaking = String(ring.live.speaking);
+  const st = document.querySelector('#ring-live-state');
+  if (st) st.textContent = ring.live.speaking ? t('Hearing speech', 'Konuşma duyuluyor') : t('Listening', 'Dinliyor');
+}
+
+function liveCard(s) {
+  const L = ring.live;
+  if (!s.liveCapable) return '';
+  const label = d => ({kaydet: t('written', 'yazıldı'), bekle: t('waiting for the rest', 'devamı bekleniyor'), at: t('dropped', 'atıldı'),
+    mahrem: t('private, not written', 'mahrem, yazılmadı'), susuldu: t('paused after an objection', 'itirazdan sonra susuldu')}[d.karar] || d.karar);
+  const mark = d => d.karar === 'kaydet' || d.karar === 'bekle' ? '●' : d.karar === 'mahrem' || d.karar === 'susuldu' ? '■' : '·';
+  const decisions = L.decisions.slice().reverse().map(d => `<li class="ring-dec" data-k="${esc(d.karar)}"><time>${esc(d.saat || '')}</time><b>${mark(d)}</b><span>${d.metin && d.karar !== 'mahrem' ? esc(d.metin) : `<i>${label(d)}</i>`}</span><small>${label(d)}</small></li>`).join('');
+  if (!L.on) {
+    const opts = (L.devices || []).map(d => `<option value="${d.no}" ${d.varsayilan ? 'selected' : ''}>${esc(d.ad)}</option>`).join('');
+    const sum = L.summary ? `<p class="subtle">${t('Last session', 'Son oturum')}: ${L.summary.yazilan} ${t('items written', 'madde yazıldı')}${L.summary.hatirlatici ? ` · ${L.summary.hatirlatici} ${t('reminders', 'hatırlatıcı')}` : ''}${L.summary.not ? ` · <span class="path">${esc(L.summary.not)}</span>` : ''}</p>` : '';
+    return `<section class="ring-live card"><div class="toolbar"><h2>${t('Listen live', 'Canlı dinle')}</h2><span class="subtle">${t('Notes go straight to Obsidian', 'Notlar doğrudan Obsidian’a yazılır')}</span></div>
+    <p>${t('The microphone is heard on this computer; every sentence is judged together with what came before it. Private things (someone else’s health or family, numbers, passwords, a request not to be recorded) are never written. Audio is not kept.', 'Mikrofon bu bilgisayarda dinlenir; her cümle kendisinden öncekilerle birlikte değerlendirilir. Mahrem olanlar (başkasının sağlığı ya da ailesi, numaralar, şifreler, kaydedilmeme isteği) hiç yazılmaz. Ses saklanmaz.')}</p>
+    <div class="ring-fields ring-live-fields"><div><label for="ring-mic">${t('Microphone', 'Mikrofon')}</label><select id="ring-mic">${opts || `<option value="">${t('Default', 'Varsayılan')}</option>`}</select></div></div>
+    <label class="check"><input type="checkbox" id="ring-train" ${L.training ? 'checked' : ''}> ${t('Keep the text of non-private sentences on this computer to train the next model', 'Mahrem olmayan cümlelerin metnini sonraki modeli eğitmek için bu bilgisayarda sakla')}</label>
+    ${L.error ? `<div class="health-row health-warn"><div><span>${t('Stopped', 'Durdu')}</span><p>${esc(L.error)}</p></div></div>` : ''}${sum}
+    <div class="actions"><span class="subtle">${t('Tell the people around you that you are taking notes.', 'Çevrendekilere not aldığını söyle.')}</span>${rbtn('Start listening', 'Dinlemeye başla', 'live-start', true)}</div></section>`;
+  }
+  const written = L.written.slice().reverse().map(w => `<li><time>${esc(w.saat)}</time><span>${esc(w.metin)}</span>${w.hatirlatici ? `<small>${t('+ reminder', '+ hatırlatıcı')}</small>` : '<small></small>'}</li>`).join('');
+  return `<section class="ring-live card" data-on="true"><div class="toolbar"><h2>${t('Listening', 'Dinleniyor')} <span class="ring-rec">● ${t('REC', 'KAYIT')}</span></h2><span class="subtle" id="ring-live-state">${t('Listening', 'Dinliyor')}</span>${rbtn('Stop', 'Durdur', 'live-stop', true)}</div>
+  <div class="ring-level-track"><div id="ring-level"></div></div>
+  <p class="ring-ara" id="ring-ara">${esc(L.ara || '')}</p>
+  ${L.error ? `<div class="health-row health-warn"><div><span>${t('Error', 'Hata')}</span><p>${esc(L.error)}</p></div></div>` : ''}
+  <div class="ring-two"><div><h2>${t('Heard', 'Duyulan')}</h2><ul class="ring-decs">${decisions || `<li class="subtle">${t('Loading models, then waiting for speech…', 'Modeller yükleniyor, sonra konuşma bekleniyor…')}</li>`}</ul></div>
+  <div><h2>${t('Written to memory', 'Hafızaya yazılan')}</h2>${L.note ? `<p class="path">${esc(L.note)}</p>` : ''}<ul class="ring-written">${written || `<li class="subtle">${t('Nothing yet.', 'Henüz yok.')}</li>`}</ul></div></div></section>`;
 }
 
 function engineLine(s) {
@@ -163,15 +219,18 @@ async function renderRing() {
   ring.drafts = ring.status.ready ? await api.ringDrafts() : [];
   if (ring.openId && !ring.open) ring.open = await api.ringDraft(ring.openId).catch(() => null);
   const s = ring.status;
-  let body = `<h1>${t('Ring', 'Yüzük')}</h1><p class="ring-lead">${t('Turns a recording into a draft note: lectures, meetings or your own voice notes. Every step runs on this computer; audio and text never leave it. Nothing is written to memory until you approve it.', 'Bir kaydı taslak nota çevirir: ders, toplantı ya da kendi sesli notun. Her adım bu bilgisayarda çalışır; ses ve metin buradan çıkmaz. Sen onaylamadan hafızaya hiçbir şey yazılmaz.')}</p>${howItWorks()}`;
+  let body = `<h1>${t('Ring', 'Yüzük')}</h1><p class="ring-lead">${t('Takes notes from what is said around you: lectures, meetings or your own voice. Every step runs on this computer; audio and text never leave it. Live listening writes to memory as it hears; a recorded file becomes a draft you approve.', 'Çevrende konuşulandan not alır: ders, toplantı ya da kendi sesin. Her adım bu bilgisayarda çalışır; ses ve metin buradan çıkmaz. Canlı dinleme duydukça hafızaya yazar; işlenen bir kayıt ise senin onayladığın bir taslağa dönüşür.')}</p>${howItWorks()}`;
   if (!s.ready) { content.innerHTML = body + setupNeeded(s) + devices(s); return; }
   body += engineLine(s);
+  if (s.liveCapable && ring.live.devices === null) ring.live.devices = await api.ringDevices().catch(() => []);
+  if (s.live && !ring.live.on) Object.assign(ring.live, {on: true, note: s.live.note, decisions: s.live.last || []});
+  body += liveCard(s);
   if (ring.result?.error) body += `<div id="ring-error" class="health-row health-warn"><div><span>${t('Stopped', 'Durdu')}</span><p>${esc(ring.result.error)}</p></div></div>`;
   if (ring.result?.approved) body += `<div class="health-row"><div><span>${t('Written to memory', 'Hafızaya yazıldı')}</span><p class="path">${esc(ring.result.approved.note)}</p><p>${ring.result.approved.reminders.length} ${t('reminders added', 'hatırlatıcı eklendi')} · ${ring.result.approved.corrected} ${t('corrections saved for training', 'düzeltme eğitim için saklandı')}</p></div></div>`;
   if (ring.result?.packaged) body += `<div class="health-row"><div><span>${t('Package ready', 'Paket hazır')}</span><p class="path">${esc(ring.result.packaged)}</p></div></div>`;
   if (ring.running) body += `<section class="ring-block">${runningView()}</section>`;
   else if (ring.open) body += `<section class="ring-block">${reviewView(ring.open)}</section>`;
-  else body += `<section class="ring-block">${newRecording()}</section>`;
+  else body += `<section class="ring-block"><h2>${t('Or process a recording', 'Ya da bir kaydı işle')}</h2>${newRecording()}</section>`;
   content.innerHTML = body + history() + devices(s);
 }
 window.renderRing = renderRing;
