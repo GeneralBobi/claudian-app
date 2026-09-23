@@ -23,6 +23,7 @@ if(acceptanceRoot && (!path.isAbsolute(acceptanceRoot)||!require('node:fs').exis
 if (smoke) app.setPath('userData', require('node:fs').mkdtempSync(path.join(os.tmpdir(), 'claudian-smoke-profile-')));
 if (smoke) app.disableHardwareAcceleration();
 const origin = 'claudian://app';
+let ringModule = null;
 let win, core, remoteConnector, secureTunnel, tunnelQuitting=false, runtime=null, migrationError='', setupReview=false, installStamp='';
 // app:enter reloads the window, which destroys every bit of renderer state -- including the
 // view the person just asked for. "Set up AI connections" therefore landed them on Memory,
@@ -64,7 +65,7 @@ async function start() {
   }
   protocol.handle('claudian', request => {
     const url = new URL(request.url);
-    const allowed = { '/': 'index.html', '/index.html': 'index.html', '/setup.html': 'setup.html', '/styles.css': 'styles.css', '/fonts.css': 'fonts.css', '/renderer.js': 'renderer.js', '/errors.js': 'errors.js', '/lottie.min.js': 'lottie.min.js', '/claudian-memory.json': 'claudian-memory.json' };
+    const allowed = { '/': 'index.html', '/index.html': 'index.html', '/setup.html': 'setup.html', '/styles.css': 'styles.css', '/fonts.css': 'fonts.css', '/renderer.js': 'renderer.js', '/ring.js': 'ring.js', '/errors.js': 'errors.js', '/lottie.min.js': 'lottie.min.js', '/claudian-memory.json': 'claudian-memory.json' };
     if (url.hostname === 'app' && /^\/fonts\/[a-zA-Z0-9_.-]+\.woff2$/.test(url.pathname)) return net.fetch(pathToFileURL(path.join(__dirname, 'ui', url.pathname.slice(1))).href);
     if (url.hostname !== 'app' || !allowed[url.pathname]) return new Response('Not found', { status: 404 });
     return net.fetch(pathToFileURL(path.join(__dirname, 'ui', allowed[url.pathname])).href);
@@ -490,6 +491,23 @@ async function start() {
     finally{if(verificationWatches.get(host)===controller)verificationWatches.delete(host);}
   });
   handle('app:copy', text => { if (typeof text !== 'string' || text.length > 5000) throw new Error('Geçersiz metin.'); clipboard.writeText(text); });
+  // Yüzük: the note-taking ring's local engine. Drafts reach memory only through ring:approve.
+  const ring = require('./ring.cjs').createRing({core, dialog, getWindow: () => win,
+    send: (channel, payload) => { if (win && !win.isDestroyed()) win.webContents.send(channel, payload); },
+    notify: (title, body) => { if (Notification.isSupported() && !win?.isFocused()) new Notification({title, body}).show(); }});
+  ringModule = ring;
+  handle('ring:status', () => ring.status());
+  handle('ring:choose-engine', () => ring.chooseEngine());
+  handle('ring:choose-audio', () => ring.chooseAudio());
+  handle('ring:run', input => ring.run(input));
+  handle('ring:cancel', () => ring.cancel());
+  handle('ring:drafts', () => ring.drafts());
+  handle('ring:draft', id => ring.draft(id));
+  handle('ring:approve', (id, choice) => ring.approve(id, choice));
+  handle('ring:discard', id => ring.discard(id));
+  handle('ring:receiver-start', () => ring.receiverStart());
+  handle('ring:receiver-stop', () => ring.receiverStop());
+  handle('ring:package', () => ring.packageFor());
   handle('app:open', async kind => {
     const target = kind === 'logs' ? path.join(core.dataDir, 'logs') : kind === 'vault' ? (await core.snapshot()).profile?.vault : null;
     if (!target) throw new Error('Klasör henüz hazır değil.');
@@ -586,6 +604,7 @@ app.on('window-all-closed', () => { if (!runtime || smoke) app.quit(); });
 // The poll loop holds the device connection. Stopping it before exit is the difference
 // between a clean disconnect and a relay that keeps a dead device registered.
 app.on('before-quit', async event => {
+  ringModule?.shutdown();
   if (tunnelQuitting) return;
   event.preventDefault();
   tunnelQuitting = true;

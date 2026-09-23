@@ -371,7 +371,7 @@ function accessRow(h){
  const label=a.state==='granted'?t('Granted during setup','Kurulumda verildi'):t('Already granted','Zaten vardı');
  return `<div class="config-file"><span>${t('Folder access','Klasör erişimi')}</span><span class="badge">${esc(label)}</span></div>`;
 }
-function header(){document.documentElement.lang=language;document.querySelector('header .caption').textContent='';const nav=document.querySelector('nav');if(nav){nav.hidden=extending;nav.innerHTML=`<button data-view="home">${t('Memory','Hafıza')}</button><button data-view="connections">${t('Connections','Bağlantılar')}</button><button data-view="companion">${t('Panel','Panel')}</button><button data-view="settings">${t('Settings','Ayarlar')}</button>`;nav.querySelectorAll('button').forEach(n=>n.classList.toggle('active',n.dataset.view===view));}}
+function header(){document.documentElement.lang=language;document.querySelector('header .caption').textContent='';const nav=document.querySelector('nav');if(nav){nav.hidden=extending;nav.innerHTML=`<button data-view="home">${t('Memory','Hafıza')}</button><button data-view="connections">${t('Connections','Bağlantılar')}</button><button data-view="ring">${t('Ring','Yüzük')}</button><button data-view="companion">${t('Panel','Panel')}</button><button data-view="settings">${t('Settings','Ayarlar')}</button>`;nav.querySelectorAll('button').forEach(n=>n.classList.toggle('active',n.dataset.view===view));}}
 // A card instead of a bare checkbox. Every line on it has a source in this repository:
 // the connection kind comes from the host registry, "found on this computer" from the same
 // detection the installer uses, the requirement sentence from web-providers.cjs. A line
@@ -399,6 +399,7 @@ function renderSetup(){
 async function renderPanel(){const p=state.profile;
  if(!p)throw new Error('Memory is not configured.');
  if(view==='companion'){renderPanelView();return;}
+ if(view==='ring'){await window.renderRing();return;}
  if(view==='settings'){content.innerHTML=`<h1>${t('Settings','Ayarlar')}</h1><p>${t('The application and newly installed memory files use the setup language. Updates and protocol maintenance are collected here.','Uygulama ve yeni kurulan hafıza dosyaları kurulum dilini kullanır. Güncelleme ve protokol bakımı burada toplanır.')}</p>`;return;}
  const hosts=mergedConnections(await api.connections());connectionList=hosts;healthData=await api.health();if(api.reviewStatus)for(const h of hosts)reviewResults[h.id]=await api.reviewStatus(h.id).catch(e=>({status:'invalid',message:e.message}));tunnelState=await api.tunnelStatus();if(view==='connections'){remoteStatus=await api.connectorStatus();}
  if(obsidianPresent===null)obsidianPresent=await api.obsidianInstalled().catch(()=>null);

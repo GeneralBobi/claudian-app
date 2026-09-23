@@ -6,6 +6,19 @@ const invoke = async (channel, ...args) => {
   return result.value;
 };
 contextBridge.exposeInMainWorld('claudian', {
+  ringStatus: () => invoke('ring:status'),
+  ringChooseEngine: () => invoke('ring:choose-engine'),
+  ringChooseAudio: () => invoke('ring:choose-audio'),
+  ringRun: input => invoke('ring:run', input),
+  ringCancel: () => invoke('ring:cancel'),
+  ringDrafts: () => invoke('ring:drafts'),
+  ringDraft: id => invoke('ring:draft', id),
+  ringApprove: (id, choice) => invoke('ring:approve', id, choice),
+  ringDiscard: id => invoke('ring:discard', id),
+  ringReceiverStart: () => invoke('ring:receiver-start'),
+  ringReceiverStop: () => invoke('ring:receiver-stop'),
+  ringPackage: () => invoke('ring:package'),
+  onRingEvent: fn => { const h = (_e, v) => fn(v); ipcRenderer.on('ring:event', h); return () => ipcRenderer.removeListener('ring:event', h); },
   tunnelStatus: () => invoke('tunnel:status'),
   tunnelSave: input => invoke('tunnel:save',input),
   tunnelStart: () => invoke('tunnel:start'),

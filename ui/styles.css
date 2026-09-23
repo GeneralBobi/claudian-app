@@ -263,3 +263,37 @@ body[data-surface="panel"]>header,body[data-surface="panel"]>nav{padding-inline:
 .reminder-list time{display:block;margin:0}
 @media(min-width:1120px){.panel-layout{grid-template-columns:minmax(0,1fr) 320px;gap:56px}.panel-secondary{border-left:1px solid var(--line);padding-left:28px}}
 @media(max-width:600px){body[data-surface="panel"]>main{padding:24px 20px}body[data-surface="panel"]>header,body[data-surface="panel"]>nav{padding-inline:20px}.panel-heading{gap:16px}.panel-layout{gap:32px}.panel-item{flex-wrap:wrap}.panel-item button{margin-left:auto}}
+
+/* Yüzük. Same tokens as the rest of the panel; no motion. */
+.ring-lead{max-width:68ch}
+.ring-how{margin:4px 0 0}
+.ring-steps{list-style:none;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;padding:0;margin:14px 0 0}
+.ring-steps li{font-size:12px;color:var(--text)}
+.ring-steps b{font:11px 'JetBrains Mono',monospace;color:var(--orange);margin-right:6px}
+.ring-steps span{display:block;font:11px/1.7 Poppins,sans-serif;color:var(--muted);margin-top:4px}
+.ring-engine{display:flex;flex-wrap:wrap;gap:6px 22px;font-size:12px;margin:18px 0 0;padding:12px 16px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.ring-engine i{font-style:normal;color:var(--orange);margin-right:6px}.ring-engine em{font-style:normal}.ring-engine span{color:var(--muted)}
+.ring-block{margin:22px 0 0}
+.ring-drop{border:1px dashed #3a3a44;border-radius:10px;padding:24px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.ring-drop p{margin:0;font-size:13px}
+.ring-form .toolbar{margin-top:0}
+.ring-fields{display:grid;grid-template-columns:2fr 1.2fr 1fr;gap:0 14px}
+.ring-fields input[type=datetime-local]{width:100%;background:var(--surface);color:var(--text);border:1px solid #33333b;padding:8px 10px;border-radius:4px;font:11px Poppins,sans-serif;color-scheme:dark}
+.ring-group>h2{margin:22px 0 4px}
+.ring-seg{display:grid;grid-template-columns:auto 44px minmax(0,1fr) auto;gap:12px;align-items:baseline;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px;line-height:1.6;color:var(--text);margin:0;cursor:pointer}
+.ring-seg time{font:11px 'JetBrains Mono',monospace;color:var(--muted)}
+.ring-seg small{font-size:11px;color:var(--muted);white-space:nowrap}
+.ring-seg.off{color:var(--muted)}
+.ring-seg:has(input:checked){color:var(--text)}
+.ring-seg:not(:has(input:checked)) span{text-decoration:line-through;text-decoration-color:#5a5650}
+.ring-seg.off:not(:has(input:checked)) span{text-decoration:none}
+.ring-remind{display:grid;grid-template-columns:auto 150px minmax(0,1fr);gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px}
+.ring-remind input[type=date]{background:var(--surface);color:var(--text);border:1px solid #33333b;padding:7px 8px;border-radius:4px;font:11px 'JetBrains Mono',monospace;color-scheme:dark}
+.ring-row{display:flex;justify-content:space-between;gap:16px;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);border-radius:0;padding:12px 2px;font-size:12px;font-weight:400}
+.ring-row:hover{border-color:var(--line);color:var(--orange)}
+.ring-row time{font:11px 'JetBrains Mono',monospace;color:var(--muted)}
+.ring-two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.ring-two .card{margin:0}.ring-two p{font-size:12px}
+.ring-addr{font:12px 'JetBrains Mono',monospace;background:#08080a;border:1px solid var(--line);border-radius:6px;padding:10px 12px;margin:0 0 12px;overflow-wrap:anywhere;user-select:all}
+.ring-list{font-size:12px;line-height:1.9;padding-left:18px;margin:0 0 14px;color:var(--muted)}
+@media(max-width:780px){.ring-steps{grid-template-columns:1fr 1fr}.ring-two,.ring-fields{grid-template-columns:1fr}}
