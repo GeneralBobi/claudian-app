@@ -89,7 +89,7 @@ test('a live session is written by the note writer when listening stops', async 
     .map(x => JSON.stringify(x)).join('\n') + '\n');
   const r = await ring.finishSession(session, Date.parse('2026-09-23T11:00:00'), {cumle: 5, aktarilan: 1, baglam: 0, mahrem: 1});
   assert.deepEqual(calls[0], ['Aktarılan cümle (örnek)']);
-  assert.ok((await fs.readFile(path.join(vault, r.note), 'utf8')).includes("5 cümle duyuldu, 1'i not yazıcısına aktarıldı, 1 mahrem"));
+  assert.ok((await fs.readFile(path.join(vault, r.note), 'utf8')).includes('5 cümle duyuldu, 1 mahrem çıkarıldı'));
   assert.equal(await ring.finishSession(session, Date.now(), {cumle: 3, aktarilan: 0}), null, 'nothing passed, no note');
 });
 
@@ -111,4 +111,14 @@ test('phone card: an engine without sunucu.py is reported as not capable, and no
   assert.equal(typeof s.running, 'boolean');
   assert.equal(s.origin, 'https://yuzuk.claudian.app');
   assert.ok(!JSON.stringify(s).includes('gizli-anahtar-ornek'), 'the server key stays in the engine folder');
+});
+
+test('note writer: the choice is stored per computer and only known writers are accepted', async t => {
+  const {ring} = await setup(t);
+  const w = await ring.writers();
+  assert.equal(w.chosen, 'claude', 'default writer');
+  assert.deepEqual(w.list.map(x => x.id), ['claude', 'codex', 'gemini']);
+  assert.equal((await ring.setWriter('codex')).chosen, 'codex');
+  assert.equal((await ring.writers()).chosen, 'codex', 'the choice survives');
+  await assert.rejects(ring.setWriter('bilinmeyen'), /Bilinmeyen/);
 });

@@ -24,6 +24,8 @@ contextBridge.exposeInMainWorld('claudian', {
   ringPhoneStatus: () => invoke('ring:phone-status'),
   ringPhoneStart: () => invoke('ring:phone-start'),
   ringPhonePair: () => invoke('ring:phone-pair'),
+  ringWriters: () => invoke('ring:writers'),
+  ringSetWriter: id => invoke('ring:set-writer', id),
   onRingLive: fn => { const h = (_e, v) => fn(v); ipcRenderer.on('ring:live', h); return () => ipcRenderer.removeListener('ring:live', h); },
   onRingEvent: fn => { const h = (_e, v) => fn(v); ipcRenderer.on('ring:event', h); return () => ipcRenderer.removeListener('ring:event', h); },
   tunnelStatus: () => invoke('tunnel:status'),

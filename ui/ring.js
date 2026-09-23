@@ -23,9 +23,11 @@ function ringBind() {
     if (ev.olay === 'kapandi') {
       const done = ring.running?.events.find(e => e.olay === 'bitti');
       const fail = ring.running?.events.find(e => e.olay === 'hata');
+      const wrote = ring.running?.events.find(e => e.olay === 'yazildi');
       ring.running = null;
-      ring.result = fail ? {error: fail.mesaj} : null;
-      if (done) { ring.openId = done.taslak; ring.open = null; ring.file = null; }
+      ring.result = fail ? {error: fail.mesaj} : wrote ? {written: wrote} : null;
+      if (wrote) ring.file = null;
+      else if (done) { ring.openId = done.taslak; ring.open = null; ring.file = null; }
     }
     if (view === 'ring') await renderRing();
   });
@@ -54,6 +56,7 @@ function ringBind() {
 async function ringAction(a, el) {
   if (a === 'choose-audio') { const f = await api.ringChooseAudio(); if (f) ring.file = f; }
   else if (a === 'choose-engine') { const s = await api.ringChooseEngine(); if (s) ring.status = s; }
+  else if (a === 'writer') { await api.ringSetWriter(el.dataset.id); }
   else if (a === 'run') {
     const start = document.querySelector('#ring-start').value.replace('T', ' ');
     await api.ringRun({file: ring.file.file, title: document.querySelector('#ring-title').value, start,
@@ -96,8 +99,8 @@ function howItWorks() {
   const steps = [
     [t('Listen', 'Dinleme'), t('Start live listening, send from your phone, or choose a recording.', 'Canlı dinlemeyi başlat, telefondan gönder ya da bir kayıt seç.')],
     [t('Transcribe', 'Yazıya dökme'), t('Whisper turns the speech into text on this computer.', 'Whisper konuşmayı bu bilgisayarda metne çevirir.')],
-    [t('Decide', 'Karar'), t('Laya reads each sentence with what came before it and decides only what reaches the note writer; private things are never sent.', 'Laya her cümleyi öncesiyle birlikte okur ve yalnız neyin not yazıcısına gideceğine karar verir; mahrem olan hiç gönderilmez.')],
-    [t('Write', 'Yazma'), t('Claude writes a structured note from what was passed, with reminders, into Obsidian.', 'Claude aktarılanlardan başlıklı bir not ve hatırlatıcıları yazıp Obsidian’a koyar.')],
+    [t('Filter', 'Ayıklama'), t('Only private sentences are removed (someone else’s health or family, numbers, a request not to be recorded); everything else stays.', 'Yalnız mahrem cümleler çıkarılır (başkasının sağlığı ya da ailesi, numaralar, kaydedilmeme isteği); gerisi kalır.')],
+    [t('Write', 'Yazma'), t('The AI you pick reads the whole conversation and writes a note with a summary, headings and reminders into Obsidian.', 'Seçtiğin AI konuşmanın tamamını okur; özetli, başlıklı bir notu ve hatırlatıcıları Obsidian’a yazar.')],
   ];
   return `<details class="ring-how" open><summary>${t('How it works', 'Nasıl çalışır')}</summary><ol class="ring-steps">${steps.map(([h, p], i) => `<li><b>${i + 1}</b>${h}<span>${p}</span></li>`).join('')}</ol></details>`;
 }
@@ -122,14 +125,14 @@ function liveCard(s) {
   if (!L.on) {
     const opts = (L.devices || []).map(d => `<option value="${d.no}" ${d.varsayilan ? 'selected' : ''}>${esc(d.ad)}</option>`).join('');
     const sy = L.synth;
-    const sum = !sy ? '' : sy.durum === 'basladi' ? `<div class="health-row"><div><span>${t('Writing the note', 'Not yazılıyor')}</span><p>${sy.aktarilan} ${t('sentences went to the note writer. This takes about half a minute.', 'cümle not yazıcısına gitti. Yaklaşık yarım dakika sürer.')}</p></div></div>`
-      : sy.durum === 'bitti' ? `<div class="health-row"><div><span>${t('Written to memory', 'Hafızaya yazıldı')}</span><p class="path">${esc(sy.not)}</p><p>${sy.hatirlatici} ${t('reminders', 'hatırlatıcı')} · ${sy.gereksiz} ${t('passed sentences judged noise, kept as training labels for Laya', 'aktarılan cümle gereksiz bulundu; Laya için eğitim etiketi olarak saklandı')}</p></div></div>`
+    const sum = !sy ? '' : sy.durum === 'basladi' ? `<div class="health-row"><div><span>${t('Writing the note', 'Not yazılıyor')}</span><p>${sy.aktarilan} ${t('sentences went to the note writer. This takes up to a couple of minutes.', 'cümle not yazıcısına gitti. Bir iki dakika sürebilir.')}</p></div></div>`
+      : sy.durum === 'bitti' ? `<div class="health-row"><div><span>${t('Written to memory', 'Hafızaya yazıldı')}</span><p class="path">${esc(sy.not)}</p><p>${sy.hatirlatici} ${t('reminders', 'hatırlatıcı')}${sy.gereksiz ? ` · ${sy.gereksiz} ${t('passed sentences judged noise', 'aktarılan cümle gereksiz bulundu')}` : ''}</p></div></div>`
       : sy.durum === 'hata' ? `<div class="health-row health-warn"><div><span>${t('The note could not be written', 'Not yazılamadı')}</span><p>${esc(sy.mesaj)}</p><p class="path">${esc(sy.oturum || '')}</p></div></div>`
       : `<p class="subtle">${t('Nothing worth a note was heard.', 'Not değerinde bir şey duyulmadı.')}</p>`;
     return `<section class="ring-live card"><div class="toolbar"><h2>${t('Listen live', 'Canlı dinle')}</h2><span class="subtle">${t('The note goes straight to Obsidian', 'Not doğrudan Obsidian’a yazılır')}</span></div>
-    <p>${t('Speech is transcribed on this computer. Laya reads each sentence with what came before it and decides only what reaches the note writer; it writes nothing itself. When you stop, Claude writes the note from what was passed. Private things (someone else’s health or family, numbers, passwords, a request not to be recorded) are never sent. Audio is not kept.', 'Konuşma bu bilgisayarda yazıya dökülür. Laya her cümleyi öncesiyle birlikte okur ve yalnız neyin not yazıcısına gideceğine karar verir; kendisi hiçbir şey yazmaz. Durdurduğunda notu, aktarılanlardan Claude yazar. Mahrem olanlar (başkasının sağlığı ya da ailesi, numaralar, şifreler, kaydedilmeme isteği) hiç gönderilmez. Ses saklanmaz.')}</p>
+    <p>${t('Speech is transcribed on this computer. Laya reads each sentence with what came before it and decides only what reaches the note writer; it writes nothing itself. When you stop, Claude writes the note from what was passed. Private things (someone else’s health or family, numbers, passwords, a request not to be recorded) are never sent. Audio is not kept.', (s.full ? 'Konuşma bu bilgisayarda yazıya dökülür. Durdurduğunda konuşmanın tamamı seçtiğin AI’a gider ve notu o yazar. Mahrem olanlar (başkasının sağlığı ya da ailesi, numaralar, şifreler, kaydedilmeme isteği) önce çıkarılır, hiç gönderilmez. Ses saklanmaz.' : 'Konuşma bu bilgisayarda yazıya dökülür. Laya her cümleyi öncesiyle birlikte okur ve yalnız neyin not yazıcısına gideceğine karar verir; kendisi hiçbir şey yazmaz. Durdurduğunda notu, aktarılanlardan Claude yazar. Mahrem olanlar (başkasının sağlığı ya da ailesi, numaralar, şifreler, kaydedilmeme isteği) hiç gönderilmez. Ses saklanmaz.'))}</p>
     <div class="ring-fields ring-live-fields"><div><label for="ring-mic">${t('Microphone', 'Mikrofon')}</label><select id="ring-mic">${opts || `<option value="">${t('Default', 'Varsayılan')}</option>`}</select></div></div>
-    <label class="check"><input type="checkbox" id="ring-train" ${L.training ? 'checked' : ''}> ${t('Keep the text of non-private sentences on this computer to train the next model', 'Mahrem olmayan cümlelerin metnini sonraki modeli eğitmek için bu bilgisayarda sakla')}</label>
+    <label class="check" ${s.full ? 'hidden' : ''}><input type="checkbox" id="ring-train" ${L.training ? 'checked' : ''}> ${t('Keep the text of non-private sentences on this computer to train the next model', 'Mahrem olmayan cümlelerin metnini sonraki modeli eğitmek için bu bilgisayarda sakla')}</label>
     ${L.error ? `<div class="health-row health-warn"><div><span>${t('Stopped', 'Durdu')}</span><p>${esc(L.error)}</p></div></div>` : ''}${sum}
     <div class="actions"><span class="subtle">${t('Tell the people around you that you are taking notes.', 'Çevrendekilere not aldığını söyle.')}</span>${rbtn('Start listening', 'Dinlemeye başla', 'live-start', true)}</div></section>`;
   }
@@ -139,10 +142,18 @@ function liveCard(s) {
   <p class="ring-ara" id="ring-ara">${esc(L.ara || '')}</p>
   ${L.error ? `<div class="health-row health-warn"><div><span>${t('Error', 'Hata')}</span><p>${esc(L.error)}</p></div></div>` : ''}
   <div class="ring-two"><div><h2>${t('Heard', 'Duyulan')}</h2><ul class="ring-decs">${decisions || `<li class="subtle">${t('Loading models, then waiting for speech…', 'Modeller yükleniyor, sonra konuşma bekleniyor…')}</li>`}</ul></div>
-  <div><h2>${t('Passed to the note writer', 'Not yazıcısına aktarılan')} <span class="subtle">${L.passed || 0}</span></h2><ul class="ring-written">${written || `<li class="subtle">${t('Nothing yet.', 'Henüz yok.')}</li>`}</ul><p class="subtle">${t('The note is written when you stop.', 'Not, durdurduğunda yazılır.')}</p></div></div></section>`;
+  <div><h2>${t('Going to the note writer', 'Not yazıcısına gidecek')} <span class="subtle">${L.passed || 0}</span></h2><ul class="ring-written">${written || `<li class="subtle">${t('Nothing yet.', 'Henüz yok.')}</li>`}</ul><p class="subtle">${t('The note is written when you stop.', 'Not, durdurduğunda yazılır.')}</p></div></div></section>`;
+}
+
+function writerPicker(s) {
+  const w = s.writers;
+  if (!s.full || !w) return '';
+  const chips = w.list.map(x => `<button data-ring="writer" data-id="${esc(x.id)}" class="${x.id === w.chosen ? 'primary' : ''}" ${x.installed ? '' : 'disabled'} title="${x.installed ? '' : esc(t('Not installed on this computer', 'Bu bilgisayarda kurulu değil'))}">${esc(x.name)}</button>`).join('');
+  return `<div class="ring-writer"><span>${t('Note written by', 'Notu yazan')}</span><div class="row">${chips}</div><p class="subtle">${t('The whole transcript goes to the tool you pick, through your own account on this computer. Private sentences are removed first.', 'Konuşmanın tamamı, bu bilgisayardaki kendi hesabınla seçtiğin araca gider. Mahrem cümleler önce çıkarılır.')}</p></div>`;
 }
 
 function engineLine(s) {
+  if (s.full) return `<div class="ring-engine"><div><i>●</i><em>Whisper large-v3-turbo</em></div><div><i>●</i><em>${t('Whole transcript · Laya off', 'Tam döküm · Laya kapalı')}</em></div><div><span>${t('Transcription on this computer', 'Yazıya dökme bu bilgisayarda')}</span></div></div>${writerPicker(s)}`;
   const tr = s.training;
   const model = s.checks.tuned ? `${esc(s.model)}${tr?.tarih ? ` · ${t('trained', 'eğitildi')} ${esc(tr.tarih.slice(0, 10))}` : ''}` : 'Laya multilingual';
   return `<div class="ring-engine"><div><i>●</i><em>Whisper large-v3-turbo</em></div><div><i>●</i><em>${model}</em></div><div><span>${t('Offline · models on this computer', 'Çevrimdışı · modeller bu bilgisayarda')}</span></div></div>`;
@@ -164,12 +175,22 @@ function newRecording() {
   <div><label for="ring-start">${t('Recording started', 'Kaydın başladığı an')}</label><input id="ring-start" type="datetime-local" value="${localStamp(f.modified).replace(' ', 'T')}"></div>
   <div><label for="ring-lang">${t('Language', 'Dil')}</label><select id="ring-lang"><option value="">${t('Detect', 'Otomatik')}</option><option value="tr">Türkçe</option><option value="en">English</option></select></div></div>
   <p class="subtle">${t('The start time turns “tomorrow” or “next Friday” into dates.', 'Başlangıç anı “yarın”, “gelecek cuma” gibi ifadeleri tarihe çevirmek için kullanılır.')}</p>
-  <label class="check"><input type="checkbox" id="ring-audit"> ${t('Audit mode — also keep the text of dropped sentences, so you can rescue them and teach the model', 'Denetim modu — atılan cümlelerin metnini de sakla; yanlışlıkla atılanı kurtarıp modele öğretebilirsin')}</label>
-  <div class="actions"><span class="subtle">${t('Nothing leaves this computer.', 'Hiçbir şey bu bilgisayardan çıkmaz.')}</span>${rbtn('Extract notes', 'Notu çıkar', 'run', true)}</div></section>`;
+  <label class="check" ${ring.status?.full ? 'hidden' : ''}><input type="checkbox" id="ring-audit"> ${t('Audit mode — also keep the text of dropped sentences, so you can rescue them and teach the model', 'Denetim modu — atılan cümlelerin metnini de sakla; yanlışlıkla atılanı kurtarıp modele öğretebilirsin')}</label>
+  <div class="actions"><span class="subtle">${ring.status?.full ? t('Audio stays on this computer; the transcript goes to the note writer you picked.', 'Ses bu bilgisayarda kalır; döküm seçtiğin not yazıcısına gider.') : t('Nothing leaves this computer.', 'Hiçbir şey bu bilgisayardan çıkmaz.')}</span>${rbtn('Extract notes', 'Notu çıkar', 'run', true)}</div></section>`;
 }
 
 function runningView() {
   const r = ring.running, ev = r.events;
+  if (ev.some(e => e.olay === 'asama')) {
+    const stage = (state, label, detail) => `<div class="stage ${state}"><b>${state === 'done' ? '✓' : state === 'running' ? '●' : '○'}</b>${label}${detail ? ` · ${detail}` : ''}</div>`;
+    const prog = [...ev].reverse().find(e => e.olay === 'ilerleme');
+    const w = ev.find(e => e.asama === 'yazici'), fin = ev.find(e => e.olay === 'bitti'), wrote = ev.find(e => e.olay === 'yazildi');
+    return `<div class="progress-title"><span>${esc(r.file)}</span><span>${clock((Date.now() - r.started) / 1000)}</span></div>
+    ${stage(w ? 'done' : 'running', t('Transcribing', 'Yazıya dökme'), w ? `${w.cumle} ${t('sentences', 'cümle')}${w.mahrem ? ` · ${w.mahrem} ${t('private removed', 'mahrem çıkarıldı')}` : ''}` : prog ? `%${Math.round(prog.oran * 100)}` : t('loading model', 'model yükleniyor'))}
+    ${stage(fin ? 'done' : w ? 'running' : '', w ? `${esc(w.yazici)} ${t('writes the note', 'notu yazıyor')}` : t('Writing the note', 'Not yazımı'), '')}
+    ${stage(wrote ? 'done' : fin ? 'running' : '', t('Obsidian', 'Obsidian'), '')}
+    <div class="actions"><span class="subtle">${t('You can close the window; a notification arrives when the note is written.', 'Pencereyi kapatabilirsin; not yazılınca bildirim gelir.')}</span>${rbtn('Stop', 'Durdur', 'cancel')}</div>`;
+  }
   const last = (asama, olay) => [...ev].reverse().find(e => e.asama === asama && (!olay || e.olay === olay));
   const sttDone = ev.find(e => e.asama === 'yazi' && e.durum === 'bitti');
   const gateDone = ev.find(e => e.asama === 'kapi' && e.durum === 'bitti');
@@ -183,6 +204,7 @@ function runningView() {
 }
 
 function reviewView(d) {
+  if (d.durum === 'yazildi') return `<div class="toolbar"><h2>${esc(d.baslik)}</h2>${rbtn('Back', 'Geri', 'close')}</div><p>${t('Written to memory as', 'Hafızaya şu adla yazıldı:')} <span class="path">${esc(d.not)}</span></p><p class="subtle">${d.parca || 0} ${t('sentences', 'cümle')}${d.yazici ? ` · ${t('note by', 'notu yazan')} ${esc(d.yazici)}` : ''}</p>`;
   const approved = d.durum === 'onaylandi';
   const kept = d.kayitlar.filter(k => k.tut && k.metin), dropped = d.kayitlar.filter(k => !k.tut && k.metin);
   const seg = (k, on) => `<label class="ring-seg${on ? '' : ' off'}"><input type="checkbox" data-keep="${k.no}" ${on ? 'checked' : ''} ${approved ? 'disabled' : ''}><time>${esc(k.saat)}</time><span>${esc(k.metin)}</span><small>${k.neden === 'devam' ? t('continuation', 'devamı') : esc(t(...(KIND_LABEL[k.tur] || KIND_LABEL.gurultu)).split(/[ ,]/)[0].toLowerCase())}</small></label>`;
@@ -202,7 +224,7 @@ function reviewView(d) {
 
 function history() {
   if (!ring.drafts.length) return '';
-  const label = s => s === 'onaylandi' ? t('approved', 'onaylandı') : t('draft', 'taslak');
+  const label = s => s === 'yazildi' ? t('in Obsidian', 'Obsidian’da') : s === 'onaylandi' ? t('approved', 'onaylandı') : t('draft', 'taslak');
   return `<section class="panel-section"><h2>${t('Recordings', 'Kayıtlar')}</h2>${ring.drafts.slice(0, 12).map(d => `<button class="ring-row" data-ring="open" data-id="${esc(d.id)}"><span>${esc(d.title)}</span><time>${esc(String(d.start).slice(8, 10) + '.' + String(d.start).slice(5, 7))} · ${d.kept} ${t('items', 'madde')} · ${label(d.status)}</time></button>`).join('')}</section>`;
 }
 
@@ -247,6 +269,9 @@ async function renderRing() {
   body += liveCard(s);
   if (ring.result?.error) body += `<div id="ring-error" class="health-row health-warn"><div><span>${t('Stopped', 'Durdu')}</span><p>${esc(ring.result.error)}</p></div></div>`;
   if (ring.result?.approved) body += `<div class="health-row"><div><span>${t('Written to memory', 'Hafızaya yazıldı')}</span><p class="path">${esc(ring.result.approved.note)}</p><p>${ring.result.approved.reminders.length} ${t('reminders added', 'hatırlatıcı eklendi')} · ${ring.result.approved.corrected} ${t('corrections saved for training', 'düzeltme eğitim için saklandı')}</p></div></div>`;
+  if (ring.result?.written) body += ring.result.written.bos
+    ? `<div class="health-row"><div><span>${t('No note', 'Not yok')}</span><p>${t('No speech worth a note was found in the recording.', 'Kayıtta not değerinde konuşma bulunamadı.')}</p></div></div>`
+    : `<div class="health-row"><div><span>${t('Written to memory', 'Hafızaya yazıldı')}</span><p class="path">${esc(ring.result.written.not)}</p><p>${ring.result.written.hatirlatici || 0} ${t('reminders added', 'hatırlatıcı eklendi')}</p></div></div>`;
   if (ring.result?.packaged) body += `<div class="health-row"><div><span>${t('Package ready', 'Paket hazır')}</span><p class="path">${esc(ring.result.packaged)}</p></div></div>`;
   if (ring.running) body += `<section class="ring-block">${runningView()}</section>`;
   else if (ring.open) body += `<section class="ring-block">${reviewView(ring.open)}</section>`;

@@ -317,3 +317,5 @@ body[data-surface="panel"]>header,body[data-surface="panel"]>nav{padding-inline:
 .ring-written small{font-size:11px;color:var(--orange)}
 .ring-live-fields{grid-template-columns:1fr}
 .ring-block>h2{margin:0 0 10px}
+
+.ring-writer{margin:4px 0 18px;display:flex;flex-direction:column;gap:6px}.ring-writer>span{font-size:12px;color:var(--muted)}.ring-writer .row{display:flex;gap:8px;flex-wrap:wrap}.ring-writer p{margin:0;font-size:12px}

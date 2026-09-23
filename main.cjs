@@ -513,6 +513,8 @@ async function start() {
   handle('ring:phone-status', () => ring.phoneStatus());
   handle('ring:phone-start', () => ring.phoneStart());
   handle('ring:phone-pair', () => ring.phonePair());
+  handle('ring:writers', () => ring.writers());
+  handle('ring:set-writer', id => ring.setWriter(id));
   handle('app:open', async kind => {
     const target = kind === 'logs' ? path.join(core.dataDir, 'logs') : kind === 'vault' ? (await core.snapshot()).profile?.vault : null;
     if (!target) throw new Error('Klasör henüz hazır değil.');

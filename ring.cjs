@@ -49,6 +49,37 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
     return engine ||= defaultEngine();
   }
 
+  /* ---- note writer: the person picks which AI writes the note (Boran, 23.09.2026) ---- */
+  const WRITERS = {claude: 'Claude', codex: 'ChatGPT (Codex)', gemini: 'Gemini'};
+
+  async function settings() {
+    try { return JSON.parse(await fs.readFile(settingsFile(), 'utf8')); } catch { return {}; }
+  }
+
+  async function writerInstalled(id) {
+    const home = os.homedir(), npm = path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'npm');
+    const candidates = {claude: [path.join(home, '.local', 'bin', 'claude.exe'), path.join(npm, 'claude.cmd')],
+      codex: [path.join(npm, 'codex.cmd')], gemini: [path.join(npm, 'gemini.cmd')]}[id] || [];
+    for (const c of candidates) if (await exists(c)) return true;
+    return false;
+  }
+
+  async function writers() {
+    const chosen = (await settings()).yazici || 'claude';
+    const list = [];
+    for (const [id, name] of Object.entries(WRITERS)) list.push({id, name, installed: await writerInstalled(id)});
+    return {chosen: WRITERS[chosen] ? chosen : 'claude', list};
+  }
+
+  async function setWriter(id) {
+    if (!WRITERS[id]) throw Error('Bilinmeyen not yazıcısı.');
+    const cur = await settings();
+    await fs.writeFile(settingsFile(), JSON.stringify({...cur, engine: cur.engine || await engineDir(), yazici: id}, null, 1));
+    return writers();
+  }
+
+  async function writer() { return (await writers()).chosen; }
+
   async function status() {
     const dir = await engineDir();
     const python = path.join(dir, '.venv', 'Scripts', 'python.exe');
@@ -72,6 +103,9 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
       running: job ? {file: job.file, events: job.events.slice(-40)} : null,
       live: liveStatus(),
       liveCapable: await exists(path.join(dir, 'canli.py')),
+      // Laya'sız yol (23.09.2026): tam döküm seçilen yazıcıya gider. Eski motorlarda yoksa Laya yolu kalır.
+      full: await exists(path.join(dir, 'tamnot.py')),
+      writers: await writers(),
       receiver: receiver ? {url: receiver.url, received: receiver.received} : null};
   }
 
@@ -98,14 +132,18 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
     const dir = await engineDir();
     const file = String(input?.file || '');
     if (!AUDIO.includes(path.extname(file).slice(1).toLowerCase()) || !await exists(file)) throw Error('Ses dosyası bulunamadı.');
-    const args = [path.join(dir, 'notcikar.py'), file, '--json-ilerleme'];
+    const full = await exists(path.join(dir, 'tamnot.py'));
+    const chosenWriter = await writer();
+    const args = full ? [path.join(dir, 'tamnot.py'), file, '--json-ilerleme', '--yazici', chosenWriter]
+      : [path.join(dir, 'notcikar.py'), file, '--json-ilerleme'];
     if (clean(input.title)) args.push('--baslik', clean(input.title).slice(0, 80));
     if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(input.start || '')) args.push('--baslangic', input.start);
     if (input.language === 'tr' || input.language === 'en') args.push('--dil', input.language);
-    if (input.audit === true) args.push('--denetim');
+    if (input.audit === true && !full) args.push('--denetim');
+    const startedAt = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(input.start || '') ? input.start.replace(' ', 'T') : new Date().toISOString();
     const child = spawn(path.join(dir, '.venv', 'Scripts', 'python.exe'), args, {cwd: dir, windowsHide: true,
       env: {...process.env, USE_TF: '0', HF_HUB_OFFLINE: '1', PYTHONIOENCODING: 'utf-8', PYTHONUNBUFFERED: '1'}});
-    job = {child, file: path.basename(file), events: [], stderr: ''};
+    job = {child, file: path.basename(file), events: [], stderr: '', full, writer: WRITERS[chosenWriter]};
     const emit = event => { job?.events.push(event); send('ring:event', event); };
     emit({olay: 'basladi', dosya: path.basename(file)});
     let buffer = '';
@@ -115,7 +153,10 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
       let i;
       while ((i = buffer.indexOf('\n')) >= 0) {
         const line = buffer.slice(0, i).trim(); buffer = buffer.slice(i + 1);
-        if (line.startsWith('@@')) { try { emit(JSON.parse(line.slice(2))); } catch {} }
+        if (!line.startsWith('@@')) continue;
+        let ev; try { ev = JSON.parse(line.slice(2)); } catch { continue; }
+        emit(ev);
+        if (full && ev.olay === 'bitti') finishFull(ev.sonuc, {title: clean(input.title) || path.basename(file), startedAt, emit});
       }
     });
     child.stderr.setEncoding('utf8');
@@ -125,10 +166,31 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
       const tail = job?.stderr.split('\n').filter(l => l.trim() && !/warn/i.test(l)).slice(-3).join('\n');
       if (!finished) emit({olay: 'hata', kod: code, mesaj: code === null ? 'Durduruldu.' : (tail || `Motor ${code} koduyla kapandı.`)});
       job = null;
-      if (finished) notify?.('Yüzük', `${finished.tutulan} madde çıkarıldı — taslak onay bekliyor.`);
+      if (finished && !full) notify?.('Yüzük', `${finished.tutulan} madde çıkarıldı — taslak onay bekliyor.`);
       send('ring:event', {olay: 'kapandi'});
     });
     return true;
+  }
+
+  /* Laya'sız kayıt: not, onay adımı olmadan doğrudan hafızaya yazılır ve geçmişte bir kayıt olarak durur. */
+  async function finishFull(result, {title, startedAt, emit}) {
+    try {
+      if (!String(result?.not_md || '').trim()) { emit({olay: 'yazildi', bos: true}); return; }
+      const mins = Math.max(1, Math.round((result.ses_suresi_sn || 0) / 60));
+      const written = await writeSynthNote({title, startedAt, result,
+        source: `${mins} dk kayıt · ${result.cumle || 0} cümlenin tamamı${result.mahrem ? ` (${result.mahrem} mahrem çıkarıldı)` : ''}`,
+        reason: `Yüzük kaydı işlendi: ${clean(title)}`});
+      const id = `${String(startedAt).slice(0, 16).replace(/[:T]/g, '-')}_${clean(title).replace(/[^\p{L}\p{N}]+/gu, '-').slice(0, 60)}`;
+      const d = path.join(await engineDir(), 'taslaklar', id);
+      await fs.mkdir(d, {recursive: true});
+      await fs.writeFile(path.join(d, 'kararlar.json'), JSON.stringify({baslik: title, baslangic: String(startedAt).slice(0, 16),
+        ses_suresi_sn: result.ses_suresi_sn, parca: result.cumle, tutulan: (result.cumle || 0) - (result.mahrem || 0), durum: 'yazildi',
+        not: written.note, yazici: result.yazici, kayitlar: []}, null, 1));
+      emit({olay: 'yazildi', not: written.note, hatirlatici: written.reminders.length, yazici: result.yazici});
+      notify?.('Yüzük', `Not yazıldı: ${written.note.replace(/\.md$/, '')}`);
+    } catch (e) {
+      emit({olay: 'hata', mesaj: e.message});
+    }
   }
 
   function cancel() { if (job) job.child.kill(); return true; }
@@ -160,7 +222,9 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
   async function synthesize(sessionFile, title) {
     if (synth) return synth(sessionFile, title);
     const dir = await engineDir();
-    const args = [path.join(dir, 'sentez.py'), sessionFile, '--etiket'];
+    const full = await exists(path.join(dir, 'tamnot.py'));
+    const args = full ? [path.join(dir, 'sentez.py'), sessionFile, '--tam', '--yazici', await writer()]
+      : [path.join(dir, 'sentez.py'), sessionFile, '--etiket'];
     if (clean(title)) args.push('--baslik', clean(title).slice(0, 120));
     return new Promise((resolve, reject) => {
       const child = spawn(path.join(dir, '.venv', 'Scripts', 'python.exe'), args, {cwd: dir, windowsHide: true,
@@ -191,7 +255,9 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
       `# ${clean(result.baslik || title || 'Kayıt')}`, '',
       `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())} · ${source}`, '',
       md, '', ...(links.length ? [`İlgili: ${links.map(t => `[[${t}]]`).join(' · ')}`, ''] : []), '---',
-      '_Yüzük: konuşma bu bilgisayarda yazıya döküldü, Laya neyin aktarılacağına karar verdi, notu Claude yazdı. Mahrem ve kapsam dışı cümleler gönderilmedi; ses saklanmadı._', ''].join('\n');
+      result.yazici
+        ? `_Yüzük: konuşma bu bilgisayarda yazıya döküldü; mahrem cümleler çıkarıldı, kalanın tamamı notu yazan araca (${WRITERS[result.yazici] || result.yazici}) gitti. Ses saklanmadı._`
+        : '_Yüzük: konuşma bu bilgisayarda yazıya döküldü, Laya neyin aktarılacağına karar verdi, notu Claude yazdı. Mahrem ve kapsam dışı cümleler gönderilmedi; ses saklanmadı._', ''].join('\n');
     const receipts = [(await store.mutate(vault, {note, operation: 'create', body, reason}, 'yuzuk')).id];
     const reminders = [];
     for (const h of result.hatirlaticilar || []) {
@@ -331,7 +397,7 @@ d.textContent=r&&r.ok?'Gönderildi. Bilgisayarında işleniyor.':'Gönderilemedi
       const result = await synthesize(session, null);
       const mins = Math.max(1, Math.round((Date.now() - startedAt) / 60000));
       const written = await writeSynthNote({title: 'Canlı dinleme', startedAt, result,
-        source: `${mins} dk canlı dinleme · ${counts.cumle} cümle duyuldu, ${counts.aktarilan + (counts.baglam || 0)}'i not yazıcısına aktarıldı, ${counts.mahrem || 0} mahrem`,
+        source: `${mins} dk canlı dinleme · ${counts.cumle} cümle duyuldu${counts.mahrem ? `, ${counts.mahrem} mahrem çıkarıldı` : ''}`,
         reason: 'Yüzük canlı dinleme oturumu notu'});
       send('ring:live', {olay: 'sentez', durum: 'bitti', not: written.note, hatirlatici: written.reminders.length,
         gereksiz: (result.gereksiz || []).length, maliyet: result.maliyet_usd});
@@ -349,6 +415,7 @@ d.textContent=r&&r.ok?'Gönderildi. Bilgisayarında işleniyor.':'Gönderilemedi
     const dir = await engineDir();
     if (!await exists(path.join(dir, 'canli.py')) || !await exists(path.join(dir, 'sentez.py'))) throw Error('Motor canlı dinlemeyi desteklemiyor; motoru güncelle.');
     const args = [path.join(dir, 'canli.py'), '--json-ilerleme'];
+    if (await exists(path.join(dir, 'tamnot.py'))) args.push('--tam');
     if (Number.isInteger(options.device)) args.push('--cihaz', String(options.device));
     // Acceptance runs have no microphone: a marked test profile may stream a file as if it were live.
     if (process.env.CLAUDIAN_ACCEPTANCE_ROOT && process.env.CLAUDIAN_RING_TEST_FILE) args.push('--dosya', process.env.CLAUDIAN_RING_TEST_FILE, '--hiz', '4');
@@ -457,7 +524,7 @@ d.textContent=r&&r.ok?'Gönderildi. Bilgisayarında işleniyor.':'Gönderilemedi
   function shutdown() { cancel(); if (live) live.child.kill(); if (receiver) receiver.server.close(); }
 
   return {status, chooseEngine, chooseAudio, run, cancel, drafts, draft, approve, discard, receiverStart, receiverStop, packageFor,
-    devices, liveStart, liveStop, liveStatus, finishSession, shutdown, engineDir, phoneStatus, phoneStart, phonePair};
+    devices, liveStart, liveStop, liveStatus, finishSession, shutdown, engineDir, phoneStatus, phoneStart, phonePair, writers, setWriter};
 }
 
 module.exports = {createRing, draftDir};
