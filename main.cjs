@@ -24,7 +24,7 @@ if (smoke) app.setPath('userData', require('node:fs').mkdtempSync(path.join(os.t
 if (smoke) app.disableHardwareAcceleration();
 const origin = 'claudian://app';
 let ringModule = null;
-let win, core, remoteConnector, secureTunnel, tunnelQuitting=false, runtime=null, migrationError='', setupReview=false, installStamp='';
+let win, core, remoteConnector, secureTunnel, tunnelQuitting=false, runtime=null, backgroundServices=null, migrationError='', setupReview=false, installStamp='';
 // app:enter reloads the window, which destroys every bit of renderer state -- including the
 // view the person just asked for. "Set up AI connections" therefore landed them on Memory,
 // the one screen that makes an unfinished setup look finished. The requested view is handed
@@ -588,6 +588,7 @@ async function start() {
           notificationsEnabled = value === true;
         },
         language: async () => (await core.preferences()).language,
+        services: () => backgroundServices?.status() || [],
         autoStart: () => app.getLoginItemSettings().openAtLogin === true,
         setAutoStart: async value => {
           // Recorded in Claudian's own preferences as well as with the operating system, so
@@ -599,6 +600,11 @@ async function start() {
       runtime.onBeforeRebuild(async () => { notificationsEnabled = await core.runtimePreference('notifications'); });
       runtime.start();
     } catch (error) { console.error('[claudian] tray:', error.message); runtime = null; }
+    // Only with a tray: a service nobody can see must also have a visible way to stop it.
+    if (runtime) {
+      backgroundServices = require('./services.cjs').create({ dataDir: core.dataDir, log: message => console.log(message) });
+      void backgroundServices.start().then(() => runtime.rebuild()).catch(error => console.error('[claudian] services:', error.message));
+    }
   }
 
   await win.loadURL(origin + (installed ? '/index.html' : '/setup.html'));
@@ -619,6 +625,7 @@ app.on('before-quit', async event => {
   if (tunnelQuitting) return;
   event.preventDefault();
   tunnelQuitting = true;
+  try { await backgroundServices?.stop(); } catch { /* exit anyway */ }
   try { await secureTunnel?.stop(); } catch { /* exit anyway */ }
   if(remoteConnector)remoteConnector.stopping = true;
   try { await remoteConnector?.stop({ persist: false }); } catch { /* exit anyway */ }

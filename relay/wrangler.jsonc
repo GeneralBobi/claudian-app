@@ -3,6 +3,7 @@
   "main": "worker.mjs",
   "compatibility_date": "2026-09-01",
   "workers_dev": true,
+  "routes": [{"pattern": "relay.claudian.app", "custom_domain": true}],
   "observability": {"enabled": false},
   "durable_objects": {"bindings": [{"name":"DEVICES","class_name":"ClaudianDevice"}]},
   "migrations": [{"tag":"v1","new_sqlite_classes":["ClaudianDevice"]}],

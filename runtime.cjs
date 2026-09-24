@@ -49,7 +49,7 @@ function summary(state, language, waiting = 0) {
  * @param {()=>boolean} deps.autoStart
  */
 function attach({ app, Tray, Menu, nativeImage, win, status, state, language, setAutoStart, autoStart,
-  notifications, setNotifications }) {
+  notifications, setNotifications, services }) {
   let tray = null, quitting = false, lastTooltip = '', refreshPreferences = null;
   // Set by the caller when a preference has to be re-read from disk before the menu is drawn.
   const onBeforeRebuild = fn => { refreshPreferences = fn; };
@@ -75,6 +75,7 @@ function attach({ app, Tray, Menu, nativeImage, win, status, state, language, se
         label: '  ' + (a.label ? a.label + ' — ' : '') + describe(a.kind, lang),
         click: show,
       })) : []),
+      ...serviceItems(tr),
       { type: 'separator' },
       { label: tr ? 'Claudian’ı aç' : 'Open Claudian', click: show },
       {
@@ -92,6 +93,16 @@ function attach({ app, Tray, Menu, nativeImage, win, status, state, language, se
       { type: 'separator' },
       { label: tr ? 'Claudian’dan çık' : 'Quit Claudian', click: quit },
     ]));
+  }
+
+  // Background services are listed only when the user configured some; each line is status, not a control.
+  function serviceItems(tr) {
+    const list = (() => { try { return services?.() || []; } catch { return []; } })();
+    if (!list.length) return [];
+    const word = { running: tr ? 'çalışıyor' : 'running', starting: tr ? 'başlıyor' : 'starting',
+      failed: tr ? 'yeniden denenecek' : 'will retry', stopped: tr ? 'durdu' : 'stopped' };
+    return [{ type: 'separator' }, { label: tr ? 'Arka plan hizmetleri' : 'Background services', enabled: false },
+      ...list.map(s => ({ label: '  ' + s.label + ' — ' + (word[s.phase] || s.phase), enabled: false }))];
   }
 
   function start() {
