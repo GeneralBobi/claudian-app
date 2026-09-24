@@ -5,7 +5,8 @@
   simulated progress, and nothing reaches the memory except through "Approve".
 */
 const ring = {status: null, drafts: [], file: null, running: null, open: null, openId: null, result: null, bound: false,
-  live: {devices: null, device: null, training: false, on: false, level: 0, speaking: false, ara: '', decisions: [], written: [], note: null, error: null, summary: null}};
+  live: {devices: null, device: null, training: false, on: false, level: 0, speaking: false, ara: '', decisions: [], written: [], note: null, error: null, summary: null},
+  voice: {status: null, running: false, seconds: 25, elapsed: 0, level: 0, error: null, result: null}, phoneLive: null};
 const KIND_LABEL = {
   odev: ['Assignments and deadlines', 'Ödev ve teslimler'], sinav: ['Exam emphasis', 'Sınav vurguları'],
   hazirlik: ['Preparation', 'Hazırlık'], karar: ['Decisions, plans and promises', 'Kararlar, planlar ve sözler'],
@@ -13,6 +14,16 @@ const KIND_LABEL = {
 };
 const clock = s => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 const rbtn = (en, tr, action, primary = false, extra = '') => `<button data-ring="${action}" class="${primary ? 'primary' : ''}" ${extra}>${t(en, tr)}</button>`;
+// Windows varsayılan girişi sanal bir aygıt olabilir (SteelSeries Sonar 24.09'da neredeyse ses vermedi): varsayılan
+// sanal aygıtsa ilk gerçek mikrofon seçilir.
+const SANAL_MIK = /sonar|voicemeeter|stereo mix|virtual|cable output|vb-audio/i;
+function micOptions(devices) {
+  const list = devices || [];
+  const def = list.find(d => d.varsayilan);
+  const pick = def && !SANAL_MIK.test(def.ad) ? def : list.find(d => !SANAL_MIK.test(d.ad)) || def;
+  return list.map(d => `<option value="${d.no}" ${d === pick ? 'selected' : ''}>${esc(d.ad)}</option>`).join('');
+}
+const dayStamp = iso => { const d = new Date(iso); const p = n => String(n).padStart(2, '0'); return `${p(d.getDate())}.${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`; };
 const localStamp = iso => { const d = new Date(iso); const p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; };
 
 function ringBind() {
@@ -43,6 +54,22 @@ function ringBind() {
     if (ev.olay === 'sentez') { L.synth = ev; }
     if (view === 'ring' && !ring.open) renderRing();
   });
+  api.onRingVoice?.(ev => {
+    const V = ring.voice;
+    if (ev.olay === 'ilerleme') {
+      V.elapsed = ev.gecen_sn; V.level = ev.seviye;
+      const bar = document.querySelector('#ring-voice-bar'), sec = document.querySelector('#ring-voice-sec');
+      if (bar) bar.style.width = `${Math.min(100, Math.round(V.elapsed / V.seconds * 100))}%`;
+      if (sec) sec.textContent = `${clock(V.elapsed)} / ${clock(V.seconds)}`;
+      const lv = document.querySelector('#ring-voice-level');
+      if (lv) lv.style.width = `${Math.min(100, Math.round(Math.sqrt(V.level) * 260))}%`;
+      return;
+    }
+    if (ev.olay === 'hata') V.error = ev.mesaj;
+    if (ev.olay === 'bitti') V.result = ev;
+    if (ev.olay === 'kapandi') { V.running = false; if (ev.kod && !V.error) V.error = t('Voice enrollment stopped.', 'Ses tanıtma durdu.'); }
+    if (view === 'ring' && !ring.open) renderRing();
+  });
   document.addEventListener('click', async e => {
     const el = e.target.closest('[data-ring]');
     if (!el || view !== 'ring') return;
@@ -57,6 +84,15 @@ async function ringAction(a, el) {
   if (a === 'choose-audio') { const f = await api.ringChooseAudio(); if (f) ring.file = f; }
   else if (a === 'choose-engine') { const s = await api.ringChooseEngine(); if (s) ring.status = s; }
   else if (a === 'writer') { await api.ringSetWriter(el.dataset.id); }
+  else if (a === 'voice-start') {
+    const V = ring.voice;
+    const mic = document.querySelector('#ring-voice-mic');
+    Object.assign(V, {running: true, elapsed: 0, level: 0, error: null, result: null});
+    await renderRing();
+    try { await api.ringVoiceEnroll({device: mic?.value ? Number(mic.value) : undefined, seconds: V.seconds}); }
+    catch (err) { V.running = false; V.error = err.message; }
+  }
+  else if (a === 'voice-delete') { ring.voice.status = await api.ringVoiceDelete(); ring.voice.result = null; }
   else if (a === 'run') {
     const start = document.querySelector('#ring-start').value.replace('T', ' ');
     await api.ringRun({file: ring.file.file, title: document.querySelector('#ring-title').value, start,
@@ -123,7 +159,7 @@ function liveCard(s) {
   const mark = d => d.karar === 'aktar' ? '●' : d.karar === 'baglam' ? '○' : d.karar === 'mahrem' || d.karar === 'susuldu' ? '■' : '·';
   const decisions = L.decisions.slice().reverse().map(d => `<li class="ring-dec" data-k="${esc(d.karar)}"><time>${esc(d.saat || '')}</time><b>${mark(d)}</b><span>${d.metin && d.karar !== 'mahrem' ? esc(d.metin) : `<i>${label(d)}</i>`}</span><small>${label(d)}</small></li>`).join('');
   if (!L.on) {
-    const opts = (L.devices || []).map(d => `<option value="${d.no}" ${d.varsayilan ? 'selected' : ''}>${esc(d.ad)}</option>`).join('');
+    const opts = micOptions(L.devices);
     const sy = L.synth;
     const sum = !sy ? '' : sy.durum === 'basladi' ? `<div class="health-row"><div><span>${t('Writing the note', 'Not yazılıyor')}</span><p>${sy.aktarilan} ${t('sentences went to the note writer. This takes up to a couple of minutes.', 'cümle not yazıcısına gitti. Bir iki dakika sürebilir.')}</p></div></div>`
       : sy.durum === 'bitti' ? `<div class="health-row"><div><span>${t('Written to memory', 'Hafızaya yazıldı')}</span><p class="path">${esc(sy.not)}</p><p>${sy.hatirlatici} ${t('reminders', 'hatırlatıcı')}${sy.gereksiz ? ` · ${sy.gereksiz} ${t('passed sentences judged noise', 'aktarılan cümle gereksiz bulundu')}` : ''}</p></div></div>`
@@ -143,6 +179,31 @@ function liveCard(s) {
   ${L.error ? `<div class="health-row health-warn"><div><span>${t('Error', 'Hata')}</span><p>${esc(L.error)}</p></div></div>` : ''}
   <div class="ring-two"><div><h2>${t('Heard', 'Duyulan')}</h2><ul class="ring-decs">${decisions || `<li class="subtle">${t('Loading models, then waiting for speech…', 'Modeller yükleniyor, sonra konuşma bekleniyor…')}</li>`}</ul></div>
   <div><h2>${t('Going to the note writer', 'Not yazıcısına gidecek')} <span class="subtle">${L.passed || 0}</span></h2><ul class="ring-written">${written || `<li class="subtle">${t('Nothing yet.', 'Henüz yok.')}</li>`}</ul><p class="subtle">${t('The note is written when you stop.', 'Not, durdurduğunda yazılır.')}</p></div></div></section>`;
+}
+
+const OKUMA_METNI = ['Sabah derse biraz geç kaldım; hoca konuyu anlatmaya başlamıştı bile. Arka sıraya oturup defterimi açtım ve tahtadaki şekli hızlıca çizdim.',
+  'Öğle arasında Deniz\'le kantinde buluştuk, hafta sonu için küçük bir plan yaptık. Akşam eve dönerken hem ödevimi hem de yarınki sunumu düşündüm.',
+  'Unutmamak için kendime not aldım: perşembe saat üçte proje toplantısı var.'];
+
+function voiceCard(s) {
+  if (!s.full) return '';
+  const V = ring.voice, st = V.status;
+  const head = `<div class="toolbar"><h2>${t('Your voice', 'Sesin')}</h2><span class="subtle">${st?.enrolled ? `${t('enrolled', 'tanıtıldı')} · ${esc(String(st.created || '').slice(0, 10))} · ${st.seconds} ${t('s of speech', 'sn konuşma')}` : t('not enrolled', 'tanıtılmadı')}</span></div>`;
+  const why = `<p>${t('Enroll your voice once and notes keep what you said apart: your promises, your questions. The reading is used only to compute a voiceprint on this computer and is never saved; the voiceprint stays here and you can delete it any time. Enrolling on the phone does the same.', 'Sesini bir kez tanıtırsan notlar senin söylediklerini ayrı tutar: verdiğin sözler, sorduğun sorular. Okuma yalnız bu bilgisayarda bir ses izi çıkarmak için kullanılır, kaydedilmez; ses izi burada durur ve istediğin an silebilirsin. Telefonda tanıtmak da aynı işi görür.')}</p>`;
+  if (V.running) {
+    return `<section class="ring-voice card">${head}<blockquote class="ring-okuma">${OKUMA_METNI.map(p => `<p>${esc(p)}</p>`).join('')}</blockquote>
+    <div class="progress-title"><span>${t('Read aloud', 'Sesli oku')}</span><span id="ring-voice-sec">${clock(V.elapsed)} / ${clock(V.seconds)}</span></div>
+    <div class="ring-level-track"><div id="ring-voice-bar" style="width:${Math.round(V.elapsed / V.seconds * 100)}%"></div></div>
+    <div class="ring-level-track ring-voice-level"><div id="ring-voice-level"></div></div>
+    <p class="subtle">${t('Recording stops by itself; the voiceprint is computed right after.', 'Kayıt kendiliğinden durur; ses izi hemen ardından çıkarılır.')}</p></section>`;
+  }
+  const opts = micOptions(ring.live.devices);
+  const res = V.result ? `<div class="health-row"><div><span>${t('Voice enrolled', 'Sesin tanındı')}</span><p>${V.result.konusma_sn} ${t('s of speech', 'sn konuşma')} · ${t('consistency', 'tutarlılık')} ${Math.round((V.result.tutarlilik || 0) * 100)}</p></div></div>` : '';
+  const err = V.error ? `<div class="health-row health-warn"><div><span>${t('Not enrolled', 'Tanıtılamadı')}</span><p>${esc(V.error)}</p></div></div>` : '';
+  return `<section class="ring-voice card">${head}${why}${res}${err}
+  <div class="ring-fields ring-live-fields"><div><label for="ring-voice-mic">${t('Microphone', 'Mikrofon')}</label><select id="ring-voice-mic">${opts || `<option value="">${t('Default', 'Varsayılan')}</option>`}</select></div></div>
+  <div class="actions"><span class="subtle">${t('About 25 seconds; the text to read appears when you start.', 'Yaklaşık 25 saniye; okunacak metin başlayınca görünür.')}</span>
+  <div class="row">${st?.enrolled ? rbtn('Delete voiceprint', 'Ses izini sil', 'voice-delete') : ''}${rbtn(st?.enrolled ? 'Enroll again' : 'Enroll my voice', st?.enrolled ? 'Yeniden tanıt' : 'Sesimi tanıt', 'voice-start', true)}</div></div></section>`;
 }
 
 function writerPicker(s) {
@@ -242,7 +303,13 @@ function phoneCard() {
     ? `<div class="ring-pair"><div class="ring-qr" aria-label="${t('Pairing QR code', 'Eşleştirme QR kodu')}">${ring.pair.qr}</div><div><p>${t('Scan with the phone camera, or open the address. It installs the app and pairs it with a one-time code.', 'Telefon kamerasıyla okut ya da adresi aç. Uygulamayı kurar ve tek kullanımlık kodla eşleştirir.')}</p><div class="ring-addr">${esc(ring.pair.url)}</div><p class="subtle">${t('Code', 'Kod')}: <b>${esc(ring.pair.code)}</b> · ${t('valid 24 hours, once', '24 saat, bir kez geçerli')}</p><div class="row">${rbtn('Copy address', 'Adresi kopyala', 'copy-pair')}</div></div></div>`
     : (p.running ? rbtn('Pair a phone', 'Telefonu bağla', 'phone-pair', true) : '');
   const err = ring.pairError ? `<p class="subtle">${esc(ring.pairError)}</p>` : '';
-  return `<div class="card ring-phone">${head}${state}${pair}${err}</div>`;
+  const pl = ring.phoneLive;
+  const since = iso => { if (!iso) return t('never', 'hiç'); const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 1 ? t('just now', 'şimdi') : m < 60 ? `${m} ${t('min ago', 'dk önce')}` : dayStamp(iso); };
+  const jobLabel = d => ({teslim: t('in Obsidian', 'Obsidian’da'), hazir: t('ready', 'hazır'), isleniyor: t('processing', 'işleniyor'), sirada: t('queued', 'sırada'), hata: t('error', 'hata')}[d] || d);
+  const liveList = !pl ? '' : `<div class="ring-two ring-phone-live"><div><h2>${t('Connected phones', 'Bağlı telefonlar')}</h2><ul class="file-list">${pl.cihazlar.map(c => `<li>${esc(c.ad || t('Phone', 'Telefon'))} · ${t('seen', 'görüldü')} ${since(c.son_gorulme)}</li>`).join('') || `<li>${t('None yet', 'Henüz yok')}</li>`}</ul></div>
+    <div><h2>${t('Recent recordings', 'Son kayıtlar')}</h2><ul class="file-list">${pl.isler.map(j => `<li>${dayStamp(j.olusturuldu)} · ${j.ses_sn ? `${Math.max(1, Math.round(j.ses_sn / 60))} ${t('min', 'dk')} · ` : ''}${jobLabel(j.durum)}${j.yazici ? ` · ${esc(j.yazici)}` : ''}</li>`).join('') || `<li>${t('None yet', 'Henüz yok')}</li>`}</ul>
+    <p class="subtle">${t('Cloud heartbeat', 'Bulut nabzı')}: ${since(pl.son_nabiz)}</p></div></div>`;
+  return `<div class="card ring-phone">${head}${state}${liveList}${pair}${err}</div>`;
 }
 
 function devices(s) {
@@ -260,6 +327,8 @@ async function renderRing() {
   ringBind();
   ring.status = await api.ringStatus();
   ring.phone = await api.ringPhoneStatus?.().catch(() => null) ?? null;
+  ring.phoneLive = ring.phone?.cloud ? await api.ringPhoneLive?.().catch(() => null) ?? null : null;
+  if (!ring.voice.running) ring.voice.status = await api.ringVoiceStatus?.().catch(() => null) ?? null;
   if (ring.status.running && !ring.running) ring.running = {file: ring.status.running.file, events: ring.status.running.events, started: Date.now()};
   ring.drafts = ring.status.ready ? await api.ringDrafts() : [];
   if (ring.openId && !ring.open) ring.open = await api.ringDraft(ring.openId).catch(() => null);
@@ -270,6 +339,7 @@ async function renderRing() {
   if (s.liveCapable && ring.live.devices === null) ring.live.devices = await api.ringDevices().catch(() => []);
   if (s.live && !ring.live.on) Object.assign(ring.live, {on: true, passed: s.live.passed, decisions: s.live.last || []});
   body += liveCard(s);
+  body += voiceCard(s);
   if (ring.result?.error) body += `<div id="ring-error" class="health-row health-warn"><div><span>${t('Stopped', 'Durdu')}</span><p>${esc(ring.result.error)}</p></div></div>`;
   if (ring.result?.approved) body += `<div class="health-row"><div><span>${t('Written to memory', 'Hafızaya yazıldı')}</span><p class="path">${esc(ring.result.approved.note)}</p><p>${ring.result.approved.reminders.length} ${t('reminders added', 'hatırlatıcı eklendi')} · ${ring.result.approved.corrected} ${t('corrections saved for training', 'düzeltme eğitim için saklandı')}</p></div></div>`;
   if (ring.result?.written) body += ring.result.written.bos

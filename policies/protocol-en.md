@@ -300,3 +300,17 @@ Provider memory or custom instructions may hold a short preference to initialize
 On a surface with its own account memory (ChatGPT, the Claude application) this short instruction lives in that surface's **adapter note**. When the adapter note's state is "not offered", the instruction is shown to the user once and their **consent** is asked before adding it; that is a permission question, not a breach of the silence rule. If they agree it is added, and not added twice if it is already there. The answer is recorded on the adapter note's state line and never offered again.
 
 Account memory follows the user to devices where the connection was never added. The two cases stay apart: a tool that exists but fails is reported in one line; a tool that does not exist on that surface is not mentioned at all.
+
+## Notes from a recording
+
+Every tool that writes a note from a conversation transcript (lecture, meeting, chat, voice message, video) uses the same shape; the reader should not be able to tell which tool wrote it.
+
+- **Place and name:** the `Yüzük/` folder, file name `YYYY-MM-DD HHMM Short title.md`. Frontmatter: `tags: [yüzük]`, `tür: log`, `güncellenme`.
+- **Summary first:** `### Summary` at the top — 2–3 sentences: what was discussed, who was there, the outcome.
+- **Headings by topic:** short, information-dense bullets under `### Heading`. Do not copy sentences; write the meaning without losing facts: names, numbers, dates, definitions, reasons.
+- **Questions and answers:** the question in bold as `**Question:** …`, the main points of the answer in the bullets below.
+- **Speakers:** address the user as "you" ("you asked the lecturer …"). Others by name, or by role when the name is unknown; never labels like "Speaker 2".
+- **A meeting is an event:** "Hi, I'm Nil" does not enter as a sentence; it enters under `### People` as "You met Nil — Deniz's roommate".
+- **The user's own words:** commitments and tasks the user took on stand out. Dated ones go at the end under `### Reminders` as `- [ ] task · at HH:MM 📅 YYYY-MM-DD` and into the note with the `reminders` role. Someone else's own deadline is not a reminder.
+- **Left out:** timestamps and line numbers; ads, greetings, filler; third parties' health, family, money, grades; ID, card, IBAN, phone numbers, password values; the words of anyone who said "don't record this", and what follows.
+- **Other languages:** the note is written in the user's language; phrases worth learning stay in the original, in quotes.

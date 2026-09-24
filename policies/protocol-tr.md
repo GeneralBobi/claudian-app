@@ -300,3 +300,17 @@ Sağlayıcı hafızası veya özel talimatlar, Claudian'ı başlatmayı hatırla
 Kendi hesap hafızası olan bir yüzeyde (ChatGPT, Claude uygulaması) bu kısa yönerge o yüzeyin **adaptör notunda** durur. Adaptör notundaki durum "teklif edilmedi" ise yönerge kullanıcıya bir kez gösterilir ve eklemek için **onayı istenir**; bu bir izin sorusudur, sessizlik kuralının ihlali değil. Onay gelirse eklenir, aynısı zaten varsa eklenmez. Cevap adaptör notunun durum satırına işlenir ve bir daha teklif edilmez.
 
 Hesap hafızası kullanıcıyla birlikte bağlantının hiç eklenmediği cihazlara da gider. Bu yüzden iki durum ayrı tutulur: araç var ama çağrısı hata veriyorsa tek satırla söylenir; araç o yüzeyde hiç yoksa hiçbir şey söylenmez.
+
+## Ses kaydından not
+
+Bir konuşmanın dökümünden (ders, toplantı, sohbet, sesli mesaj, video) not yazan her araç aynı biçimi kullanır; notu hangi araç yazarsa yazsın okuyan fark görmemelidir.
+
+- **Yer ve ad:** `Yüzük/` klasörü, dosya adı `YYYY-AA-GG SSDD Kısa başlık.md`. Frontmatter: `tags: [yüzük]`, `tür: log`, `güncellenme`.
+- **Özet önce:** en üstte `### Özet` — 2–3 cümle: ne konuşuldu, kimler vardı, sonuç ne.
+- **Konulara göre başlıklar:** `### Başlık` altında kısa, bilgi yoğun maddeler. Cümle kopyalanmaz, anlamıyla yazılır; özetlerken bilgi kaybedilmez: adlar, sayılar, tarihler, tanımlar, gerekçeler korunur.
+- **Soru-cevap:** soru `**Soru:** …` diye kalın yazılır, cevabın ana fikirleri altındaki maddelerde durur.
+- **Konuşmacılar:** kullanıcıya "sen" diye hitap edilir ("hocaya … diye sordun"). Diğerleri adıyla, ad bilinmiyorsa rolüyle yazılır; "Konuşmacı 2" gibi etiket notta kullanılmaz.
+- **Tanışma bir olaydır:** "Selam, ben Nil" nota cümle olarak girmez; `### Kişiler` altında "Nil ile tanıştın — Deniz'in oda arkadaşı" diye girer.
+- **Kullanıcının sözleri:** üstlendiği işler ve verdiği sözler ayrı görünür. Tarihli olanlar notun sonunda `### Hatırlatıcılar` altında `- [ ] iş · saat SS:DD 📅 YYYY-AA-GG` biçimindedir ve `reminders` rolündeki nota da işlenir. Başkasının kendi teslimi hatırlatıcı olmaz.
+- **Girmeyenler:** zaman damgası ve satır numarası; reklam, selamlaşma, dolgu; üçüncü kişilerin sağlık, aile, para, not/puan bilgisi; kimlik, kart, IBAN, telefon, şifre değerleri; "kaydetme" diyen birinin sözleri ve ardından gelenler.
+- **Başka dil:** not kullanıcının dilinde yazılır; öğrenmeye değer ifadeler özgün dilinde tırnak içinde kalır.

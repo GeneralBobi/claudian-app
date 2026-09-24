@@ -542,10 +542,66 @@ d.textContent=r&&r.ok?'Gönderildi. Bilgisayarında işleniyor.':'Gönderilemedi
     return {code: `${code.slice(0, 4)}-${code.slice(4)}`, url, qr};
   }
 
-  function shutdown() { cancel(); if (live) live.child.kill(); if (receiver) receiver.server.close(); }
+  /* ---- sesini tanıt (masaüstü) ----
+     Kullanıcı 25 sn kadar sesli okur; motor mikrofondan okur, yalnız bellekte tutar, ses izini çıkarır
+     (profiller/varsayilan.json). Telefonda tanıtılan ses de aynı dosyadır; ikisi de notlarda "Sen"i ayırır. */
+  let voiceJob = null;
+
+  async function voiceFile() { return path.join(await engineDir(), 'profiller', 'varsayilan.json'); }
+
+  async function voiceStatus() {
+    try {
+      const p = JSON.parse(await fs.readFile(await voiceFile(), 'utf8'));
+      return {enrolled: true, created: p.olusturuldu, seconds: p.konusma_sn, consistency: p.tutarlilik, running: !!voiceJob};
+    } catch { return {enrolled: false, running: !!voiceJob}; }
+  }
+
+  async function voiceEnroll(options = {}) {
+    if (voiceJob) throw Error('Ses tanıtma zaten sürüyor.');
+    if (live) throw Error('Canlı dinleme sürerken ses tanıtılamaz; önce dinlemeyi durdur.');
+    const dir = await engineDir();
+    if (!await exists(path.join(dir, 'konusmaci.py'))) throw Error('Motor konuşmacı ayrımını içermiyor; motoru güncelle.');
+    const target = await voiceFile();
+    await fs.mkdir(path.dirname(target), {recursive: true});
+    const seconds = Math.min(40, Math.max(15, Number(options.seconds) || 25));
+    const args = [path.join(dir, 'konusmaci.py'), '--mikrofon', String(seconds), '--json-ilerleme', '--profil-cikar', target];
+    if (Number.isInteger(options.device)) args.push('--cihaz', String(options.device));
+    const python = path.join(dir, '.venv', 'Scripts', 'python.exe');
+    const child = spawn(python, args, {cwd: dir, windowsHide: true, env: {...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1'}});
+    voiceJob = {child};
+    let buf = '';
+    child.stdout.on('data', c => {
+      buf += c;
+      let i;
+      while ((i = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+        if (!line.startsWith('@@')) continue;
+        try { send('ring:voice', JSON.parse(line.slice(2))); } catch {}
+      }
+    });
+    child.on('close', code => { voiceJob = null; send('ring:voice', {olay: 'kapandi', kod: code}); });
+    return {started: true, seconds};
+  }
+
+  async function voiceDelete() {
+    await fs.rm(await voiceFile(), {force: true});
+    return voiceStatus();
+  }
+
+  /* Bulut üzerinden canlı görünüm: bu bilgisayara bağlı telefonlar ve son işler (içerik değil). */
+  async function phoneLive() {
+    const {origin, cloud} = await phoneOrigin();
+    const key = await phoneKey();
+    if (!cloud || !key) return null;
+    return fetch(`${origin}/v1/dugum/durum`, {headers: {authorization: `Bearer ${key}`}, signal: AbortSignal.timeout(5000)})
+      .then(r => (r.ok ? r.json() : null)).catch(() => null);
+  }
+
+  function shutdown() { cancel(); if (live) live.child.kill(); if (voiceJob) voiceJob.child.kill(); if (receiver) receiver.server.close(); }
 
   return {status, chooseEngine, chooseAudio, run, cancel, drafts, draft, approve, discard, receiverStart, receiverStop, packageFor,
-    devices, liveStart, liveStop, liveStatus, finishSession, shutdown, engineDir, phoneStatus, phoneStart, phonePair, writers, setWriter};
+    devices, liveStart, liveStop, liveStatus, finishSession, shutdown, engineDir, phoneStatus, phoneStart, phonePair, writers, setWriter,
+    voiceStatus, voiceEnroll, voiceDelete, phoneLive};
 }
 
 module.exports = {createRing, draftDir};

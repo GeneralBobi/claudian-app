@@ -513,6 +513,10 @@ async function start() {
   handle('ring:phone-status', () => ring.phoneStatus());
   handle('ring:phone-start', () => ring.phoneStart());
   handle('ring:phone-pair', () => ring.phonePair());
+  handle('ring:voice-status', () => ring.voiceStatus());
+  handle('ring:voice-enroll', options => ring.voiceEnroll(options));
+  handle('ring:voice-delete', () => ring.voiceDelete());
+  handle('ring:phone-live', () => ring.phoneLive());
   handle('ring:writers', () => ring.writers());
   handle('ring:set-writer', id => ring.setWriter(id));
   handle('app:open', async kind => {
