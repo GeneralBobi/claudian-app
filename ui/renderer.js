@@ -261,10 +261,11 @@ function healthRow(){
  // all. It is named here, with the two things a person can actually do about it.
  const {lastChange,hosts,verifiedCount}=healthData;
  const changed=lastChange?`${esc(lastChange.name)} · ${new Date(lastChange.at).toLocaleString(language==='tr'?'tr-TR':'en-GB')}`:t('No note has changed yet','Henüz hiçbir not değişmedi');
- const proven=hosts.length?`${verifiedCount}/${hosts.length}`:'0/0';
+ // Oran (6/8) yazılmaz: eksik bir iş varmış, her araca bağlanmak gerekiyormuş gibi okunuyordu (Boran, 24.09.2026).
+ const proven=String(verifiedCount||0);
  const warn=hosts.length&&verifiedCount===0;
  const skipped=healthData.skippedAt&&!healthData.everVerified;
- return `<div class="health-row${warn?' health-warn':''}"><div><span>${t('Last change in your notes','Notlarında son değişiklik')}</span><p class="path">${changed}</p></div><div><span>${t('Connections proven in the AI','AI içinde kanıtlanan bağlantı')}</span><p class="path">${proven}</p></div>${warn?`<p>${skipped?t('Access check skipped.','Erişim kontrolü atlandı.'):t('Access check pending.','Erişim kontrolü bekliyor.')}</p>`:''}</div>`;
+ return `<div class="health-row${warn?' health-warn':''}"><div><span>${t('Last change in your notes','Notlarında son değişiklik')}</span><p class="path">${changed}</p></div><div><span>${t('Connected AI tools','Bağlı AI araçları')}</span><p class="path">${proven}</p></div>${warn?`<p>${skipped?t('Access check skipped.','Erişim kontrolü atlandı.'):t('Access check pending.','Erişim kontrolü bekliyor.')}</p>`:''}</div>`;
 }
 // Dogrulama artik bir dugmeye basilarak sorulmuyor; uygulama yaniti kendisi bekliyor ve ne
 // oldugunu soyluyor. Eski akista erken basilan "Sonucu kontrol et" dugmesi "AI henuz yanit
