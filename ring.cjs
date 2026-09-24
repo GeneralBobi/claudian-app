@@ -172,13 +172,22 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
     return true;
   }
 
+  // Konuşmacı ayrımı (24.09.2026): ortamda kaç kişi konuştu; ses izi kayıtlıysa kullanıcının payı.
+  function people(result) {
+    const k = result?.konusmaci;
+    if (!k || (k.sayi || 0) < 2) return '';
+    const total = Object.values(k.sureler || {}).reduce((a, b) => a + b, 0);
+    const mine = k.sen && total ? ` (sen %${Math.round(((k.sureler || {}).Sen || 0) / total * 100)})` : '';
+    return ` · ${k.sayi} kişi${mine}`;
+  }
+
   /* Laya'sız kayıt: not, onay adımı olmadan doğrudan hafızaya yazılır ve geçmişte bir kayıt olarak durur. */
   async function finishFull(result, {title, startedAt, emit}) {
     try {
       if (!String(result?.not_md || '').trim()) { emit({olay: 'yazildi', bos: true}); return; }
       const mins = Math.max(1, Math.round((result.ses_suresi_sn || 0) / 60));
       const written = await writeSynthNote({title, startedAt, result,
-        source: `${mins} dk kayıt · ${result.cumle || 0} cümlenin tamamı${result.mahrem ? ` (${result.mahrem} mahrem çıkarıldı)` : ''}`,
+        source: `${mins} dk kayıt · ${result.cumle || 0} cümlenin tamamı${result.mahrem ? ` (${result.mahrem} mahrem çıkarıldı)` : ''}${people(result)}`,
         reason: `Yüzük kaydı işlendi: ${clean(title)}`});
       const id = `${String(startedAt).slice(0, 16).replace(/[:T]/g, '-')}_${clean(title).replace(/[^\p{L}\p{N}]+/gu, '-').slice(0, 60)}`;
       const d = path.join(await engineDir(), 'taslaklar', id);
@@ -397,7 +406,7 @@ d.textContent=r&&r.ok?'Gönderildi. Bilgisayarında işleniyor.':'Gönderilemedi
       const result = await synthesize(session, null);
       const mins = Math.max(1, Math.round((Date.now() - startedAt) / 60000));
       const written = await writeSynthNote({title: 'Canlı dinleme', startedAt, result,
-        source: `${mins} dk canlı dinleme · ${counts.cumle} cümle duyuldu${counts.mahrem ? `, ${counts.mahrem} mahrem çıkarıldı` : ''}`,
+        source: `${mins} dk canlı dinleme · ${counts.cumle} cümle duyuldu${counts.mahrem ? `, ${counts.mahrem} mahrem çıkarıldı` : ''}${people(result)}`,
         reason: 'Yüzük canlı dinleme oturumu notu'});
       send('ring:live', {olay: 'sentez', durum: 'bitti', not: written.note, hatirlatici: written.reminders.length,
         gereksiz: (result.gereksiz || []).length, maliyet: result.maliyet_usd});
@@ -475,6 +484,16 @@ d.textContent=r&&r.ok?'Gönderildi. Bilgisayarında işleniyor.':'Gönderilemedi
   const PHONE_ORIGIN = 'https://yuzuk.claudian.app';
   const PHONE_PORT = 3050;
 
+  // Bulut katmanı (24.09.2026): motor klasöründe bulut.json varsa telefon buluta (yuzuk-api.claudian.app)
+  // bağlanır; bu bilgisayar oradan iş alan bir "işlem düğümü" olur. Kod da buluttan gelir.
+  async function phoneOrigin() {
+    try {
+      const b = JSON.parse(await fs.readFile(path.join(await engineDir(), 'bulut.json'), 'utf8'));
+      if (/^https:\/\//.test(b.url || '')) return {origin: b.url.replace(/\/+$/, ''), cloud: true};
+    } catch {}
+    return {origin: PHONE_ORIGIN, cloud: false};
+  }
+
   async function phoneKey() {
     try { return (await fs.readFile(path.join(await engineDir(), 'sunucu_anahtar.txt'), 'utf8')).trim() || null; } catch { return null; }
   }
@@ -488,7 +507,9 @@ d.textContent=r&&r.ok?'Gönderildi. Bilgisayarında işleniyor.':'Gönderilemedi
       health = await fetch(`http://127.0.0.1:${PHONE_PORT}/v1/saglik`, {headers: {authorization: `Bearer ${key}`}, signal: AbortSignal.timeout(3000)})
         .then(r => (r.ok ? r.json() : null)).catch(() => null);
     }
-    return {capable: true, running: !!health, model: health?.laya || null, queued: health?.sirada ?? 0, origin: PHONE_ORIGIN};
+    const {origin, cloud} = await phoneOrigin();
+    return {capable: true, running: !!health, model: health?.laya || null, queued: health?.sirada ?? 0, origin, cloud,
+      speakers: !!health?.konusmaci, voiceprint: !!health?.profil};
   }
 
   async function phoneStart() {
@@ -516,7 +537,7 @@ d.textContent=r&&r.ok?'Gönderildi. Bilgisayarında işleniyor.':'Gönderilemedi
       child.on('close', c => (c === 0 ? resolve(out.trim().split(/\s+/).pop()) : reject(Error(`Eşleştirme kodu üretilemedi (${c}).`))));
     });
     if (!/^[A-Z0-9]{8}$/.test(code || '')) throw Error('Motor geçerli bir eşleştirme kodu döndürmedi.');
-    const url = `${PHONE_ORIGIN}/kur#${code}`;
+    const url = `${(await phoneOrigin()).origin}/kur#${code}`;
     const qr = await require('qrcode').toString(url, {type: 'svg', margin: 1, errorCorrectionLevel: 'M'});
     return {code: `${code.slice(0, 4)}-${code.slice(4)}`, url, qr};
   }

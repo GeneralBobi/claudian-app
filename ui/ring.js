@@ -230,10 +230,13 @@ function history() {
 
 function phoneCard() {
   const p = ring.phone;
-  const head = `<h2>${t('Phone app', 'Telefon uygulaması')}</h2><p>${t('The Yüzük app records on the phone, even with the screen locked, and the note lands in the phone’s Obsidian vault. Processing happens on this computer through yuzuk.claudian.app.', 'Yüzük uygulaması telefonda kaydeder (ekran kilitliyken de); not telefondaki Obsidian vault’una düşer. İşlem yuzuk.claudian.app üzerinden bu bilgisayarda yapılır.')}</p>`;
+  const via = p?.cloud
+    ? t('The phone talks to the Yüzük cloud (yuzuk-api.claudian.app); the cloud hands the work to this computer. Audio passes through and is never stored there.', 'Telefon Yüzük bulutuyla konuşur (yuzuk-api.claudian.app); bulut işi bu bilgisayara verir. Ses oradan akarak geçer, saklanmaz.')
+    : t('Processing happens on this computer through yuzuk.claudian.app.', 'İşlem yuzuk.claudian.app üzerinden bu bilgisayarda yapılır.');
+  const head = `<h2>${t('Phone app', 'Telefon uygulaması')}</h2><p>${t('The Yüzük app records on the phone, even with the screen locked, and the note lands in the phone’s Obsidian vault.', 'Yüzük uygulaması telefonda kaydeder (ekran kilitliyken de); not telefondaki Obsidian vault’una düşer.')} ${via}</p>`;
   if (!p?.capable) return `<div class="card">${head}<p class="subtle">${t('This engine folder has no phone server yet (sunucu.py). Update the engine.', 'Bu motor klasöründe telefon sunucusu (sunucu.py) yok. Motoru güncelle.')}</p></div>`;
   const state = p.running
-    ? `<p class="subtle">${t('Server running', 'Sunucu açık')} · ${esc(p.origin.replace('https://', ''))} · ${esc(p.model || '')}${p.queued ? ` · ${p.queued} ${t('in queue', 'sırada')}` : ''}</p>`
+    ? `<p class="subtle">${t('Server running', 'Sunucu açık')} · ${esc(p.origin.replace('https://', ''))}${p.speakers ? ` · ${t('speakers told apart', 'konuşmacılar ayrılıyor')}` : ''}${p.voiceprint ? ` · ${t('your voice enrolled', 'sesin tanıtıldı')}` : ''}${p.queued ? ` · ${p.queued} ${t('in queue', 'sırada')}` : ''}</p>`
     : `<p class="subtle">${t('Server closed: the phone’s recordings wait on the phone until it opens.', 'Sunucu kapalı: telefondaki kayıtlar sunucu açılana kadar telefonda bekler.')}</p>${ring.phoneBusy ? `<p class="subtle">${t('Starting…', 'Başlatılıyor…')}</p>` : rbtn('Start server', 'Sunucuyu başlat', 'phone-start', true)}`;
   const pair = ring.pair
     ? `<div class="ring-pair"><div class="ring-qr" aria-label="${t('Pairing QR code', 'Eşleştirme QR kodu')}">${ring.pair.qr}</div><div><p>${t('Scan with the phone camera, or open the address. It installs the app and pairs it with a one-time code.', 'Telefon kamerasıyla okut ya da adresi aç. Uygulamayı kurar ve tek kullanımlık kodla eşleştirir.')}</p><div class="ring-addr">${esc(ring.pair.url)}</div><p class="subtle">${t('Code', 'Kod')}: <b>${esc(ring.pair.code)}</b> · ${t('valid 24 hours, once', '24 saat, bir kez geçerli')}</p><div class="row">${rbtn('Copy address', 'Adresi kopyala', 'copy-pair')}</div></div></div>`
