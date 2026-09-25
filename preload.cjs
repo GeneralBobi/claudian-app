@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('claudian', {
   ringReceiverStop: () => invoke('ring:receiver-stop'),
   ringPackage: () => invoke('ring:package'),
   ringDevices: () => invoke('ring:devices'),
+  ringOutputs: () => invoke('ring:outputs'),
   ringLiveStart: options => invoke('ring:live-start', options),
   ringLiveStop: () => invoke('ring:live-stop'),
   ringPhoneStatus: () => invoke('ring:phone-status'),

@@ -321,3 +321,4 @@ body[data-surface="panel"]>header,body[data-surface="panel"]>nav{padding-inline:
 .ring-writer{margin:4px 0 18px;display:flex;flex-direction:column;gap:6px}.ring-writer>span{font-size:12px;color:var(--muted)}.ring-writer .row{display:flex;gap:8px;flex-wrap:wrap}.ring-writer p{margin:0;font-size:12px}
 
 .ring-okuma{margin:14px 0;padding:14px 16px;border:1px solid var(--line);background:#16161a;border-radius:6px}.ring-okuma p{font:15px/1.9 Lora,Georgia,serif;color:var(--text);margin:0 0 10px}.ring-okuma p:last-child{margin:0}.ring-voice-level{margin-top:6px;height:3px}.ring-phone-live{margin:10px 0 4px}.ring-phone-live h2{font-size:12px}
+button.with-icon{display:inline-flex;align-items:center;gap:8px}button.with-icon svg{flex:none}

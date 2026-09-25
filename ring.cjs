@@ -399,14 +399,27 @@ d.textContent=r&&r.ok?'Gönderildi. Bilgisayarında işleniyor.':'Gönderilemedi
     });
   }
 
-  async function finishSession(session, startedAt, counts) {
+  // Output devices whose sound can be captured (a Zoom call, a video). Empty when the engine cannot do it.
+  async function outputs() {
+    const dir = await engineDir();
+    return new Promise(resolve => {
+      const child = spawn(path.join(dir, '.venv', 'Scripts', 'python.exe'), [path.join(dir, 'canli.py'), '--hoparlorler'],
+        {cwd: dir, windowsHide: true, env: {...process.env, PYTHONIOENCODING: 'utf-8'}});
+      let out = '';
+      child.stdout.setEncoding('utf8'); child.stdout.on('data', c => { out += c; });
+      child.on('error', () => resolve([]));
+      child.on('close', () => { try { const list = JSON.parse(out.trim().split('\n').pop()); resolve(Array.isArray(list) ? list : []); } catch { resolve([]); } });
+    });
+  }
+
+  async function finishSession(session, startedAt, counts, meeting = false) {
     if (!counts?.aktarilan) { send('ring:live', {olay: 'sentez', durum: 'bos'}); return null; }
     send('ring:live', {olay: 'sentez', durum: 'basladi', aktarilan: counts.aktarilan + (counts.baglam || 0)});
     try {
       const result = await synthesize(session, null);
       const mins = Math.max(1, Math.round((Date.now() - startedAt) / 60000));
-      const written = await writeSynthNote({title: 'Canlı dinleme', startedAt, result,
-        source: `${mins} dk canlı dinleme · ${counts.cumle} cümle duyuldu${counts.mahrem ? `, ${counts.mahrem} mahrem çıkarıldı` : ''}${people(result)}`,
+      const written = await writeSynthNote({title: meeting ? 'Toplantı' : 'Canlı dinleme', startedAt, result,
+        source: `${mins} dk ${meeting ? 'toplantı kaydı (bilgisayar sesi)' : 'canlı dinleme'} · ${counts.cumle} cümle duyuldu${counts.mahrem ? `, ${counts.mahrem} mahrem çıkarıldı` : ''}${people(result)}`,
         reason: 'Yüzük canlı dinleme oturumu notu'});
       send('ring:live', {olay: 'sentez', durum: 'bitti', not: written.note, hatirlatici: written.reminders.length,
         gereksiz: (result.gereksiz || []).length, maliyet: result.maliyet_usd});
@@ -425,7 +438,11 @@ d.textContent=r&&r.ok?'Gönderildi. Bilgisayarında işleniyor.':'Gönderilemedi
     if (!await exists(path.join(dir, 'canli.py')) || !await exists(path.join(dir, 'sentez.py'))) throw Error('Motor canlı dinlemeyi desteklemiyor; motoru güncelle.');
     const args = [path.join(dir, 'canli.py'), '--json-ilerleme'];
     if (await exists(path.join(dir, 'tamnot.py'))) args.push('--tam');
-    if (Number.isInteger(options.device)) args.push('--cihaz', String(options.device));
+    const source = ['sistem', 'ikisi'].includes(options.source) ? options.source : 'mikrofon';
+    if (source !== 'mikrofon') args.push('--kaynak', source);
+    if (source !== 'mikrofon' && typeof options.output === 'string' && options.output && options.output.length < 300 && !/[\r\n\x00]/.test(options.output))
+      args.push('--hoparlor', options.output);
+    if (source !== 'sistem' && Number.isInteger(options.device)) args.push('--cihaz', String(options.device));
     // Acceptance runs have no microphone: a marked test profile may stream a file as if it were live.
     if (process.env.CLAUDIAN_ACCEPTANCE_ROOT && process.env.CLAUDIAN_RING_TEST_FILE) args.push('--dosya', process.env.CLAUDIAN_RING_TEST_FILE, '--hiz', '4');
     if (options.training === true) {
@@ -434,7 +451,7 @@ d.textContent=r&&r.ok?'Gönderildi. Bilgisayarında işleniyor.':'Gönderilemedi
     }
     const child = spawn(path.join(dir, '.venv', 'Scripts', 'python.exe'), args, {cwd: dir, windowsHide: true,
       env: {...process.env, USE_TF: '0', HF_HUB_OFFLINE: '1', PYTHONIOENCODING: 'utf-8', PYTHONUNBUFFERED: '1'}});
-    live = {child, startedAt: Date.now(), session: null, counts: null, passed: 0, model: null, stderr: '', last: []};
+    live = {child, meeting: source !== 'mikrofon', startedAt: Date.now(), session: null, counts: null, passed: 0, model: null, stderr: '', last: []};
     let buffer = '';
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', chunk => {
@@ -458,7 +475,7 @@ d.textContent=r&&r.ok?'Gönderildi. Bilgisayarında işleniyor.':'Gönderilemedi
       const tail = l?.stderr.split('\n').filter(x => x.trim() && !/warn/i.test(x)).slice(-3).join('\n');
       send('ring:live', {olay: 'kapandi', kod: code, aktarilan: l?.passed || 0,
         mesaj: code && code !== 0 ? (tail || `Motor ${code} koduyla kapandı.`) : null});
-      if (l?.session) await finishSession(l.session, l.startedAt, l.counts || {aktarilan: l.passed, cumle: l.passed});
+      if (l?.session) await finishSession(l.session, l.startedAt, l.counts || {aktarilan: l.passed, cumle: l.passed}, l.meeting);
     });
     return true;
   }
@@ -600,7 +617,7 @@ d.textContent=r&&r.ok?'Gönderildi. Bilgisayarında işleniyor.':'Gönderilemedi
   function shutdown() { cancel(); if (live) live.child.kill(); if (voiceJob) voiceJob.child.kill(); if (receiver) receiver.server.close(); }
 
   return {status, chooseEngine, chooseAudio, run, cancel, drafts, draft, approve, discard, receiverStart, receiverStop, packageFor,
-    devices, liveStart, liveStop, liveStatus, finishSession, shutdown, engineDir, phoneStatus, phoneStart, phonePair, writers, setWriter,
+    devices, outputs, liveStart, liveStop, liveStatus, finishSession, shutdown, engineDir, phoneStatus, phoneStart, phonePair, writers, setWriter,
     voiceStatus, voiceEnroll, voiceDelete, phoneLive};
 }
 

@@ -508,6 +508,7 @@ async function start() {
   handle('ring:receiver-stop', () => ring.receiverStop());
   handle('ring:package', () => ring.packageFor());
   handle('ring:devices', () => ring.devices());
+  handle('ring:outputs', () => ring.outputs());
   handle('ring:live-start', options => ring.liveStart(options));
   handle('ring:live-stop', () => ring.liveStop());
   handle('ring:phone-status', () => ring.phoneStatus());

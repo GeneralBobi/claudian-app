@@ -5,7 +5,7 @@
   simulated progress, and nothing reaches the memory except through "Approve".
 */
 const ring = {status: null, drafts: [], file: null, running: null, open: null, openId: null, result: null, bound: false,
-  live: {devices: null, device: null, training: false, on: false, level: 0, speaking: false, ara: '', decisions: [], written: [], note: null, error: null, summary: null},
+  live: {devices: null, outputs: null, source: 'mikrofon', output: '', device: null, training: false, on: false, level: 0, speaking: false, ara: '', decisions: [], written: [], note: null, error: null, summary: null},
   voice: {status: null, running: false, seconds: 25, elapsed: 0, level: 0, error: null, result: null}, phoneLive: null};
 const KIND_LABEL = {
   odev: ['Assignments and deadlines', 'Ödev ve teslimler'], sinav: ['Exam emphasis', 'Sınav vurguları'],
@@ -13,14 +13,17 @@ const KIND_LABEL = {
   tanim: ['Content and definitions', 'İçerik ve tanımlar'], gurultu: ['Other kept sentences', 'Diğer tutulanlar'],
 };
 const clock = s => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-const rbtn = (en, tr, action, primary = false, extra = '') => `<button data-ring="${action}" class="${primary ? 'primary' : ''}" ${extra}>${t(en, tr)}</button>`;
+const rbtn = (en, tr, action, primary = false, extra = '', icon = '') => `<button data-ring="${action}" class="${primary ? 'primary' : ''}${icon ? ' with-icon' : ''}" ${extra}>${icon}${t(en, tr)}</button>`;
+// Same glyphs as the phone app (lucide Mic and Square), so the two surfaces read as one product.
+const MIC_ICON = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/></svg>';
+const STOP_ICON = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/></svg>';
 // Windows varsayılan girişi sanal bir aygıt olabilir (SteelSeries Sonar 24.09'da neredeyse ses vermedi): varsayılan
 // sanal aygıtsa ilk gerçek mikrofon seçilir.
 const SANAL_MIK = /sonar|voicemeeter|stereo mix|virtual|cable output|vb-audio/i;
-function micOptions(devices) {
+function micOptions(devices, chosen = null) {
   const list = devices || [];
   const def = list.find(d => d.varsayilan);
-  const pick = def && !SANAL_MIK.test(def.ad) ? def : list.find(d => !SANAL_MIK.test(d.ad)) || def;
+  const pick = (chosen !== null && list.find(d => d.no === chosen)) || (def && !SANAL_MIK.test(def.ad) ? def : list.find(d => !SANAL_MIK.test(d.ad)) || def);
   return list.map(d => `<option value="${d.no}" ${d === pick ? 'selected' : ''}>${esc(d.ad)}</option>`).join('');
 }
 const dayStamp = iso => { const d = new Date(iso); const p = n => String(n).padStart(2, '0'); return `${p(d.getDate())}.${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`; };
@@ -69,6 +72,15 @@ function ringBind() {
     if (ev.olay === 'bitti') V.result = ev;
     if (ev.olay === 'kapandi') { V.running = false; if (ev.kod && !V.error) V.error = t('Voice enrollment stopped.', 'Ses tanıtma durdu.'); }
     if (view === 'ring' && !ring.open) renderRing();
+  });
+  // Choosing a sound source changes which fields apply, so the card is redrawn with the choice kept.
+  document.addEventListener('change', e => {
+    if (view !== 'ring' || e.target.dataset?.ringChange !== 'source') return;
+    const L = ring.live, mic = document.querySelector('#ring-mic'), out = document.querySelector('#ring-output');
+    L.source = e.target.value;
+    if (mic && mic.value !== '') L.device = Number(mic.value);
+    if (out) L.output = out.value;
+    renderRing();
   });
   document.addEventListener('click', async e => {
     const el = e.target.closest('[data-ring]');
@@ -122,9 +134,11 @@ async function ringAction(a, el) {
   else if (a === 'live-start') {
     const L = ring.live, mic = document.querySelector('#ring-mic');
     L.device = mic && mic.value !== '' ? Number(mic.value) : null;
+    L.source = document.querySelector('#ring-source')?.value || 'mikrofon';
+    L.output = document.querySelector('#ring-output')?.value || '';
     L.training = !!document.querySelector('#ring-train')?.checked;
     Object.assign(L, {decisions: [], written: [], passed: 0, synth: null, error: null, ara: '', on: true});
-    await api.ringLiveStart({device: L.device, training: L.training});
+    await api.ringLiveStart({device: L.device, training: L.training, source: L.source, output: L.output});
   }
   else if (a === 'live-stop') await api.ringLiveStop();
   else if (a === 'package') { const r = await api.ringPackage(); if (r) ring.result = {packaged: r.target}; }
@@ -159,7 +173,7 @@ function liveCard(s) {
   const mark = d => d.karar === 'aktar' ? '●' : d.karar === 'baglam' ? '○' : d.karar === 'mahrem' || d.karar === 'susuldu' ? '■' : '·';
   const decisions = L.decisions.slice().reverse().map(d => `<li class="ring-dec" data-k="${esc(d.karar)}"><time>${esc(d.saat || '')}</time><b>${mark(d)}</b><span>${d.metin && d.karar !== 'mahrem' ? esc(d.metin) : `<i>${label(d)}</i>`}</span><small>${label(d)}</small></li>`).join('');
   if (!L.on) {
-    const opts = micOptions(L.devices);
+    const opts = micOptions(L.devices, L.device);
     const sy = L.synth;
     const sum = !sy ? '' : sy.durum === 'basladi' ? `<div class="health-row"><div><span>${t('Writing the note', 'Not yazılıyor')}</span><p>${sy.aktarilan} ${t('sentences went to the note writer. This takes up to a couple of minutes.', 'cümle not yazıcısına gitti. Bir iki dakika sürebilir.')}</p></div></div>`
       : sy.durum === 'bitti' ? `<div class="health-row"><div><span>${t('Written to memory', 'Hafızaya yazıldı')}</span><p class="path">${esc(sy.not)}</p><p>${sy.hatirlatici} ${t('reminders', 'hatırlatıcı')}${sy.gereksiz ? ` · ${sy.gereksiz} ${t('passed sentences judged noise', 'aktarılan cümle gereksiz bulundu')}` : ''}</p></div></div>`
@@ -167,18 +181,36 @@ function liveCard(s) {
       : `<p class="subtle">${t('Nothing worth a note was heard.', 'Not değerinde bir şey duyulmadı.')}</p>`;
     return `<section class="ring-live card"><div class="toolbar"><h2>${t('Listen live', 'Canlı dinle')}</h2><span class="subtle">${t('The note goes straight to Obsidian', 'Not doğrudan Obsidian’a yazılır')}</span></div>
     <p>${t('Speech is transcribed on this computer. Laya reads each sentence with what came before it and decides only what reaches the note writer; it writes nothing itself. When you stop, Claude writes the note from what was passed. Private things (someone else’s health or family, numbers, passwords, a request not to be recorded) are never sent. Audio is not kept.', (s.full ? 'Konuşma bu bilgisayarda yazıya dökülür. Durdurduğunda konuşmanın tamamı seçtiğin AI’a gider ve notu o yazar. Mahrem olanlar (başkasının sağlığı ya da ailesi, numaralar, şifreler, kaydedilmeme isteği) önce çıkarılır, hiç gönderilmez. Ses saklanmaz.' : 'Konuşma bu bilgisayarda yazıya dökülür. Laya her cümleyi öncesiyle birlikte okur ve yalnız neyin not yazıcısına gideceğine karar verir; kendisi hiçbir şey yazmaz. Durdurduğunda notu, aktarılanlardan Claude yazar. Mahrem olanlar (başkasının sağlığı ya da ailesi, numaralar, şifreler, kaydedilmeme isteği) hiç gönderilmez. Ses saklanmaz.'))}</p>
-    <div class="ring-fields ring-live-fields"><div><label for="ring-mic">${t('Microphone', 'Mikrofon')}</label><select id="ring-mic">${opts || `<option value="">${t('Default', 'Varsayılan')}</option>`}</select></div></div>
+    ${sourceFields(L, opts)}
     <label class="check" ${s.full ? 'hidden' : ''}><input type="checkbox" id="ring-train" ${L.training ? 'checked' : ''}> ${t('Keep the text of non-private sentences on this computer to train the next model', 'Mahrem olmayan cümlelerin metnini sonraki modeli eğitmek için bu bilgisayarda sakla')}</label>
     ${L.error ? `<div class="health-row health-warn"><div><span>${t('Stopped', 'Durdu')}</span><p>${esc(L.error)}</p></div></div>` : ''}${sum}
-    <div class="actions"><span class="subtle">${t('Tell the people around you that you are taking notes.', 'Çevrendekilere not aldığını söyle.')}</span>${rbtn('Start listening', 'Dinlemeye başla', 'live-start', true)}</div></section>`;
+    <div class="actions"><span class="subtle">${(L.outputs || []).length && L.source !== 'mikrofon' ? t('Zoom shows no recording notice for this. Tell the participants you are taking notes.', 'Zoom bunun için kayıt uyarısı göstermez. Katılımcılara not aldığını söyle.') : t('Tell the people around you that you are taking notes.', 'Çevrendekilere not aldığını söyle.')}</span>${rbtn('Start listening', 'Dinlemeye başla', 'live-start', true, '', MIC_ICON)}</div></section>`;
   }
   const written = L.written.slice().reverse().map(w => `<li><time>${esc(w.saat)}</time><span>${esc(w.metin)}</span><small>${w.neden === 'komsu' ? t('context', 'bağlam') : ''}</small></li>`).join('');
-  return `<section class="ring-live card" data-on="true"><div class="toolbar"><h2>${t('Listening', 'Dinleniyor')} <span class="ring-rec">● ${t('REC', 'KAYIT')}</span></h2><span class="subtle" id="ring-live-state">${t('Listening', 'Dinliyor')}</span>${rbtn('Stop', 'Durdur', 'live-stop', true)}</div>
+  return `<section class="ring-live card" data-on="true"><div class="toolbar"><h2>${t('Listening', 'Dinleniyor')} <span class="ring-rec">● ${t('REC', 'KAYIT')}</span></h2><span class="subtle" id="ring-live-state">${t('Listening', 'Dinliyor')}</span>${rbtn('Stop', 'Durdur', 'live-stop', true, '', STOP_ICON)}</div>
   <div class="ring-level-track"><div id="ring-level"></div></div>
   <p class="ring-ara" id="ring-ara">${esc(L.ara || '')}</p>
   ${L.error ? `<div class="health-row health-warn"><div><span>${t('Error', 'Hata')}</span><p>${esc(L.error)}</p></div></div>` : ''}
   <div class="ring-two"><div><h2>${t('Heard', 'Duyulan')}</h2><ul class="ring-decs">${decisions || `<li class="subtle">${t('Loading models, then waiting for speech…', 'Modeller yükleniyor, sonra konuşma bekleniyor…')}</li>`}</ul></div>
   <div><h2>${t('Going to the note writer', 'Not yazıcısına gidecek')} <span class="subtle">${L.passed || 0}</span></h2><ul class="ring-written">${written || `<li class="subtle">${t('Nothing yet.', 'Henüz yok.')}</li>`}</ul><p class="subtle">${t('The note is written when you stop.', 'Not, durdurduğunda yazılır.')}</p></div></div></section>`;
+}
+
+// Where the sound comes from. "Computer audio" is what the speakers play (a Zoom or Meet call, a video),
+// captured on this machine; "Meeting" adds your microphone so both sides are in the note.
+function sourceFields(L, micOpts) {
+  const outs = L.outputs || [];
+  const src = outs.length ? L.source : 'mikrofon';
+  const srcOpt = (v, en, tr) => `<option value="${v}" ${src === v ? 'selected' : ''}>${t(en, tr)}</option>`;
+  const outOpts = outs.map(o => `<option value="${esc(o.ad)}" ${(L.output ? L.output === o.ad : o.onerilen) ? 'selected' : ''}>${esc(o.ad)}${o.onerilen ? ' · ' + t('recommended', 'önerilen') : ''}</option>`).join('');
+  const source = outs.length ? `<div><label for="ring-source">${t('Sound source', 'Ses kaynağı')}</label><select id="ring-source" data-ring-change="source">
+      ${srcOpt('mikrofon', 'Microphone (people around you)', 'Mikrofon (çevrendeki konuşma)')}
+      ${srcOpt('ikisi', 'Meeting: computer audio + microphone', 'Toplantı: bilgisayar sesi + mikrofon')}
+      ${srcOpt('sistem', 'Computer audio only (Zoom, Meet, video)', 'Yalnız bilgisayar sesi (Zoom, Meet, video)')}</select></div>` : '';
+  const mic = src === 'sistem' ? '' : `<div><label for="ring-mic">${t('Microphone', 'Mikrofon')}</label><select id="ring-mic">${micOpts || `<option value="">${t('Default', 'Varsayılan')}</option>`}</select></div>`;
+  const out = src === 'mikrofon' ? '' : `<div><label for="ring-output">${t('Computer audio from', 'Bilgisayar sesi')}</label><select id="ring-output">${outOpts}</select></div>`;
+  const hint = src === 'ikisi' ? `<p class="subtle">${t('Use headphones: through speakers your microphone hears the call too and every sentence arrives twice.', 'Kulaklık kullan: hoparlörden konuşursan mikrofon karşı tarafı da duyar ve her cümle iki kez gelir.')}</p>`
+    : src === 'sistem' ? `<p class="subtle">${t('Only what the computer plays is transcribed; your own voice is not included.', 'Yalnız bilgisayarın çaldığı ses yazıya dökülür; kendi sesin dahil değildir.')}</p>` : '';
+  return `<div class="ring-fields ring-live-fields">${source}${mic}${out}</div>${hint}`;
 }
 
 const OKUMA_METNI = ['Sabah derse biraz geç kaldım; hoca konuyu anlatmaya başlamıştı bile. Arka sıraya oturup defterimi açtım ve tahtadaki şekli hızlıca çizdim.',
@@ -337,6 +369,7 @@ async function renderRing() {
   if (!s.ready) { content.innerHTML = body + setupNeeded(s) + devices(s); return; }
   body += engineLine(s);
   if (s.liveCapable && ring.live.devices === null) ring.live.devices = await api.ringDevices().catch(() => []);
+  if (s.liveCapable && ring.live.outputs === null) ring.live.outputs = await api.ringOutputs?.().catch(() => []) || [];
   if (s.live && !ring.live.on) Object.assign(ring.live, {on: true, passed: s.live.passed, decisions: s.live.last || []});
   body += liveCard(s);
   body += voiceCard(s);
