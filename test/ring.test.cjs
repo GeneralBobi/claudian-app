@@ -122,3 +122,27 @@ test('note writer: the choice is stored per computer and only known writers are 
   assert.equal((await ring.writers()).chosen, 'codex', 'the choice survives');
   await assert.rejects(ring.setWriter('bilinmeyen'), /Bilinmeyen/);
 });
+
+test('phone inbox: a phone recording reaches this vault, its dated work the reminders and its undated work the panel', async t => {
+  const {vault, engine, ring} = await setup(t);
+  const inbox = path.join(engine, 'gelen_not');
+  await fs.mkdir(inbox, {recursive: true});
+  const id = '0123456789abcdef0123456789abcdef';
+  await fs.writeFile(path.join(inbox, `${id}.json`), JSON.stringify({baslik: 'Ders (örnek)', baslangic: '2026-09-26T14:00:00', sonuc: {
+    baslik: 'Örnek ders notu', not_md: '### Özet\n- Konu anlatıldı (örnek).', yazici: 'claude', cumle: 40, ses_suresi_sn: 600,
+    hatirlaticilar: [{tarih: '2026-10-03', saat: '10:30', metin: 'Quiz (örnek)'}],
+    takip: ['Hoca örnek ödevi verdi, tarih söylenmedi (örnek)']}}));
+  await fs.writeFile(path.join(inbox, 'baska-bir-dosya.json'), '{}');
+  assert.equal(await ring.inboxOnce(), 1);
+  const answer = JSON.parse(await fs.readFile(path.join(inbox, `${id}.sonuc.json`), 'utf8'));
+  assert.equal(answer.hatirlatici, 1);
+  assert.equal(answer.takip, 1);
+  assert.match(answer.not, /^Yüzük · 2026-09-26 14\.00 Örnek ders notu\.md$/);
+  await assert.rejects(fs.access(path.join(inbox, `${id}.json`)), 'the note text does not linger in the inbox');
+  await fs.access(path.join(inbox, 'baska-bir-dosya.json')); // not a server id: left alone
+  const all = (await store.list(vault)).map(n => n.note);
+  const text = async role => (await Promise.all(all.map(n => fs.readFile(path.join(vault, n), 'utf8')))).find(b => b.includes(`claudian_role: ${role}`));
+  assert.match(await text('reminders'), /Quiz \(örnek\) · saat 10:30\*\* · \*\*3 Ekim 2026\*\*/);
+  assert.match(await text('panel'), /Hoca örnek ödevi verdi, tarih söylenmedi \(örnek\)\*\* · açıldı:/);
+  assert.equal(await ring.inboxOnce(), 0, 'nothing is written twice');
+});

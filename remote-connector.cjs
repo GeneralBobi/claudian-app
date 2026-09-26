@@ -86,5 +86,15 @@ class RemoteConnector {
   }
   async approve(id,allowed) {if(!this.http)throw Error('Remote connection is stopped');await this.http.auth.approve(id,allowed);return this.status();}
   async revoke(id) {if(!this.http)throw Error('Remote connection is stopped');await this.http.auth.revoke(id);return this.status();}
+  // "Remove everything" (0.29): every AI loses its grant, then the device stops polling. The
+  // grants file is read even when the connection is stopped, so a stopped device is not left
+  // with live tokens that would work again on the next start.
+  async resetAll() {
+    let revoked=0;
+    const http=this.http||(this.state.device?await new RemoteHttp({dataDir:this.dataDir,profile:this.profile,base:(this.state.relay||'https://relay.invalid')+'/d/'+this.state.device}).load():null);
+    if(http)for(const g of http.auth.grants())if(!g.revoked){await http.auth.revoke(g.id);revoked++;}
+    await this.stop();
+    return {revoked};
+  }
 }
 module.exports={RemoteConnector};

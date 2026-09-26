@@ -127,7 +127,7 @@ async function start() {
   */
   const MUTATES = new Set(['setup:install','setup:review','memory:verify','memory:remove','memory:repair',
     'memory:relocate','memory:skip-verification','memory:adopt-protocol','memory:review-start','memory:challenge',
-    'connector:start','connector:stop','connector:approve','connector:revoke']);
+    'connector:start','connector:stop','connector:approve','connector:revoke','memory:reset-all']);
   function handle(name, fn) {
     ipcMain.handle(name, async (event, ...args) => {
       if (event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame || !event.senderFrame.url.startsWith(origin + '/')) throw new Error('Geçersiz uygulama isteği.');
@@ -389,6 +389,22 @@ async function start() {
   });
   handle('memory:check-files', () => core.checkFiles());
   handle('memory:remove', host => core.removeHost(host));
+  /* Settings → "Remove all connections" (Boran, 26.09.2026): the undo for someone who tried
+     Claudian and wants every AI back the way it was. Same path as the uninstaller: each
+     connection's files go, but a file the user edited is left and reported, not forced; cloud grants are
+     revoked and the device and tunnel stop. The notes folder is the user's and is not touched. */
+  handle('memory:reset-all', async () => {
+    const removed = [], failed = [];
+    for (;;) {
+      const next = ((await core.snapshot()).profile?.hosts || []).find(h => !failed.some(f => f.id === h.id));
+      if (!next) break;
+      try { await core.removeHost(next.id); removed.push(next.id); }
+      catch (e) { failed.push({id: next.id, error: e.message}); }
+    }
+    const remote = await remoteConnector.resetAll().catch(e => ({revoked: 0, error: e.message}));
+    await secureTunnel.stop().catch(() => {});
+    return {removed, failed, revoked: remote.revoked, remoteError: remote.error || null};
+  });
   handle('memory:configuration', async (host, kind) => {
     if (!['skill','rule','config','hooks'].includes(kind)) throw new Error('Invalid configuration type.');
     const profile = (await core.snapshot()).profile;
@@ -495,6 +511,8 @@ async function start() {
     send: (channel, payload) => { if (win && !win.isDestroyed()) win.webContents.send(channel, payload); },
     notify: (title, body) => { if (Notification.isSupported() && !win?.isFocused()) new Notification({title, body}).show(); }});
   ringModule = ring;
+  // Phone recordings reach this vault through the engine's inbox (0.29); smoke runs never touch it.
+  if (!smoke && !process.env.CLAUDIAN_ACCEPTANCE_ROOT) ring.inboxStart();
   handle('ring:status', () => ring.status());
   handle('ring:choose-engine', () => ring.chooseEngine());
   handle('ring:choose-audio', () => ring.chooseAudio());

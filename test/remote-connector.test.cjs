@@ -98,3 +98,17 @@ test('relay rejects a second device credential and never queues requests for off
   assert.equal((await fetch(base+'/chatgpt/mcp',{method:'POST',body:'{}'})).status,503);
   assert.equal((await fetch(base+'/__device/poll',{method:'POST',headers:{authorization:'Bearer '+'b'.repeat(43)}})).status,401);
 });
+test('remove all connections revokes every cloud grant even while the device is stopped',async t=>{
+  const {options}=await fixture(t),auth=await new RemoteAuth(options).load();
+  const a=await authorize(auth,'chatgpt'),b=await authorize(auth,'claude-desktop');
+  const connector=new RemoteConnector({dataDir:options.dataDir,profile:options.profile,safeStorage:{isEncryptionAvailable:()=>true}});
+  connector.state={relay:'https://relay.example',device:'device',enabled:true};
+  assert.equal(connector.http,undefined,'stopped: no live http layer');
+  assert.deepEqual(await connector.resetAll(),{revoked:2});
+  assert.equal(connector.state.enabled,false,'the device stops polling');
+  const reread=await new RemoteAuth(options).load();
+  assert.ok(reread.grants().every(g=>g.revoked));
+  await assert.rejects(reread.authenticate(a.tokens.access_token,'chatgpt'),/invalid_token/);
+  await assert.rejects(reread.authenticate(b.tokens.access_token,'claude-desktop'),/invalid_token/);
+  assert.deepEqual(await connector.resetAll(),{revoked:0},'a second reset finds nothing left');
+});

@@ -75,6 +75,7 @@ contextBridge.exposeInMainWorld('claudian', {
   selfCheck: () => invoke('memory:self-check'),
   checkFiles: () => invoke('memory:check-files'),
   removeHost: host => invoke('memory:remove', host),
+  resetAll: () => invoke('memory:reset-all'),
   configuration: (host, kind) => invoke('memory:configuration', host, kind),
   obsidian: () => invoke('memory:obsidian'),
   discover: () => invoke('app:discover'),

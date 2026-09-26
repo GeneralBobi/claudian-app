@@ -271,12 +271,26 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
     const reminders = [];
     for (const h of result.hatirlaticilar || []) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(h.tarih || '') || !clean(h.metin)) continue;
-      const c = await capture(vault, {kind: 'commitment', text: clean(h.metin).slice(0, 380), date: h.tarih, source: 'user_statement',
+      // The hour rides in the text: the reminders note has no time field, and the phone and the
+      // calendar feed read it back from " · saat SS:DD".
+      const hour = /^\d{2}:\d{2}$/.test(h.saat || '') ? ` · saat ${h.saat}` : '';
+      const c = await capture(vault, {kind: 'commitment', text: (clean(h.metin).slice(0, 360) + hour), date: h.tarih, source: 'user_statement',
         reference: note.replace(/\.md$/, '').slice(0, 200), reason: 'Yüzük notundaki tarihli iş'}, 'yuzuk', language);
-      reminders.push({text: clean(h.metin), date: h.tarih, status: c.status});
+      reminders.push({text: clean(h.metin), date: h.tarih, time: h.saat || null, status: c.status});
       if (c.receipt) receipts.push(c.receipt);
     }
-    return {note, receipts, reminders};
+    /* Undated obligations (an assignment with no date yet, a plan to make) go to the open-loop panel.
+       Before 0.29 they stayed inside the note, where a reader skipping for tokens could miss them
+       (Boran, 26.09.2026). The writer returns them as their own list; nothing here reads the prose. */
+    const followUps = [];
+    for (const t of result.takip || []) {
+      if (!clean(t)) continue;
+      const c = await capture(vault, {kind: 'open_loop', text: clean(t).slice(0, 380), source: 'user_statement',
+        reference: note.replace(/\.md$/, '').slice(0, 200), reason: 'Yüzük notundaki tarihsiz iş'}, 'yuzuk', language);
+      followUps.push({text: clean(t), status: c.status});
+      if (c.receipt) receipts.push(c.receipt);
+    }
+    return {note, receipts, reminders, followUps};
   }
 
   /*
@@ -614,11 +628,61 @@ d.textContent=r&&r.ok?'Gönderildi. Bilgisayarında işleniyor.':'Gönderilemedi
       .then(r => (r.ok ? r.json() : null)).catch(() => null);
   }
 
-  function shutdown() { cancel(); if (live) live.child.kill(); if (voiceJob) voiceJob.child.kill(); if (receiver) receiver.server.close(); }
+  /* ---- phone inbox: notes the phone recorded reach this vault too (0.29) ----
+
+    The phone server (sunucu.py) writes the note, but before 0.29 only the phone kept it: the
+    computer's vault, the reminders note and the panel never saw a phone recording. The server now
+    drops each finished result into `gelen_not/<id>.json`; this side writes it through the same path
+    as a desktop recording (receipts, reminders, open loops) and answers with `<id>.sonuc.json`, so
+    the server can tell the phone where the note lives. The input is deleted once written: the note
+    text stays only in the vault. Ids come from the server's own uuid and are checked here. */
+  const INBOX_ID = /^[a-f0-9]{32}$/;
+  let inboxTimer = null, inboxBusy = false;
+
+  async function inboxOnce() {
+    if (inboxBusy) return 0;
+    inboxBusy = true;
+    let done = 0;
+    try {
+      const dir = path.join(await engineDir(), 'gelen_not');
+      const names = await fs.readdir(dir).catch(() => []);
+      for (const name of names) {
+        const id = name.replace(/\.json$/, '');
+        if (!name.endsWith('.json') || !INBOX_ID.test(id)) continue;
+        const file = path.join(dir, name), answer = path.join(dir, `${id}.sonuc.json`);
+        let item;
+        try { item = JSON.parse(await fs.readFile(file, 'utf8')); } catch { continue; }
+        try {
+          const result = item.sonuc || {};
+          if (!String(result.not_md || '').trim()) throw Error('Boş not.');
+          const mins = Math.max(1, Math.round((result.ses_suresi_sn || 0) / 60));
+          const written = await writeSynthNote({title: item.baslik || result.baslik, startedAt: item.baslangic || new Date().toISOString(), result,
+            source: `${mins} dk telefon kaydı · ${result.cumle || 0} cümlenin tamamı${result.mahrem ? ` (${result.mahrem} mahrem çıkarıldı)` : ''}${people(result)}`,
+            reason: `Telefondan gelen Yüzük kaydı: ${clean(item.baslik || result.baslik)}`});
+          await fs.writeFile(answer, JSON.stringify({not: written.note, hatirlatici: written.reminders.length, takip: written.followUps.length}), 'utf8');
+          notify?.('Yüzük', `Telefondan not yazıldı: ${written.note.replace(/\.md$/, '')}`);
+          done++;
+        } catch (e) {
+          await fs.writeFile(answer, JSON.stringify({hata: e.message}), 'utf8').catch(() => {});
+        }
+        await fs.rm(file, {force: true});
+      }
+    } finally { inboxBusy = false; }
+    return done;
+  }
+
+  function inboxStart(ms = 15000) {
+    if (inboxTimer) return;
+    inboxOnce().catch(() => {});
+    inboxTimer = setInterval(() => inboxOnce().catch(() => {}), ms);
+    inboxTimer.unref?.();
+  }
+
+  function shutdown() { cancel(); if (live) live.child.kill(); if (voiceJob) voiceJob.child.kill(); if (receiver) receiver.server.close(); if (inboxTimer) clearInterval(inboxTimer); }
 
   return {status, chooseEngine, chooseAudio, run, cancel, drafts, draft, approve, discard, receiverStart, receiverStop, packageFor,
     devices, outputs, liveStart, liveStop, liveStatus, finishSession, shutdown, engineDir, phoneStatus, phoneStart, phonePair, writers, setWriter,
-    voiceStatus, voiceEnroll, voiceDelete, phoneLive};
+    voiceStatus, voiceEnroll, voiceDelete, phoneLive, inboxOnce, inboxStart};
 }
 
 module.exports = {createRing, draftDir};
