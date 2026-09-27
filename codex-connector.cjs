@@ -25,7 +25,7 @@ function hooks(previous,options) {
   const config=previous?JSON.parse(previous):{};
   if(!config||typeof config!=='object'||Array.isArray(config))throw Error('Invalid Codex hooks; preserved.');
   const command=require('./claude-lifecycle.cjs').command(options)+' codex';
-  const encoded='powershell.exe -NoProfile -EncodedCommand '+Buffer.from(command,'utf16le').toString('base64');
+  const encoded=require('./platform.cjs').isWindows()?'powershell.exe -NoProfile -EncodedCommand '+Buffer.from(command,'utf16le').toString('base64'):command;
   const hooks={...(config.hooks||{})};
   for(const event of ['UserPromptSubmit','Stop','PostToolUse']){
     const groups=hooks[event]||[];

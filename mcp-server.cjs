@@ -20,7 +20,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const dataDir = process.env.CLAUDIAN_DATA
-  || path.join(process.env.APPDATA || path.join(require('node:os').homedir(), 'AppData', 'Roaming'), 'Claudian Desktop');
+  || path.join(require('./platform.cjs').appData(), 'Claudian Desktop');
 
 let profile = null;
 try { profile = JSON.parse(fs.readFileSync(path.join(dataDir, 'profile.json'), 'utf8')); }

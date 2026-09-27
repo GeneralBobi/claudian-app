@@ -1,0 +1,31 @@
+# macOS build (0.31.0). A Mac installer can only be built on macOS, so it is built here on
+# GitHub's macOS runner. The unit tests run first on real macOS; the disk images are only
+# produced if they pass. The app is ad-hoc signed (no Apple Developer ID yet): macOS asks the
+# person to allow it once in System Settings > Privacy & Security. The publisher signs the
+# checksum file offline after downloading these artifacts; the Ed25519 key never reaches CI.
+name: macOS build
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npm run test:unit
+      - run: npx electron-builder --mac --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - run: ls -la release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: claudian-mac
+          path: |
+            release/*.dmg
+            release/*-mac-*.zip
+          if-no-files-found: error

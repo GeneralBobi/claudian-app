@@ -1,7 +1,10 @@
 'use strict';
 const path=require('node:path');
 const quote=value=>"'"+value.replace(/'/g,"''")+"'";
+const sh=value=>"'"+value.replace(/'/g,"'\\''")+"'";
 function command({exe,script,dataDir}) {
+  // macOS/Linux hosts run hooks in a POSIX shell; stdin passes through to the Node process as is.
+  if(!require('./platform.cjs').isWindows())return `ELECTRON_RUN_AS_NODE=1 ${sh(exe)} ${sh(script)} ${sh(dataDir)}`;
   return `$ProgressPreference='SilentlyContinue'; $env:ELECTRON_RUN_AS_NODE='1'; $OutputEncoding=[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); [Console]::In.ReadToEnd() | & ${quote(exe)} ${quote(script)} ${quote(dataDir)}`;
 }
 function merge(previous,options) {
@@ -14,7 +17,7 @@ function merge(previous,options) {
     if(!Array.isArray(groups))throw Error('Invalid Claude hook list; preserved.');
     if(groups.some(g=>g.hooks?.some(h=>h.command===cmd)))continue;
     if(groups.some(g=>g.hooks?.some(h=>h.command?.includes('memory-hook.cjs'))))throw Error('Another Claudian lifecycle hook exists. Reconcile it before connecting a second vault.');
-    hooks[event]=[...groups,{hooks:[{type:'command',shell:'powershell',command:cmd,timeout:15}]}];
+    hooks[event]=[...groups,{hooks:[{type:'command',...(require('./platform.cjs').isWindows()?{shell:'powershell'}:{}),command:cmd,timeout:15}]}];
   }
   const permissions={...(config.permissions||{})};
   const names=require('./memory-capabilities.cjs').capabilities('',null).filter(c=>c.scope==='read'||options.access==='write').map(c=>'mcp__claudian__'+c.name);

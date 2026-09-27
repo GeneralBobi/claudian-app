@@ -18,9 +18,9 @@ const HOSTS = {
   'antigravity-cli': { label: 'Antigravity CLI', parts: ['.gemini', 'antigravity-cli', 'skills'], filename: 'claudian-memory.md', detect: ['.gemini/antigravity-cli'] },
   // MCP ile baglanan uygulamalar. Bunlar skill dosyasi okumaz; yetenekleri adlariyla
   // cagirirlar. Ayrintili gerekce mcp-hosts.cjs basinda.
-  'claude-desktop': { label: 'Claude', kind: 'mcp', detect: ['AppData/Roaming/Claude'] },
+  'claude-desktop': { label: 'Claude', kind: 'mcp', detect: require('./platform.cjs').detectPaths('claude-desktop') },
   // ChatGPT yerel surec baslatamaz; baglanti yalnizca genel bir HTTPS ucundan kurulur.
-  chatgpt: { label: 'ChatGPT', kind: 'remote', detect: ['AppData/Roaming/ChatGPT', 'AppData/Local/Programs/ChatGPT'] },
+  chatgpt: { label: 'ChatGPT', kind: 'remote', detect: require('./platform.cjs').detectPaths('chatgpt') },
 };
 // No longer offered for new connections. Cursor was removed on 13.09.2026: it is an editor, and
 // the product's list follows AI applications rather than every tool that can host one. The
@@ -121,7 +121,7 @@ class MemorySetup {
   }
   async discover() {
     const candidates = [];
-    const obsidian = await json(path.join(this.home, 'AppData', 'Roaming', 'obsidian', 'obsidian.json'), {}).catch(() => ({}));
+    const obsidian = await json(require('./platform.cjs').obsidianConfig(this.home), {}).catch(() => ({}));
     for (const v of Object.values(obsidian.vaults || {})) if (typeof v.path === 'string' && await exists(v.path)) candidates.push(v.path);
     for (const base of ['Desktop', 'Documents', path.join('OneDrive', 'Desktop')]) {
       const candidate = path.join(this.home, base, 'Claudian');
@@ -132,7 +132,7 @@ class MemorySetup {
     // yet, and the old rule therefore proposed Markdown to every single new user, making the
     // first question of the wizard read as a storage-format decision. A missing Obsidian is
     // not a wrong answer here; it is the next step, and the setup screen offers the download.
-    const obsidianInstalled = await exists(path.join(process.env.LOCALAPPDATA || path.join(this.home, 'AppData', 'Local'), 'Programs', 'Obsidian', 'Obsidian.exe'));
+    const obsidianInstalled = (await Promise.all(require('./platform.cjs').appCandidates('obsidian', this.home).map(exists))).some(Boolean);
     const vaults = [...new Set(candidates)]; const state = await this.snapshot();
     // A discovered personal vault is a choice, never implicit installation consent.
     const baseVault = path.join(this.home, 'Documents', 'Claudian');
