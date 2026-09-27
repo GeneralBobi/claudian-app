@@ -349,6 +349,13 @@ async function start() {
   });
   handle('memory:repair', host => core.upgrade(host));
   const RELEASES='https://api.github.com/repos/GeneralBobi/claudian-app/releases/latest';
+  /* Release identity (security report 0.29.0, finding 3): the checksum file only proves the installer was not
+     corrupted; a hijacked GitHub account could publish a fake installer with a matching fake checksum. Each release
+     therefore carries SHA256SUMS.txt.sig, an Ed25519 signature made with a key that never leaves the publisher's
+     computer. The public half is built into the app; a release that is unsigned or signed by anyone else is not run. */
+  const RELEASE_KEY=crypto.createPublicKey(['-----BEGIN PUBLIC KEY-----',
+    'MCowBQYDK2VwAyEAAtmuynvkifcOpWzfKwuL/2vmW9CkiXcIRCZMhmtmLrE=','-----END PUBLIC KEY-----',''].join('\n'));
+  const githubAsset=a=>{const u=new URL(a.browser_download_url);if(u.protocol!=='https:'||!/(^|\.)github(usercontent)?\.com$/i.test(u.hostname))throw new Error('Unexpected download location; nothing was run.');return u;};
   handle('app:updates', async () => {
     const response=await net.fetch(RELEASES,{headers:{'Accept':'application/vnd.github+json'},signal:AbortSignal.timeout(12000)});
     if(!response.ok)throw new Error('Update service unavailable. Try again later.');
@@ -377,7 +384,15 @@ async function start() {
     if(sumsUrl.protocol!=='https:'||!/(^|\.)github(usercontent)?\.com$/i.test(sumsUrl.hostname))throw new Error('Unexpected checksum location; nothing was run.');
     const sumsResponse=await net.fetch(sumsUrl.href,{signal:AbortSignal.timeout(30000)});
     if(!sumsResponse.ok)throw new Error('The checksum file could not be downloaded.');
-    const expected=(await sumsResponse.text()).split(/\r?\n/).map(line=>line.trim().split(/\s+/))
+    const sumsBytes=Buffer.from(await sumsResponse.arrayBuffer());
+    const sig=(release.assets||[]).find(a=>String(a.name||'')===`${sums.name}.sig`);
+    if(!sig)throw new Error('This release is not signed by the Claudian publisher; the installer was not run.');
+    const sigResponse=await net.fetch(githubAsset(sig).href,{signal:AbortSignal.timeout(30000)});
+    if(!sigResponse.ok)throw new Error('The release signature could not be downloaded.');
+    const signature=Buffer.from((await sigResponse.text()).trim(),'base64');
+    if(signature.length!==64||!crypto.verify(null,sumsBytes,RELEASE_KEY,signature))
+      throw new Error('The release signature is not valid; the installer was discarded.');
+    const expected=sumsBytes.toString('utf8').split(/\r?\n/).map(line=>line.trim().split(/\s+/))
       .find(parts=>parts.length>=2&&parts[parts.length-1].replace(/^\*/,'')===asset.name)?.[0];
     if(!/^[0-9a-f]{64}$/i.test(expected||''))throw new Error('The release checksum is missing or malformed; the installer was not run.');
     const actual=crypto.createHash('sha256').update(bytes).digest('hex');
@@ -522,8 +537,6 @@ async function start() {
   handle('ring:draft', id => ring.draft(id));
   handle('ring:approve', (id, choice) => ring.approve(id, choice));
   handle('ring:discard', id => ring.discard(id));
-  handle('ring:receiver-start', () => ring.receiverStart());
-  handle('ring:receiver-stop', () => ring.receiverStop());
   handle('ring:package', () => ring.packageFor());
   handle('ring:devices', () => ring.devices());
   handle('ring:outputs', () => ring.outputs());

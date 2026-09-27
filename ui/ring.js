@@ -32,6 +32,7 @@ const localStamp = iso => { const d = new Date(iso); const p = n => String(n).pa
 function ringBind() {
   if (ring.bound) return; ring.bound = true;
   api.onRingEvent(async ev => {
+    if (ev.olay === 'alici') { ring.status = await api.ringStatus(); if (view === 'ring') await renderRing(); return; }
     if (ev.olay === 'basladi') ring.running = {file: ev.dosya, events: [], started: Date.now()};
     if (ring.running) ring.running.events.push(ev);
     if (ev.olay === 'kapandi') {
@@ -125,9 +126,6 @@ async function ringAction(a, el) {
     let r; try { r = await api.ringApprove(ring.openId, {kept}); } finally { ring.approving = false; }
     ring.result = {approved: r}; ring.open = null;
   }
-  else if (a === 'receiver-start') ring.status = await api.ringReceiverStart();
-  else if (a === 'receiver-stop') ring.status = await api.ringReceiverStop();
-  else if (a === 'copy-url') await api.copy?.(ring.status.receiver.url);
   else if (a === 'phone-start') { ring.phoneBusy = true; await renderRing(); try { ring.phone = await api.ringPhoneStart(); } finally { ring.phoneBusy = false; } }
   else if (a === 'phone-pair') { ring.pair = null; ring.pairError = null; try { ring.pair = await api.ringPhonePair(); } catch (e) { ring.pairError = e.message; } }
   else if (a === 'copy-pair') await api.copy?.(ring.pair.url);
@@ -345,12 +343,8 @@ function phoneCard() {
 }
 
 function devices(s) {
-  const rc = s.receiver;
   return `<section class="panel-section"><h2>${t('Other devices', 'Diğer cihazlar')}</h2><p>${t('Processing always happens on a computer. A phone only records and sends; another computer can run the engine itself.', 'İşlem hep bir bilgisayarda yapılır. Telefon yalnız kaydeder ve gönderir; başka bir bilgisayar ise motoru kendisi çalıştırabilir.')}</p>
-  ${phoneCard()}<div class="ring-two"><div class="card"><details><summary><h2>${t("Without the app: send over Wi-Fi", "Uygulama olmadan: Wi-Fi üzerinden gönder")}</h2></summary><p>${t('While the phone is on the same Wi-Fi, open this address on it and send a recording. The address works only on your local network and only with its code.', 'Telefon bu bilgisayarla aynı Wi-Fi’deyken bu adresi telefonda aç ve kaydı gönder. Adres yalnız yerel ağında ve içindeki kodla çalışır.')}</p>
-  ${rc ? `<div class="ring-addr">${esc(rc.url)}</div><div class="row">${rbtn('Copy', 'Kopyala', 'copy-url')}${rbtn('Close receiver', 'Alıcıyı kapat', 'receiver-stop')}</div><p class="subtle">${t('Open', 'Açık')} · ${rc.received} ${t('received — each becomes a draft here.', 'dosya alındı — her biri burada taslağa dönüşür.')}</p>`
-      : `${rbtn('Open receiver', 'Alıcıyı aç', 'receiver-start')}<p class="subtle">${t('Closed. Windows may ask once to allow the local network.', 'Kapalı. Windows bir kez yerel ağ izni isteyebilir.')}</p>`}</details></div>
-  <div class="card"><h2>${t('Install on another computer', 'Başka bir bilgisayara kur')}</h2><p>${t('Windows 10/11 with Python 3.12. An NVIDIA GPU makes it fast; without one it runs on the processor.', 'Windows 10/11 ve Python 3.12. NVIDIA ekran kartı hızlandırır; yoksa işlemcide çalışır.')}</p>
+  ${phoneCard()}<div class="ring-two"><div class="card"><h2>${t('Install on another computer', 'Başka bir bilgisayara kur')}</h2><p>${t('Windows 10/11 with Python 3.12. An NVIDIA GPU makes it fast; without one it runs on the processor.', 'Windows 10/11 ve Python 3.12. NVIDIA ekran kartı hızlandırır; yoksa işlemcide çalışır.')}</p>
   <ol class="ring-list"><li>${t('Prepare the package on a USB drive or network folder (engine + trained models, about 3 GB).', 'Paketi bir USB belleğe ya da ağ klasörüne hazırla (motor + eğitilmiş modeller, yaklaşık 3 GB).')}</li><li>${t('On the other computer run kur.bat inside Yuzuk-motor.', 'Diğer bilgisayarda Yuzuk-motor içindeki kur.bat’ı çalıştır.')}</li><li>${t('Install Claudian there and choose that folder in Yüzük.', 'Oraya Claudian’ı kur ve Yüzük’te o klasörü seç.')}</li></ol>
   ${rbtn('Prepare package', 'Kurulum paketini hazırla', 'package')}</div></div></section>`;
 }

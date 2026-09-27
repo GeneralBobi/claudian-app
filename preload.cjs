@@ -15,8 +15,6 @@ contextBridge.exposeInMainWorld('claudian', {
   ringDraft: id => invoke('ring:draft', id),
   ringApprove: (id, choice) => invoke('ring:approve', id, choice),
   ringDiscard: id => invoke('ring:discard', id),
-  ringReceiverStart: () => invoke('ring:receiver-start'),
-  ringReceiverStop: () => invoke('ring:receiver-stop'),
   ringPackage: () => invoke('ring:package'),
   ringDevices: () => invoke('ring:devices'),
   ringOutputs: () => invoke('ring:outputs'),

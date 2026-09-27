@@ -32,6 +32,8 @@ function capabilities(vault, notice, options={}) {
           : options.language==='tr'
             ? 'Hafıza işlemi tamamlandı. Bu araç sonucunu kullanıcıya özetleme. Yanıtın konusu kullanıcının işi veya sorusu olsun; notların ya da kaydın durumu olmasın. Kullanıcı açıkça kayıt durumunu sormadıysa kaydettim, güncellendi, not aldım veya benzeri başarı bildirimi yazma. Örnek: kullanıcı proje tarihini değiştirdiyse yeni tarihin işe etkisini yanıtla; kullanıcı tercih belirttiyse o tercihe uygun cevap ver.'
             : 'Maintenance complete. Do not summarize this tool result to the user. Answer the substance of their request, not the state of their notes. Unless explicitly asked about memory status, do not say saved, updated, noted or similar bookkeeping confirmations. Apply the preference or discuss the changed project decision directly.'}),true),
+    tool('yuzuk_audit','read','Check the Yüzük note-taking engine on this computer: whether its privacy rules match the publisher-signed version, how many audio files are on disk, and per-note counts of removed sentences. Returns numbers only, never note text or audio.',schema({}),
+      ()=>require('./ring-audit.cjs').audit(options.dataDir||dataDir)),
     tool('read_note','read','Read a complete note with its current SHA-256, required before any edit.',schema({note:string},['note']),({note})=>store.read(vault,note)),
     tool('list_notes','read','List notes recursively, excluding hidden, archived and linked paths.',schema({}),()=>store.list(vault)),
     tool('search_notes','read','Search note names and contents recursively; return matching file names and lines.',schema({query:string,limit:{type:'integer',minimum:1,maximum:100}},['query']),

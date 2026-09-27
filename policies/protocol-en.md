@@ -312,5 +312,5 @@ Every tool that writes a note from a conversation transcript (lecture, meeting, 
 - **Speakers:** address the user as "you" ("you asked the lecturer …"). Others by name, or by role when the name is unknown; never labels like "Speaker 2".
 - **A meeting is an event:** "Hi, I'm Nil" does not enter as a sentence; it enters under `### People` as "You met Nil — Deniz's roommate".
 - **The user's own words:** commitments and tasks the user took on stand out. Dated ones go at the end under `### Reminders` as `- [ ] task · at HH:MM 📅 YYYY-MM-DD` and into the note with the `reminders` role. Someone else's own deadline is not a reminder.
-- **Left out:** timestamps and line numbers; ads, greetings, filler; third parties' health, family, money, grades; ID, card, IBAN, phone numbers, password values; the words of anyone who said "don't record this", and what follows.
+- **Left out:** timestamps and line numbers; ads, greetings, filler; third parties' health, family, money, grades; ID, card, IBAN, phone numbers, password values.
 - **Other languages:** the note is written in the user's language; phrases worth learning stay in the original, in quotes.

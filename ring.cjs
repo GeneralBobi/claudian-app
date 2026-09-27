@@ -2,21 +2,21 @@
 /*
   Yüzük — the note-taking ring's software side, run on this computer.
 
-  The engine is not bundled: it is a Python folder (Whisper + Laya, ~3 GB of models) that the
-  person installs once. This module only finds it, runs it, and turns its drafts into memory.
+  The engine is a Python folder (Whisper speech-to-text, speaker embeddings, privacy rules) that runs
+  on this computer. This module finds it, runs it, and turns its results into memory.
 
   Rules that hold below:
-  - A recorded FILE becomes a draft in the engine's `taslaklar/` folder and reaches memory only
-    through approval. LIVE listening (0.23) writes straight to the vault, as asked; what must never
-    be written is decided before that by the engine's privacy layer, and every write has a receipt.
-  - Audio and text never leave this machine. The phone receiver listens on the local network
-    only, requires a one-time token, and stores what it receives in the engine folder.
+  - Audio stays on this computer and is discarded once transcribed. The transcript, minus what the
+    engine's privacy rules remove, goes to the note writer the person chose (Claude, ChatGPT or Gemini);
+    that is the only thing that leaves.
+  - Phone recordings arrive as text through the cloud relay (27.09.2026: no audio file on the phone).
+    There is no local-network receiver any more.
+  - Every write to the vault goes through the receipt path.
 */
 const fs = require('fs/promises');
 const fss = require('fs');
 const os = require('os');
 const path = require('path');
-const http = require('http');
 const crypto = require('crypto');
 const {spawn} = require('child_process');
 const store = require('./memory-store.cjs');
@@ -24,8 +24,6 @@ const {capture} = require('./memory-capture.cjs');
 
 const AUDIO = ['mp3', 'm4a', 'wav', 'ogg', 'flac', 'webm', 'aac', 'mp4'];
 const DRAFT_ID = /^[\w.\-]{1,120}$/u;
-const MAX_UPLOAD = 1024 * 1024 * 1024; // 1 GiB — about ten hours of phone audio
-const RECEIVER_PORT = 3052;
 
 function defaultEngine() { return path.join(os.homedir(), 'Desktop', 'Yuzuk', 'laya-kapi'); }
 
@@ -40,7 +38,7 @@ const clean = v => String(v ?? '').replace(/\s+/g, ' ').trim();
 
 
 function createRing({core, send, dialog, getWindow, notify, synth}) {
-  let engine = null, job = null, receiver = null;
+  let engine = null, job = null;
   const settingsFile = () => path.join(core.dataDir, 'ring.json');
 
   async function engineDir() {
@@ -105,8 +103,7 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
       liveCapable: await exists(path.join(dir, 'canli.py')),
       // Laya'sız yol (23.09.2026): tam döküm seçilen yazıcıya gider. Eski motorlarda yoksa Laya yolu kalır.
       full: await exists(path.join(dir, 'tamnot.py')),
-      writers: await writers(),
-      receiver: receiver ? {url: receiver.url, received: receiver.received} : null};
+      writers: await writers()};
   }
 
   async function chooseEngine() {
@@ -328,56 +325,9 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
     return true;
   }
 
-  /* ---- phone → this computer, local network only ---- */
-  function lanAddress() {
-    for (const list of Object.values(os.networkInterfaces()))
-      for (const a of list || []) if (a.family === 'IPv4' && !a.internal && !a.address.startsWith('169.254.')) return a.address;
-    return null;
-  }
-
-  const uploadPage = token => `<!doctype html><html lang="tr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Yüzük</title>
-<style>body{font-family:system-ui,sans-serif;background:#0e0e10;color:#f2f0eb;margin:0;padding:28px 20px;max-width:520px}h1{font-size:22px}h1 span{color:#d97757}p{color:#b4b0a9;line-height:1.6}label,button{display:block;width:100%;box-sizing:border-box;margin:14px 0;padding:16px;border-radius:8px;font-size:16px}label{border:1px dashed #3a3a44;text-align:center}button{background:#d97757;border:0;color:#0e0e10;font-weight:600}#d{font-family:monospace;font-size:14px}</style>
-<h1>claudian<span>.</span>app · Yüzük</h1><p>Kaydı seç ve gönder. Dosya yalnız yerel ağdaki bilgisayarına gider; orada nota dönüşür.</p>
-<label>Ses dosyası seç<input id="f" type="file" accept="audio/*" capture hidden></label><button id="b">Gönder</button><p id="d"></p>
-<script>const d=document.getElementById('d');document.getElementById('f').onchange=e=>d.textContent=e.target.files[0]?.name||'';
-document.getElementById('b').onclick=async()=>{const f=document.getElementById('f').files[0];if(!f){d.textContent='Önce bir dosya seç.';return}
-d.textContent='Gönderiliyor…';const r=await fetch('/yukle?t=${token}&ad='+encodeURIComponent(f.name),{method:'PUT',body:f}).catch(()=>null);
-d.textContent=r&&r.ok?'Gönderildi. Bilgisayarında işleniyor.':'Gönderilemedi'+(r?': '+await r.text():'.');}</script></html>`;
-
-  async function receiverStart() {
-    if (receiver) return status();
-    const ip = lanAddress();
-    if (!ip) throw Error('Bu bilgisayar bir yerel ağa bağlı değil.');
-    const token = crypto.randomBytes(12).toString('hex');
-    const inbox = path.join(await engineDir(), 'gelen');
-    await fs.mkdir(inbox, {recursive: true});
-    const server = http.createServer((req, res) => {
-      const url = new URL(req.url, 'http://x');
-      if (url.searchParams.get('t') !== token) { res.writeHead(403).end('Geçersiz bağlantı.'); return; }
-      if (req.method === 'GET' && url.pathname === '/') { res.writeHead(200, {'content-type': 'text/html; charset=utf-8'}).end(uploadPage(token)); return; }
-      if (req.method !== 'PUT' || url.pathname !== '/yukle') { res.writeHead(404).end(); return; }
-      const ext = path.extname(url.searchParams.get('ad') || '').slice(1).toLowerCase();
-      if (!AUDIO.includes(ext)) { res.writeHead(415).end('Ses dosyası değil.'); return; }
-      if (Number(req.headers['content-length'] || 0) > MAX_UPLOAD) { res.writeHead(413).end('Dosya çok büyük.'); return; }
-      const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
-      const target = path.join(inbox, `telefon-${stamp}.${ext}`);
-      let size = 0; const out = fss.createWriteStream(target, {flags: 'wx'});
-      req.on('data', c => { size += c.length; if (size > MAX_UPLOAD) { req.destroy(); out.destroy(); fs.unlink(target).catch(() => {}); } });
-      req.pipe(out);
-      out.on('finish', async () => {
-        res.writeHead(200).end('ok');
-        receiver && (receiver.received += 1);
-        send('ring:event', {olay: 'alindi', dosya: path.basename(target)});
-        if (!job) run({file: target, title: 'Telefon kaydı', start: stamp.slice(0, 10) + ' ' + stamp.slice(11, 16).replace('-', ':')}).catch(e => send('ring:event', {olay: 'hata', mesaj: e.message}));
-      });
-      out.on('error', () => { if (!res.headersSent) res.writeHead(500).end('Kaydedilemedi.'); });
-    });
-    await new Promise((resolve, reject) => { server.once('error', reject); server.listen(RECEIVER_PORT, '0.0.0.0', resolve); });
-    receiver = {server, url: `http://${ip}:${RECEIVER_PORT}/?t=${token}`, received: 0};
-    return status();
-  }
-
-  async function receiverStop() { if (receiver) { receiver.server.close(); receiver = null; } return status(); }
+  /* Wi-Fi receiver removed (legal & security scan 27.09.2026, P2): it had the phone browser record an audio file
+     and carried it over the local network without encryption. The Yüzük app does the same with no audio file,
+     over TLS through the cloud to this computer's node. */
 
   /* ---- package for another Windows computer ---- */
   async function packageFor() {
@@ -386,7 +336,10 @@ d.textContent=r&&r.ok?'Gönderildi. Bilgisayarında işleniyor.':'Gönderilemedi
     if (r.canceled || !r.filePaths[0]) return null;
     const target = path.join(r.filePaths[0], 'Yuzuk-motor');
     if (await exists(target)) throw Error('Hedefte zaten bir Yuzuk-motor klasörü var.');
-    const skip = new Set(['.venv', 'taslaklar', 'gelen', '__pycache__']);
+    // Anahtarlar, ses izi ve bulut bağlantısı bu bilgisayara aittir; başka bilgisayara giden pakete girmez.
+    const skip = new Set(['.venv', 'taslaklar', 'gelen', 'gelen_not', 'isler', 'oturumlar', 'profiller', 'egitim', '_arsiv', 'dagitim',
+      '__pycache__', 'sunucu_anahtar.txt', 'cagri_anahtar.txt', 'takvim_anahtar.txt', 'bulut.json', 'eslestirme.json',
+      'sunucu.log', 'sunucu.err.log', 'tunel.log']);
     send('ring:event', {olay: 'paket', durum: 'basladi'});
     await fs.cp(src, target, {recursive: true, filter: p => !skip.has(path.basename(p)) && !path.basename(p).startsWith('onay_')});
     send('ring:event', {olay: 'paket', durum: 'bitti', hedef: target});
@@ -678,9 +631,9 @@ d.textContent=r&&r.ok?'Gönderildi. Bilgisayarında işleniyor.':'Gönderilemedi
     inboxTimer.unref?.();
   }
 
-  function shutdown() { cancel(); if (live) live.child.kill(); if (voiceJob) voiceJob.child.kill(); if (receiver) receiver.server.close(); if (inboxTimer) clearInterval(inboxTimer); }
+  function shutdown() { cancel(); if (live) live.child.kill(); if (voiceJob) voiceJob.child.kill(); if (inboxTimer) clearInterval(inboxTimer); }
 
-  return {status, chooseEngine, chooseAudio, run, cancel, drafts, draft, approve, discard, receiverStart, receiverStop, packageFor,
+  return {status, chooseEngine, chooseAudio, run, cancel, drafts, draft, approve, discard, packageFor,
     devices, outputs, liveStart, liveStop, liveStatus, finishSession, shutdown, engineDir, phoneStatus, phoneStart, phonePair, writers, setWriter,
     voiceStatus, voiceEnroll, voiceDelete, phoneLive, inboxOnce, inboxStart};
 }

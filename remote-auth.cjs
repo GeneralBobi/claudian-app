@@ -38,8 +38,22 @@ class RemoteAuth {
   }
   resource(host) { if(!hosts.includes(host))throw fail('Unknown AI connection'); return this.base+'/'+host+'/mcp'; }
   metadata() { return {issuer:this.base,authorization_endpoint:this.base+'/oauth/authorize',token_endpoint:this.base+'/oauth/token',registration_endpoint:this.base+'/oauth/register',revocation_endpoint:this.base+'/oauth/revoke',response_types_supported:['code'],grant_types_supported:['authorization_code','refresh_token'],code_challenge_methods_supported:['S256'],token_endpoint_auth_methods_supported:['none','client_secret_post'],scopes_supported:advertised,authorization_response_iss_parameter_supported:true}; }
+  /* Registration is unauthenticated by design (DCR), so the store must not fill up with clients nobody uses
+     (legal & security scan 27.09.2026, P2): a client that never obtained a grant is removed after 24 hours, and
+     no more than 20 new clients are accepted per hour. Clients with a grant, active or revoked, are kept. */
+  prune() {
+    const used=new Set(Object.values(this.state.grants||{}).map(g=>g.clientId));
+    const cutoff=this.now()-24*3600e3;
+    let removed=0;
+    for(const [id,c] of Object.entries(this.state.clients))
+      if(!used.has(id)&&(c.created||0)<cutoff){delete this.state.clients[id];removed++;}
+    return removed;
+  }
   async register(input) {
     return this.exclusive(async()=>{
+      this.recent=(this.recent||[]).filter(t=>t>this.now()-3600e3);
+      if(this.recent.length>=20)throw fail('Too many client registrations; try again later',429);
+      if(this.prune())await this.save();
       if(Object.keys(this.state.clients).length>=100)throw fail('Client registration limit reached',429);
       if(!Array.isArray(input.redirect_uris)||!input.redirect_uris.length||input.redirect_uris.length>8)throw fail('redirect_uris required');
       for(const value of input.redirect_uris) {
@@ -49,7 +63,8 @@ class RemoteAuth {
       const method=input.token_endpoint_auth_method||'none';
       if(!['none','client_secret_post'].includes(method))throw fail('Unsupported client authentication');
       const client_id=random(), secret=method==='none'?null:random();
-      this.state.clients[client_id]={name:String(input.client_name||'AI application').slice(0,100),redirects:[...new Set(input.redirect_uris)],method,secretHash:secret&&hash(secret)};
+      this.state.clients[client_id]={name:String(input.client_name||'AI application').slice(0,100),redirects:[...new Set(input.redirect_uris)],method,secretHash:secret&&hash(secret),created:this.now()};
+      this.recent.push(this.now());
       await this.save();
       return {client_id,...(secret?{client_secret:secret,client_secret_expires_at:0}:{}),redirect_uris:input.redirect_uris,token_endpoint_auth_method:method,grant_types:['authorization_code','refresh_token'],response_types:['code']};
     });

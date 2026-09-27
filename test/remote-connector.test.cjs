@@ -112,3 +112,17 @@ test('remove all connections revokes every cloud grant even while the device is 
   await assert.rejects(reread.authenticate(b.tokens.access_token,'claude-desktop'),/invalid_token/);
   assert.deepEqual(await connector.resetAll(),{revoked:0},'a second reset finds nothing left');
 });
+
+test('unused OAuth clients expire after a day and registrations are rate limited (scan 27.09.2026 P2)',async t=>{
+  const {options}=await fixture(t);
+  let clock=Date.parse('2026-09-27T10:00:00Z');
+  const auth=await new RemoteAuth({...options,now:()=>clock}).load();
+  const {client:kept}=await authorize(auth);
+  for(let i=0;i<19;i++)await auth.register({redirect_uris:['https://client.example/callback']});
+  await assert.rejects(auth.register({redirect_uris:['https://client.example/callback']}),e=>e.status===429);
+  clock+=25*3600e3;
+  await auth.register({redirect_uris:['https://client.example/callback']});
+  const ids=Object.keys(auth.state.clients);
+  assert.ok(ids.includes(kept.client_id),'a client with a grant is never pruned');
+  assert.equal(ids.length,2,'unused clients older than a day are removed');
+});

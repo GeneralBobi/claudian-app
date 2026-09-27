@@ -312,5 +312,5 @@ Bir konuşmanın dökümünden (ders, toplantı, sohbet, sesli mesaj, video) not
 - **Konuşmacılar:** kullanıcıya "sen" diye hitap edilir ("hocaya … diye sordun"). Diğerleri adıyla, ad bilinmiyorsa rolüyle yazılır; "Konuşmacı 2" gibi etiket notta kullanılmaz.
 - **Tanışma bir olaydır:** "Selam, ben Nil" nota cümle olarak girmez; `### Kişiler` altında "Nil ile tanıştın — Deniz'in oda arkadaşı" diye girer.
 - **Kullanıcının sözleri:** üstlendiği işler ve verdiği sözler ayrı görünür. Tarihli olanlar notun sonunda `### Hatırlatıcılar` altında `- [ ] iş · saat SS:DD 📅 YYYY-AA-GG` biçimindedir ve `reminders` rolündeki nota da işlenir. Başkasının kendi teslimi hatırlatıcı olmaz.
-- **Girmeyenler:** zaman damgası ve satır numarası; reklam, selamlaşma, dolgu; üçüncü kişilerin sağlık, aile, para, not/puan bilgisi; kimlik, kart, IBAN, telefon, şifre değerleri; "kaydetme" diyen birinin sözleri ve ardından gelenler.
+- **Girmeyenler:** zaman damgası ve satır numarası; reklam, selamlaşma, dolgu; üçüncü kişilerin sağlık, aile, para, not/puan bilgisi; kimlik, kart, IBAN, telefon, şifre değerleri.
 - **Başka dil:** not kullanıcının dilinde yazılır; öğrenmeye değer ifadeler özgün dilinde tırnak içinde kalır.
