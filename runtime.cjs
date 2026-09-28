@@ -107,10 +107,7 @@ function attach({ app, Tray, Menu, nativeImage, win, status, state, language, se
 
   function start() {
     if (tray) return tray;
-    // macOS cannot read .ico; its menu bar wants a small PNG.
-    const mac = process.platform === 'darwin';
-    let icon = nativeImage.createFromPath(path.join(__dirname, 'assets', mac ? 'icon-mac.png' : 'icon.ico'));
-    if (mac && !icon.isEmpty()) icon = icon.resize({width: 18, height: 18});
+    const icon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'icon.ico'));
     tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
     tray.on('click', show);
     tray.on('double-click', show);

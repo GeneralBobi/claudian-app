@@ -44,7 +44,6 @@ function mcpRevoke(previous, expected) {
 }
 
 const configFile = home => {
-  if(require('./platform.cjs').isMac())return path.join(require('./platform.cjs').appData(home),'Claude','claude_desktop_config.json');
   const fs=require('node:fs'),packages=path.join(home,'AppData','Local','Packages');
   try {
     const profiles=fs.readdirSync(packages,{withFileTypes:true}).filter(e=>e.isDirectory()&&/^Claude_[a-z0-9]+$/i.test(e.name))

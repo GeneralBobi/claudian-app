@@ -1,7 +1,7 @@
 {
   "name": "claudian-desktop",
   "productName": "Claudian",
-  "version": "0.31.0",
+  "version": "0.30.0",
   "private": true,
   "description": "Claudian ortak hafÄ±za uygulamasÄ±",
   "author": "Claudian",
@@ -12,8 +12,7 @@
     "pack": "electron-builder --dir --win --x64",
     "dist": "electron-builder --win nsis --x64",
     "smoke": "electron . --smoke",
-    "test:unit": "node --test test/*.test.cjs",
-    "dist:mac": "electron-builder --mac"
+    "test:unit": "node --test test/*.test.cjs"
   },
   "devDependencies": {
     "electron": "44.3.0",
@@ -77,11 +76,9 @@
       "notify.cjs",
       "ring.cjs",
       "ring-audit.cjs",
-      "platform.cjs",
       "first-review.cjs",
       "web-providers.cjs",
-      "cloud-progress.cjs",
-      "assets/icon-mac.png"
+      "cloud-progress.cjs"
     ],
     "win": {
       "target": "nsis",
@@ -107,34 +104,6 @@
       "createDesktopShortcut": true,
       "deleteAppDataOnUninstall": false,
       "artifactName": "Claudian-Setup-${version}.${ext}"
-    },
-    "mac": {
-      "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "arm64",
-            "x64"
-          ]
-        },
-        {
-          "target": "zip",
-          "arch": [
-            "arm64",
-            "x64"
-          ]
-        }
-      ],
-      "icon": "assets/icon-mac.png",
-      "category": "public.app-category.productivity",
-      "identity": "-",
-      "hardenedRuntime": false,
-      "gatekeeperAssess": false,
-      "artifactName": "Claudian-${version}-mac-${arch}.${ext}"
-    },
-    "dmg": {
-      "title": "Claudian ${version}",
-      "artifactName": "Claudian-${version}-mac-${arch}.${ext}"
     }
   },
   "dependencies": {

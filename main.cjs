@@ -303,8 +303,11 @@ async function start() {
     }
     if(require('./web-providers.cjs').isWeb(id)){await shell.openExternal(require('./web-providers.cjs').providers[id].chat);return true;}
     if(id==='chatgpt'){await shell.openExternal('https://chatgpt.com/');return true;}
-    const candidates=require('./platform.cjs').appCandidates(id,home);
-    if(require('./platform.cjs').isWindows()&&['claude-code','claude-desktop'].includes(id)){
+    const local=process.env.LOCALAPPDATA||path.join(home,'AppData','Local');
+    const candidates=['claude-code','claude-desktop'].includes(id)
+      ?[path.join(local,'AnthropicClaude','claude.exe'),path.join(local,'Programs','Claude','Claude.exe')]
+      :[path.join(local,'Programs',{'antigravity':'antigravity/Antigravity.exe','antigravity-cli':'antigravity/Antigravity.exe','cursor':'cursor/Cursor.exe'}[id]||'unavailable')];
+    if(['claude-code','claude-desktop'].includes(id)){
       const command="Get-AppxPackage -Name Claude | Select-Object -First 1 -ExpandProperty InstallLocation";
       const result=await runFile('powershell.exe',['-NoProfile','-EncodedCommand',Buffer.from(command,'utf16le').toString('base64')],{windowsHide:true,timeout:10000}).catch(()=>({stdout:''}));
       const location=result.stdout.trim();if(path.isAbsolute(location))candidates.push(path.join(location,'app','Claude.exe'));
@@ -365,10 +368,8 @@ async function start() {
     const response=await net.fetch(RELEASES,{headers:{'Accept':'application/vnd.github+json'},signal:AbortSignal.timeout(12000)});
     if(!response.ok)throw new Error('Update service unavailable. Try again later.');
     const release=await response.json();
-    // Each platform downloads its own installer: the Windows setup, or the macOS disk image for this processor.
-    const pattern=process.platform==='darwin'?(process.arch==='arm64'?/^Claudian-[0-9.]+-mac-arm64\.dmg$/i:/^Claudian-[0-9.]+-mac-x64\.dmg$/i):/^Claudian-Setup-[0-9.]+\.exe$/i;
-    const asset=(release.assets||[]).find(a=>pattern.test(String(a.name||'')));
-    if(!asset||typeof asset.browser_download_url!=='string')throw new Error('This release has no installer for this computer to download.');
+    const asset=(release.assets||[]).find(a=>/^Claudian-Setup-[0-9.]+\.exe$/i.test(String(a.name||'')));
+    if(!asset||typeof asset.browser_download_url!=='string')throw new Error('This release has no Windows installer to download.');
     const url=new URL(asset.browser_download_url);
     if(url.protocol!=='https:'||!/(^|\.)github(usercontent)?\.com$/i.test(url.hostname))throw new Error('Unexpected download location; nothing was downloaded.');
     const target=path.join(app.getPath('temp'),`claudian-update-${crypto.randomUUID()}`,asset.name);
@@ -435,25 +436,13 @@ async function start() {
     // reg.exe received `HKCRobsidianshellopencommand` -- an invalid key name that could
     // never match. Detection therefore always answered no, and the app kept offering the
     // Obsidian download button to people who already had it installed.
-    return obsidianInstalled();
-  });
-  async function obsidianInstalled() {
-    if (require('./platform.cjs').isWindows()) {
-      try { await runFile('reg.exe',['query','HKCR\\obsidian\\shell\\open\\command'],{windowsHide:true}); return true; }
-      catch {}
-    }
+    try { await runFile('reg.exe',['query','HKCR\\obsidian\\shell\\open\\command'],{windowsHide:true}); return true; }
+    catch {}
     // A missing registry key is not proof of a missing app, so the known install path
-    // is checked before answering no (on macOS the app bundle is the only signal).
-    for (const file of require('./platform.cjs').appCandidates('obsidian',home)) { try { await fs.access(file); return true; } catch {} }
-    return false;
-  }
-  async function obsidianRunning() {
-    if (require('./platform.cjs').isWindows()) {
-      const processes=await runFile('tasklist.exe',['/FI','IMAGENAME eq Obsidian.exe','/FO','CSV','/NH'],{windowsHide:true});
-      return /obsidian\.exe/i.test(processes.stdout);
-    }
-    return runFile('pgrep',['-x','Obsidian']).then(r=>!!r.stdout.trim(),()=>false);
-  }
+    // is checked before answering no.
+    try { await fs.access(path.join(process.env.LOCALAPPDATA || path.join(home,'AppData','Local'),'Programs','Obsidian','Obsidian.exe')); return true; }
+    catch { return false; }
+  });
   handle('memory:obsidian', async () => {
     const profile = (await core.snapshot()).profile;
     if (!profile) throw new Error('Memory is not configured.');
@@ -461,9 +450,11 @@ async function start() {
     // Registering a vault that is not on disk would either fail obscurely or quietly recreate
     // it behind the user's back. Say what is wrong; the panel offers the way to fix it.
     try { await fs.access(profile.vault); } catch { throw new Error('Not klasörü bulunamadı.'); }
-    if (!await obsidianInstalled()) return {notInstalled:true};
+    try { await runFile('reg.exe',['query','HKCR\\obsidian\\shell\\open\\command'],{windowsHide:true}); }
+    catch { return {notInstalled:true}; }
     await welcome.ensure(profile,assertOrdinaryPath);
-    const result=await require('./obsidian.cjs').register(path.join(app.getPath('appData'),'obsidian','obsidian.json'),profile.vault,{running:await obsidianRunning(),assertPath:assertOrdinaryPath});
+    const processes=await runFile('tasklist.exe',['/FI','IMAGENAME eq Obsidian.exe','/FO','CSV','/NH'],{windowsHide:true});
+    const result=await require('./obsidian.cjs').register(path.join(app.getPath('appData'),'obsidian','obsidian.json'),profile.vault,{running:/obsidian\.exe/i.test(processes.stdout),assertPath:assertOrdinaryPath});
     if(result.needsClose)return result;
     const uri = 'obsidian://open?vault=' + encodeURIComponent(result.id) + '&file=Claudian%20Home';
     if (smoke) return uri;
@@ -659,8 +650,6 @@ async function start() {
 // smoke runs, or a platform where the icon could not be created -- the old behaviour stands,
 // because an application nobody can see and nobody can close is worse than one that exits.
 app.on('window-all-closed', () => { if (!runtime || smoke) app.quit(); });
-// macOS: clicking the Dock icon brings the closed window back instead of doing nothing.
-app.on('activate', () => { if (win && !win.isDestroyed()) win.show(); });
 // The poll loop holds the device connection. Stopping it before exit is the difference
 // between a clean disconnect and a relay that keeps a dead device registered.
 app.on('before-quit', async event => {
