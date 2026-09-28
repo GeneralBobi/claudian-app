@@ -55,6 +55,9 @@ exports.run=async({win,core,app,home})=>{const output=process.env.CLAUDIAN_SMOKE
  await click('[data-action=add-hosts]');await wait('!!document.querySelector("[name=host][value=antigravity]")');assert.equal(await js('document.querySelectorAll("[name=host][value=antigravity-cli]").length'),0,'the picker offers providers, not entry points');await js('document.querySelector("[name=host][value=antigravity]").checked=true');await click('[data-action=preview]');await wait('!!document.querySelector("[data-action=install]")');await grant();await click('[data-action=install]');await wait('!!document.querySelector(".connection-grid")');assert.equal(await js('document.querySelector("[data-action=enter-verify]")'),null);await wait('!!document.querySelector("[data-action=connection-open][data-host=antigravity]")');
  assert.deepEqual((await core.snapshot()).profile.hosts.filter(h=>h.id.startsWith('antigravity')).map(h=>h.id).sort(),['antigravity','antigravity-cli'],'choosing the provider restores both entry points');
  await win.loadURL('claudian://app/index.html');await wait('!!document.querySelector("[data-view=connections]")');await click('[data-view=connections]');await click('[data-action=connection-open][data-host=codex]');await wait('!!document.querySelector("[data-action=remove]")');assert.equal(await js('typeof require'),'undefined');assert.equal(await js('document.querySelector("#error").hidden'),true);
+ // 1.3.0 (madde 4): Panel sekmesi varsayılan olarak gizli; kod yerinde, test onu bayrağı açarak sınar.
+ assert.equal(await js('!!document.querySelector("[data-view=companion]")'),false,'the Panel tab is hidden by default');
+ await js('PANEL_ACIK=true;header()');
  await click('[data-view=companion]');
  // The embedded web companion panel was withdrawn on 10.09.2026 and the companion screen
  // is a local, under-construction surface. The invariant worth guarding is that no remote
@@ -150,6 +153,7 @@ await click('[data-action=connection-close]');await wait('!document.querySelecto
  await js('reviewing=false;selectedHosts=state.profile.hosts.map(h=>h.id);void render()');
  await wait('!!document.querySelector("[data-view=connections]")');
  // Real renderer, illustrative fixture: narrow and maximized layouts must retain content.
+ await js('PANEL_ACIK=true;header()');
  await click('[data-view=companion]');
  await js('renderQueue');
  await wait('!!document.querySelector(".panel-layout")');

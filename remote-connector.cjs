@@ -2,6 +2,12 @@
 const fs=require('node:fs/promises'),path=require('node:path');
 const {random,hash}=require('./remote-auth.cjs');
 const {RemoteHttp}=require('./remote-http.cjs');
+// 1.1.0 (madde 9): the first relay address was a workers.dev name that carried a person's name. It and relay.claudian.app
+// are the same relay worker and the same device mailbox. A device registered under the old name moves to the new address
+// for its own polling and for every new connection; the old address keeps answering, as itself, for the connectors an AI
+// app added under it (their grants, tokens and OAuth metadata stay bound to the old address). Retiring the old address
+// is a separate, later step, taken only after those connectors have been re-added.
+const RELAY_ALIASES={'https://claudian-device-relay.boranbirtanir.workers.dev':'https://relay.claudian.app'};
 class RemoteConnector {
   constructor({dataDir,profile,safeStorage,fetch:request=fetch,allowLoopback=false}) {
     Object.assign(this,{dataDir,profile,safeStorage,request,allowLoopback});
@@ -9,6 +15,8 @@ class RemoteConnector {
   }
   async load() {
     try{this.state=JSON.parse(await fs.readFile(this.file,'utf8'));}catch(e){if(e.code!=='ENOENT')throw e;}
+    const moved=RELAY_ALIASES[this.state.relay];
+    if(moved){this.state={...this.state,relay:moved,previousRelay:this.state.relay};await this.save();}
     if(this.state.enabled)await this.start(this.state.relay).catch(e=>{this.connection='offline';this.lastError=e.message;});
     return this;
   }
@@ -34,7 +42,8 @@ class RemoteConnector {
     const secret=this.state.credential?this.safeStorage.decryptString(Buffer.from(this.state.credential,'base64')):random();
     if(this.state.relay&&this.state.relay!==relay&&this.state.credential)throw Error('Revoke the existing device before changing its relay.');
     this.state={...this.state,relay,device:hash(secret),credential:this.safeStorage.encryptString(secret).toString('base64'),enabled:true};
-    this.http=await new RemoteHttp({dataDir:this.dataDir,profile:this.profile,base:relay+'/d/'+this.state.device}).load();
+    this.http=await new RemoteHttp({dataDir:this.dataDir,profile:this.profile,base:relay+'/d/'+this.state.device,
+      previousBase:this.state.previousRelay?this.state.previousRelay+'/d/'+this.state.device:null}).load();
     const connected=await this.request(this.http.auth.base+'/__device/connect',{method:'POST',headers:{authorization:'Bearer '+secret},redirect:'error',signal:AbortSignal.timeout(10000)});
     if(!connected.ok)throw Error('Device registration failed: '+connected.status);
     await this.save();
@@ -97,4 +106,5 @@ class RemoteConnector {
     return {revoked};
   }
 }
+RemoteConnector.RELAY_ALIASES=RELAY_ALIASES;
 module.exports={RemoteConnector};

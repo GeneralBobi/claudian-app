@@ -1,7 +1,7 @@
 {
   "name": "claudian-desktop",
   "productName": "Claudian",
-  "version": "0.30.0",
+  "version": "1.4.0",
   "private": true,
   "description": "Claudian ortak hafÄ±za uygulamasÄ±",
   "author": "Claudian",
@@ -26,6 +26,9 @@
     },
     "files": [
       "main.cjs",
+      "release-key.cjs",
+      "ring-install.cjs",
+      "local-accounts.cjs",
       "secure-tunnel.cjs",
       "secure-tunnel-entry.cjs",
       "preload.cjs",

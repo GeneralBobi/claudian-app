@@ -6,7 +6,8 @@
 */
 const ring = {status: null, drafts: [], file: null, running: null, open: null, openId: null, result: null, bound: false,
   live: {devices: null, outputs: null, source: 'mikrofon', output: '', device: null, training: false, on: false, level: 0, speaking: false, ara: '', decisions: [], written: [], note: null, error: null, summary: null},
-  voice: {status: null, running: false, seconds: 25, elapsed: 0, level: 0, error: null, result: null}, phoneLive: null};
+  voice: {status: null, running: false, seconds: 25, elapsed: 0, level: 0, error: null, result: null}, phoneLive: null,
+  install: {plan: null, ev: null, running: false, error: null, result: null}};
 const KIND_LABEL = {
   odev: ['Assignments and deadlines', 'Ödev ve teslimler'], sinav: ['Exam emphasis', 'Sınav vurguları'],
   hazirlik: ['Preparation', 'Hazırlık'], karar: ['Decisions, plans and promises', 'Kararlar, planlar ve sözler'],
@@ -58,6 +59,15 @@ function ringBind() {
     if (ev.olay === 'sentez') { L.synth = ev; }
     if (view === 'ring' && !ring.open) renderRing();
   });
+  api.onRingInstall?.(ev => {
+    const I = ring.install;
+    I.ev = ev;
+    if (ev.adim === 'bitti') { I.result = ev; I.running = false; }
+    // Byte progress arrives many times a second: only the progress block is redrawn, not the whole view.
+    const box = document.querySelector('#ring-install-progress');
+    if (box && ev.adim !== 'bitti') { box.innerHTML = installProgress(); return; }
+    if (view === 'ring' && !ring.open) renderRing();
+  });
   api.onRingVoice?.(ev => {
     const V = ring.voice;
     if (ev.olay === 'ilerleme') {
@@ -96,6 +106,16 @@ function ringBind() {
 async function ringAction(a, el) {
   if (a === 'choose-audio') { const f = await api.ringChooseAudio(); if (f) ring.file = f; }
   else if (a === 'choose-engine') { const s = await api.ringChooseEngine(); if (s) ring.status = s; }
+  else if (a === 'install') {
+    const I = ring.install;
+    Object.assign(I, {running: true, error: null, result: null, ev: null});
+    await renderRing();
+    try { I.result = await api.ringInstall(); }
+    catch (e) { I.error = e.message; }
+    finally { I.running = false; I.plan = null; }
+  }
+  else if (a === 'install-cancel') await api.ringInstallCancel();
+  else if (a === 'privacy') { await api.ringPrivacy(); return; }
   else if (a === 'writer') { await api.ringSetWriter(el.dataset.id); }
   else if (a === 'voice-start') {
     const V = ring.voice;
@@ -240,7 +260,9 @@ function writerPicker(s) {
   const w = s.writers;
   if (!s.full || !w) return '';
   const chips = w.list.map(x => `<button data-ring="writer" data-id="${esc(x.id)}" class="${x.id === w.chosen ? 'primary' : ''}" ${x.installed ? '' : 'disabled'} title="${x.installed ? '' : esc(t('Not installed on this computer', 'Bu bilgisayarda kurulu değil'))}">${esc(x.name)}</button>`).join('');
-  return `<div class="ring-writer"><span>${t('Note written by', 'Notu yazan')}</span><div class="row">${chips}</div><p class="subtle">${t('The whole transcript goes to the tool you pick, through your own account on this computer. Private sentences are removed first.', 'Konuşmanın tamamı, bu bilgisayardaki kendi hesabınla seçtiğin araca gider. Mahrem cümleler önce çıkarılır.')}</p></div>`;
+  const waiting = w.approval === 'bekliyor' ? `<p class="subtle"><b>${t('This computer is waiting for approval', 'Bu bilgisayar onay bekliyor')}</b> · ${t('During the test phase notes are written only for approved computers. Recordings are kept until then.', 'Test aşamasında not yalnız onaylanan bilgisayarlar için yazılır. Kayıtlar o zamana kadar bekler.')}</p>` : '';
+  const none = !w.list.some(x => x.installed) ? `<p class="subtle">${t('This computer is not connected to the Claudian cloud, so no note can be written yet. Install the engine with the button on this screen.', 'Bu bilgisayar Claudian bulutuna bağlı değil; bu yüzden henüz not yazılamaz. Motoru bu ekrandaki düğmeyle kur.')}</p>` : '';
+  return `<div class="ring-writer"><span>${t('Note written by', 'Notu yazan')}</span><div class="row">${chips}</div><p class="subtle">${t('The transcript, with private sentences removed, goes to the Claudian cloud, which asks Claude for the note in one call with no tools. What was said is treated as data, never as an instruction.', 'Mahrem cümleleri çıkarılmış döküm Claudian bulutuna gider; bulut notu Claude’a araçsız tek bir çağrıyla yazdırır. Söylenen her şey veri sayılır, asla talimat sayılmaz.')}</p>${waiting}${none}</div>`;
 }
 
 function engineLine(s) {
@@ -250,12 +272,61 @@ function engineLine(s) {
   return `<div class="ring-engine"><div><i>●</i><em>Whisper large-v3-turbo</em></div><div><i>●</i><em>${model}</em></div><div><span>${t('Offline · models on this computer', 'Çevrimdışı · modeller bu bilgisayarda')}</span></div></div>`;
 }
 
+const INSTALL_STEPS = {
+  motor: ['Engine package, signature checked', 'Motor paketi, imzası denetlenerek'], uv: ['Installer (uv)', 'Kurucu (uv)'], python: ['Python 3.12', 'Python 3.12'],
+  kutuphane: ['Libraries', 'Kütüphaneler'], whisper: ['Whisper model (1.6 GB)', 'Whisper modeli (1,6 GB)'], konusmaci: ['Speaker model (28 MB)', 'Konuşmacı modeli (28 MB)'],
+  tunel: ['Connection tool (cloudflared)', 'Bağlantı aracı (cloudflared)'], dogrulama: ['Loading the model once', 'Modeli bir kez yükleme'],
+  kayit: ['Registering with the Claudian cloud', 'Claudian bulutuna kayıt'], servis: ['Starting the engine', 'Motoru başlatma'],
+};
+const gb = n => `${(n / 1073741824).toFixed(1).replace('.', t('.', ','))} GB`;
+const mb = n => `${Math.round(n / 1048576)} MB`;
+
+function installProgress() {
+  const ev = ring.install.ev || {};
+  const order = ev.adimlar || Object.keys(INSTALL_STEPS);
+  const at = order.indexOf(ev.adim);
+  return order.map((k, i) => {
+    const state = ev.adim === 'bitti' || i < at ? 'done' : i === at ? 'running' : '';
+    let detail = '';
+    if (i === at && ev.indirilen && ev.toplam) detail = `%${Math.floor(ev.indirilen / ev.toplam * 100)} · ${mb(ev.indirilen)} / ${mb(ev.toplam)}`;
+    else if (i === at && ev.indirilen) detail = mb(ev.indirilen);
+    else if (i === at && ev.satir) detail = esc(ev.satir);
+    return `<div class="stage ${state}"><b>${state === 'done' ? '✓' : state === 'running' ? '●' : '○'}</b>${t(...INSTALL_STEPS[k] || [k, k])}${detail ? ` · ${detail}` : ''}</div>`;
+  }).join('');
+}
+
+// Hanne's 0.30.0 showed a path that only exists on Boran's computer and a button that only looked for an engine.
+// 1.1.0: one button installs it where this user can write; the old button stays for an engine that is already here.
 function setupNeeded(s) {
-  const row = (ok, label) => `<li>${ok ? '✓' : '○'} ${label}</li>`;
-  return `<section class="card"><h2>${t('The engine is not installed on this computer', 'Motor bu bilgisayarda kurulu değil')}</h2>
-  <p>${t('Yüzük runs a local Python engine (about 3 GB of models). Copy the engine folder here, run kur.bat inside it once, then choose the folder.', 'Yüzük yerel bir Python motoru çalıştırır (yaklaşık 3 GB model). Motor klasörünü bu bilgisayara kopyala, içindeki kur.bat dosyasını bir kez çalıştır, sonra klasörü seç.')}</p>
-  <p class="path">${esc(s.dir)}</p><ul class="file-list">${row(s.checks.engine, t('Engine code', 'Motor kodu'))}${row(s.checks.python, t('Python environment (kur.bat)', 'Python ortamı (kur.bat)'))}${row(s.checks.whisper, t('Whisper model', 'Whisper modeli'))}${row(s.checks.tuned, t('Trained Laya model (optional)', 'Eğitilmiş Laya modeli (isteğe bağlı)'))}</ul>
-  <div class="row">${rbtn('Choose engine folder', 'Motor klasörünü seç', 'choose-engine', true)}</div></section>`;
+  const I = ring.install, p = I.plan;
+  const head = `<h2>${t('The Yüzük engine is not on this computer', 'Yüzük motoru bu bilgisayarda yok')}</h2>
+  <p>${t('The engine turns speech into text on this computer and is what your phone’s recordings are processed by. One button installs it: Python, the libraries and about 1.7 GB of models are downloaded into your own user folder, never into Program Files. If the connection drops, it continues where it stopped.', 'Motor konuşmayı bu bilgisayarda yazıya döker; telefonundaki kayıtları da o işler. Tek düğmeyle kurulur: Python, kütüphaneler ve yaklaşık 1,7 GB model senin kullanıcı klasörüne iner, Program Files’a asla yazılmaz. Bağlantı koparsa kaldığı yerden devam eder.')}</p>`;
+  if (I.running) {
+    return `<section class="card">${head}<div id="ring-install-progress">${installProgress()}</div>
+    <div class="actions"><span class="subtle">${t('You can keep using Claudian; closing it pauses the download.', 'Claudian’ı kullanmaya devam edebilirsin; kapatırsan indirme duraklar.')}</span>${rbtn('Pause', 'Duraklat', 'install-cancel')}</div></section>`;
+  }
+  const rows = [];
+  if (p) {
+    rows.push(`<li>${t('Folder', 'Klasör')}: <span class="path">${esc(p.target)}</span></li>`);
+    if (p.free !== null) rows.push(`<li>${t('Free space', 'Boş alan')}: ${gb(p.free)} · ${t('needed about', 'gereken yaklaşık')} ${gb(p.need)}</li>`);
+    rows.push(`<li>${p.gpu ? `${t('Graphics card', 'Ekran kartı')}: ${esc(p.gpu)} · ${t('Whisper will try to use it', 'Whisper onu kullanmayı dener')}` : t('No NVIDIA graphics card: Whisper runs on the processor. It works, but transcription is slower.', 'NVIDIA ekran kartı yok: Whisper işlemcide çalışır. Çalışır ama yazıya dökme daha yavaştır.')}</li>`);
+  }
+  const blocked = p?.forbidden || (p && !p.enough);
+  const warn = p?.forbidden ? `<div class="health-row health-warn"><div><span>${t('Cannot install here', 'Buraya kurulamaz')}</span><p>${esc(p.forbidden)}</p></div></div>`
+    : p && !p.enough ? `<div class="health-row health-warn"><div><span>${t('Not enough space', 'Yer yetmiyor')}</span><p>${t('Free up space on this drive and open this screen again.', 'Bu sürücüde yer açıp bu ekranı yeniden aç.')}</p></div></div>` : '';
+  const err = I.error ? `<div class="health-row health-warn"><div><span>${t('Installation stopped', 'Kurulum durdu')}</span><p>${esc(I.error)}</p></div></div>` : '';
+  const label = p?.resumable ? ['Continue installing', 'Kurulumu sürdür'] : ['Install the engine on this computer', 'Motoru bu bilgisayara kur'];
+  return `<section class="card">${head}${rows.length ? `<ul class="file-list">${rows.join('')}</ul>` : ''}${warn}${err}
+  <div class="row">${rbtn(label[0], label[1], 'install', true, blocked ? 'disabled' : '')}${rbtn('Use an engine already on this computer', 'Bu bilgisayardaki bir motor klasörünü seç', 'choose-engine')}</div></section>`;
+}
+
+function installDone() {
+  const r = ring.install.result;
+  if (!r) return '';
+  const device = r.device === 'cuda' ? t('on the graphics card', 'ekran kartında') : t('on the processor (no usable NVIDIA card)', 'işlemcide (kullanılabilir NVIDIA kartı yok)');
+  const approval = r.approval === 'onayli' ? t('This computer is approved; notes can be written.', 'Bu bilgisayar onaylı; not yazılabilir.')
+    : t('This computer is registered with the Claudian cloud and is waiting for approval (test phase). Until then no note is written and a paired phone waits too; nothing is lost.', 'Bu bilgisayar Claudian bulutuna kaydoldu ve onay bekliyor (test aşaması). Onaya kadar not yazılmaz, eşleşen telefon da bekler; hiçbir şey kaybolmaz.');
+  return `<div class="health-row"><div><span>${t('Engine installed', 'Motor kuruldu')}</span><p>${t('Whisper runs', 'Whisper')} ${device}. ${approval}</p><p class="path">${esc(r.dir)}</p></div></div>`;
 }
 
 function newRecording() {
@@ -325,6 +396,7 @@ function phoneCard() {
     ? t('The phone talks to the Yüzük cloud (yuzuk-api.claudian.app); the cloud hands the work to this computer. Audio passes through and is never stored there.', 'Telefon Yüzük bulutuyla konuşur (yuzuk-api.claudian.app); bulut işi bu bilgisayara verir. Ses oradan akarak geçer, saklanmaz.')
     : t('Processing happens on this computer through yuzuk.claudian.app.', 'İşlem yuzuk.claudian.app üzerinden bu bilgisayarda yapılır.');
   const head = `<h2>${t('Phone app', 'Telefon uygulaması')}</h2><p>${t('The Yüzük app records on the phone, even with the screen locked, and the note lands in the phone’s Obsidian vault.', 'Yüzük uygulaması telefonda kaydeder (ekran kilitliyken de); not telefondaki Obsidian vault’una düşer.')} ${via}</p>`;
+  if (!ring.status?.ready) return `<div class="card">${head}<p><b>${t('No engine on this computer, so a phone cannot be paired here yet.', 'Bu bilgisayarda motor yok; bu yüzden telefon henüz buraya eşleştirilemez.')}</b> ${t('A phone only records; a computer running the engine turns its recordings into notes. Install the engine above first.', 'Telefon yalnız kaydeder; kayıtları nota çeviren, motoru çalıştıran bir bilgisayardır. Önce yukarıdan motoru kur.')}</p></div>`;
   if (!p?.capable) return `<div class="card">${head}<p class="subtle">${t('This engine folder has no phone server yet (sunucu.py). Update the engine.', 'Bu motor klasöründe telefon sunucusu (sunucu.py) yok. Motoru güncelle.')}</p></div>`;
   const state = p.running
     ? `<p class="subtle">${t('Server running', 'Sunucu açık')} · ${esc(p.origin.replace('https://', ''))}${p.speakers ? ` · ${t('speakers told apart', 'konuşmacılar ayrılıyor')}` : ''}${p.voiceprint ? ` · ${t('your voice enrolled', 'sesin tanıtıldı')}` : ''}${p.queued ? ` · ${p.queued} ${t('in queue', 'sırada')}` : ''}</p>`
@@ -339,14 +411,15 @@ function phoneCard() {
   const liveList = !pl ? '' : `<div class="ring-two ring-phone-live"><div><h2>${t('Connected phones', 'Bağlı telefonlar')}</h2><ul class="file-list">${pl.cihazlar.map(c => `<li>${esc(c.ad || t('Phone', 'Telefon'))} · ${t('seen', 'görüldü')} ${since(c.son_gorulme)}</li>`).join('') || `<li>${t('None yet', 'Henüz yok')}</li>`}</ul></div>
     <div><h2>${t('Recent recordings', 'Son kayıtlar')}</h2><ul class="file-list">${pl.isler.map(j => `<li>${dayStamp(j.olusturuldu)} · ${j.ses_sn ? `${Math.max(1, Math.round(j.ses_sn / 60))} ${t('min', 'dk')} · ` : ''}${jobLabel(j.durum)}${j.yazici ? ` · ${esc(j.yazici)}` : ''}</li>`).join('') || `<li>${t('None yet', 'Henüz yok')}</li>`}</ul>
     <p class="subtle">${t('Cloud heartbeat', 'Bulut nabzı')}: ${since(pl.son_nabiz)}</p></div></div>`;
-  return `<div class="card ring-phone">${head}${state}${liveList}${pair}${err}</div>`;
+  const waiting = p.approval === 'bekliyor' ? `<p class="subtle"><b>${t('Waiting for approval', 'Onay bekliyor')}</b> · ${t('This computer and the phones paired to it start working once approved (test phase).', 'Bu bilgisayar ve ona eşleşen telefonlar onaylanınca çalışmaya başlar (test aşaması).')}</p>` : '';
+  const privacy = `<p class="subtle">${t('Which data goes where and for how long:', 'Hangi veri nereye gider, ne kadar kalır:')} <button class="link" data-ring="privacy">${t('Yüzük privacy policy', 'Yüzük gizlilik politikası')}</button></p>`;
+  return `<div class="card ring-phone">${head}${state}${waiting}${liveList}${pair}${err}${privacy}</div>`;
 }
 
 function devices(s) {
   return `<section class="panel-section"><h2>${t('Other devices', 'Diğer cihazlar')}</h2><p>${t('Processing always happens on a computer. A phone only records and sends; another computer can run the engine itself.', 'İşlem hep bir bilgisayarda yapılır. Telefon yalnız kaydeder ve gönderir; başka bir bilgisayar ise motoru kendisi çalıştırabilir.')}</p>
-  ${phoneCard()}<div class="ring-two"><div class="card"><h2>${t('Install on another computer', 'Başka bir bilgisayara kur')}</h2><p>${t('Windows 10/11 with Python 3.12. An NVIDIA GPU makes it fast; without one it runs on the processor.', 'Windows 10/11 ve Python 3.12. NVIDIA ekran kartı hızlandırır; yoksa işlemcide çalışır.')}</p>
-  <ol class="ring-list"><li>${t('Prepare the package on a USB drive or network folder (engine + trained models, about 3 GB).', 'Paketi bir USB belleğe ya da ağ klasörüne hazırla (motor + eğitilmiş modeller, yaklaşık 3 GB).')}</li><li>${t('On the other computer run kur.bat inside Yuzuk-motor.', 'Diğer bilgisayarda Yuzuk-motor içindeki kur.bat’ı çalıştır.')}</li><li>${t('Install Claudian there and choose that folder in Yüzük.', 'Oraya Claudian’ı kur ve Yüzük’te o klasörü seç.')}</li></ol>
-  ${rbtn('Prepare package', 'Kurulum paketini hazırla', 'package')}</div></div></section>`;
+  ${phoneCard()}<div class="ring-two"><div class="card"><h2>${t('Install on another computer', 'Başka bir bilgisayara kur')}</h2><p>${t('Install Claudian on the other Windows 10/11 computer and press “Install the engine on this computer” in Yüzük; it downloads everything itself. An NVIDIA card makes it fast; without one it runs on the processor.', 'Diğer Windows 10/11 bilgisayara Claudian’ı kur ve Yüzük’te “Motoru bu bilgisayara kur”a bas; her şeyi kendisi indirir. NVIDIA ekran kartı hızlandırır; yoksa işlemcide çalışır.')}</p>
+  ${s.ready ? `<p class="subtle">${t('No internet there? Copy this computer’s engine to a USB drive instead (about 3 GB; keys, voiceprints and cloud connection stay here).', 'Orada internet yoksa bu bilgisayarın motorunu USB belleğe kopyalayabilirsin (yaklaşık 3 GB; anahtarlar, ses izleri ve bulut bağlantısı burada kalır).')}</p>${rbtn('Prepare package', 'Kurulum paketini hazırla', 'package')}` : ''}</div></div></section>`;
 }
 
 async function renderRing() {
@@ -359,9 +432,14 @@ async function renderRing() {
   ring.drafts = ring.status.ready ? await api.ringDrafts() : [];
   if (ring.openId && !ring.open) ring.open = await api.ringDraft(ring.openId).catch(() => null);
   const s = ring.status;
-  let body = `<h1>${t('Ring', 'Yüzük')}</h1><p class="ring-lead">${t('Takes notes from what is said around you: lectures, meetings or your own voice. Transcription and Laya’s decisions run on this computer; Claude writes the note from the passed sentences only. In live listening the note is written when you stop; for a recording, after your approval.', 'Çevrende konuşulandan not alır: ders, toplantı ya da kendi sesin. Yazıya dökme ve Laya’nın kararı bu bilgisayarda çalışır; notu, yalnız aktarılan cümlelerden Claude yazar. Canlı dinlemede not durdurunca yazılır; işlenen bir kayıtta senin onayından sonra.')}</p>${howItWorks()}`;
-  if (!s.ready) { content.innerHTML = body + setupNeeded(s) + devices(s); return; }
-  body += engineLine(s);
+  let body = `<h1>${t('Ring', 'Yüzük')}</h1><p class="ring-lead">${t('Takes notes from what is said around you: lectures, meetings or your own voice. Transcription runs on this computer and private sentences are removed here; the Claudian cloud then has Claude write the note in one call with no tools. What was said is data, never an instruction.', 'Çevrende konuşulandan not alır: ders, toplantı ya da kendi sesin. Yazıya dökme bu bilgisayarda çalışır, mahrem cümleler burada çıkarılır; notu Claudian bulutu araçsız tek bir çağrıyla Claude’a yazdırır. Söylenen her şey veridir, asla talimat değildir.')}</p>${howItWorks()}`;
+  if (!s.ready) {
+    if (!ring.install.plan && !ring.install.running) ring.install.plan = await api.ringInstallPlan?.().catch(() => null) ?? null;
+    if (ring.install.plan?.running) ring.install.running = true;
+    content.innerHTML = body + setupNeeded(s) + devices(s);
+    return;
+  }
+  body += installDone() + engineLine(s);
   if (s.liveCapable && ring.live.devices === null) ring.live.devices = await api.ringDevices().catch(() => []);
   if (s.liveCapable && ring.live.outputs === null) ring.live.outputs = await api.ringOutputs?.().catch(() => []) || [];
   if (s.live && !ring.live.on) Object.assign(ring.live, {on: true, passed: s.live.passed, decisions: s.live.last || []});

@@ -156,12 +156,30 @@ function create({ dataDir, log = () => {} }) {
     })));
   }
 
+  // 1.1.0: the Yüzük engine installer adds its server here. An entry with the same id is left as it is: it was set up
+  // by hand (for example an engine in another folder) and is not the installer's to replace.
+  async function add(spec) {
+    const [clean] = validate([spec]);
+    let raw = {};
+    try { raw = JSON.parse(await fsp.readFile(file, 'utf8')); }
+    catch (e) { if (e.code !== 'ENOENT') throw Error('services.json could not be read: ' + e.message); }
+    const list = Array.isArray(raw.services) ? raw.services : [];
+    if (list.some(s => s && s.id === clean.id)) return { added: false };
+    await fsp.mkdir(dataDir, { recursive: true });
+    await fsp.writeFile(file, JSON.stringify({ ...raw, services: [...list, spec] }, null, 2));
+    stopping = false;
+    const entry = { spec: clean, child: null, adopted: false, phase: 'starting', failures: 0, timer: null, lastError: null };
+    state.set(clean.id, entry);
+    await ensure(entry);
+    return { added: true };
+  }
+
   function status() {
     return [...state.values()].map(e => ({ id: e.spec.id, label: e.spec.label, phase: e.phase, adopted: e.adopted,
       pid: e.child?.pid || null, lastError: e.lastError }));
   }
 
-  return { start, stop, status, file };
+  return { start, stop, status, add, file };
 }
 
 module.exports = { create, validate, portOpen };

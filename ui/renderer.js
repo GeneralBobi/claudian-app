@@ -10,7 +10,7 @@ let selfCheck=null, selectedConnection=null;
 // needsClose when the vault is not registered yet and Obsidian.exe is running. Nothing else
 // sets this flag, so the warning can never appear on a guess.
 let obsidianNeedsClose=false, connectionList=[];
-let remoteStatus=null,remoteRefreshBusy=false,extensionArchive='';
+let remoteStatus=null,remoteRefreshBusy=false,extensionArchive='',localAccounts=null;
 let reviewResults={},reviewRefreshBusy=false;
 const checkIcon='<svg class="step-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>';
 function connectionSteps(h){
@@ -23,6 +23,8 @@ function appActions(h,copyAction,done=false){
 const remoteHost=h=>['chatgpt','claude-desktop','gemini','perplexity'].includes(h.id);
 // Keep installed Spark configuration on disk while its current provider UI is unavailable.
 const visibleHost=h=>h.id!=='gemini';
+// Panel (27.09.2026 kararı, madde 4): sekme bayrakla kapalı; kod yerinde. Açmak için true yapılır.
+let PANEL_ACIK=false;
 function remoteStatusBody(){
  const s=remoteStatus||{state:'stopped',requests:[],grants:[]};
  const label={online:t('Device online','Cihaz çevrimiçi'),connecting:t('Connecting device','Cihaz bağlanıyor'),offline:t('Device offline','Cihaz çevrimdışı'),stopped:t('Device connection stopped','Cihaz bağlantısı kapalı')}[s.state]||s.state;
@@ -390,7 +392,7 @@ function accessRow(h){
  const label=a.state==='granted'?t('Granted during setup','Kurulumda verildi'):t('Already granted','Zaten vardı');
  return `<div class="config-file"><span>${t('Folder access','Klasör erişimi')}</span><span class="badge">${esc(label)}</span></div>`;
 }
-function header(){document.documentElement.lang=language;document.querySelector('header .caption').textContent='';const nav=document.querySelector('nav');if(nav){nav.hidden=extending;nav.innerHTML=`<button data-view="home">${t('Memory','Hafıza')}</button><button data-view="connections">${t('Connections','Bağlantılar')}</button><button data-view="ring">${t('Ring','Yüzük')}</button><button data-view="companion">${t('Panel','Panel')}</button><button data-view="settings">${t('Settings','Ayarlar')}</button>`;nav.querySelectorAll('button').forEach(n=>n.classList.toggle('active',n.dataset.view===view));}}
+function header(){document.documentElement.lang=language;document.querySelector('header .caption').textContent='';const nav=document.querySelector('nav');if(nav){nav.hidden=extending;nav.innerHTML=`<button data-view="home">${t('Memory','Hafıza')}</button><button data-view="connections">${t('Connections','Bağlantılar')}</button><button data-view="ring">${t('Ring','Yüzük')}</button>${PANEL_ACIK?`<button data-view="companion">${t('Panel','Panel')}</button>`:''}<button data-view="settings">${t('Settings','Ayarlar')}</button>`;nav.querySelectorAll('button').forEach(n=>n.classList.toggle('active',n.dataset.view===view));}}
 // A card instead of a bare checkbox. Every line on it has a source in this repository:
 // the connection kind comes from the host registry, "found on this computer" from the same
 // detection the installer uses, the requirement sentence from web-providers.cjs. A line
@@ -419,7 +421,7 @@ async function renderPanel(){const p=state.profile;
  if(view==='companion'){renderPanelView();return;}
  if(view==='ring'){await window.renderRing();return;}
  if(view==='settings'){content.innerHTML=`<h1>${t('Settings','Ayarlar')}</h1><p>${t('The application and newly installed memory files use the setup language. Updates and protocol maintenance are collected here.','Uygulama ve yeni kurulan hafıza dosyaları kurulum dilini kullanır. Güncelleme ve protokol bakımı burada toplanır.')}</p>`;return;}
- const hosts=mergedConnections(await api.connections());connectionList=hosts;healthData=await api.health();if(api.reviewStatus)for(const h of hosts)reviewResults[h.id]=await api.reviewStatus(h.id).catch(e=>({status:'invalid',message:e.message}));tunnelState=await api.tunnelStatus();if(view==='connections'){remoteStatus=await api.connectorStatus();}
+ const hosts=mergedConnections(await api.connections());connectionList=hosts;healthData=await api.health();if(api.reviewStatus)for(const h of hosts)reviewResults[h.id]=await api.reviewStatus(h.id).catch(e=>({status:'invalid',message:e.message}));tunnelState=await api.tunnelStatus();if(view==='connections'){remoteStatus=await api.connectorStatus();localAccounts=await api.localAccounts?.().catch(()=>null)??null;}
  if(obsidianPresent===null)obsidianPresent=await api.obsidianInstalled().catch(()=>null);
  // Only the renderer learns this, and the derived state needs it: without it Claudian could
  // never report a missing note application or one that has to be restarted, because those two
@@ -464,9 +466,32 @@ function connectionTile(h){
  const link=connected?t('Connected','Bağlı'):t('Not connected','Bağlı değil');
  return `<button class="connection-tile" data-action="connection-open" data-host="${esc(h.id)}" data-state="${tone}" aria-haspopup="dialog"><span class="tile-heading"><strong>${esc(h.label)}</strong>${providerBadge(h.id)}<span class="tile-mark">${done?checkIcon:broken?'!':'↗'}</span></span><span class="tile-selection" data-linked="${connected}">${t('Selected','Seçili')} · ${link}</span><span class="tile-status">${label}</span><span class="tile-evidence">${verified?t('Read/write verified','Okuma/yazma doğrulandı'):t('Access not yet verified','Erişim henüz doğrulanmadı')}</span></button>`;
 }
+/* 1.3.0 (madde 3): one card per permission, so two Claude or two ChatGPT accounts can be told apart. Claudian does not
+   know the e-mail behind a web permission (the AI app never tells it), so it shows what it does know: the name the app
+   gave itself, when it connected, when it last made a real call, and whether it can write. "Disconnect" revokes that
+   one permission. Local connections belong to this computer, not to an account; the account shown is the one the
+   program itself records as signed in, never a token. */
+const since=iso=>{if(!iso)return t('never','hiç');const d=new Date(iso);return d.toLocaleString(language==='tr'?'tr-TR':'en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});};
+function grantCards(h){
+ if(!remoteHost(h))return '';
+ const grants=(remoteStatus?.grants||[]).filter(g=>g.host===h.id&&!g.revoked);
+ if(!grants.length)return `<section class="grant-cards"><h3>${t('Permissions','Yetkiler')}</h3><p class="hint">${t('No AI account has permission yet. Adding the connector in the AI app asks you to approve one here.','Henüz hiçbir AI hesabının yetkisi yok. Bağlayıcıyı AI uygulamasına eklediğinde burada onay istenir.')}</p></section>`;
+ return `<section class="grant-cards"><h3>${t('Permissions','Yetkiler')} · ${grants.length}</h3><p class="hint">${t('Each card is one account that approved this connection. Claudian does not see that account’s e-mail; the name is what the app reported.','Her kart bu bağlantıyı onaylamış bir hesaptır. Claudian o hesabın e-postasını görmez; ad, uygulamanın bildirdiği addır.')}</p>${grants.map(g=>{
+  const write=String(g.scope||'').includes('claudian.write');
+  const live=g.lastSeen?`${t('Last real call','Son gerçek çağrı')}: ${esc(since(g.lastSeen))}${g.lastTool?` · ${esc(g.lastTool)}`:''}`:t('No call yet: permission given, the AI has not used it','Henüz çağrı yok: izin verildi, AI kullanmadı');
+  return `<div class="grant-card"><div class="row"><strong>${esc(g.name||t('Unnamed app','Adsız uygulama'))}</strong><span class="badge">${write?t('Read and write','Okuma ve yazma'):t('Read only','Yalnız okuma')}</span></div><p>${t('Connected','Bağlandı')}: ${esc(since(g.authorizedAt))} · ${live}</p>${btn('Disconnect','Bağlantıyı kes','connector-revoke',false,`data-id="${esc(g.id)}"`)}</div>`;}).join('')}</section>`;
+}
+function accountRow(h){
+ if(remoteHost(h))return '';
+ const a=localAccounts?.[h.id];
+ const who=a?.email?`${t('Signed in on this computer as','Bu bilgisayarda açık hesap')}: <strong>${esc(a.email)}</strong>${a.org?` · ${esc(a.org)}`:''}`
+  :a?.apiKey?t('Signed in on this computer with an API key (no account e-mail).','Bu bilgisayarda API anahtarıyla giriş yapılmış (hesap e-postası yok).')
+  :t('This program does not record which account is signed in, so none is shown.','Bu program hangi hesabın açık olduğunu kaydetmiyor; bu yüzden hesap gösterilmez.');
+ return `<section class="grant-cards"><h3>${t('Account','Hesap')}</h3><p>${t('This connection belongs to this computer, not to an account: whoever is signed in to the program here uses it.','Bu bağlantı bir hesaba değil bu bilgisayara bağlıdır: burada programa kim giriş yaptıysa o kullanır.')}</p><p>${who}</p></section>`;
+}
 function connectionDialog(hosts){
  const host=hosts.find(h=>h.id===selectedConnection);if(!host)return '';
- return `<dialog id="connection-dialog" aria-labelledby="connection-title"><header class="connection-dialog-header"><h2 id="connection-title">${esc(host.label)}</h2>${btn('Close','Kapat','connection-close')}</header><div class="connection-dialog-body">${connectionDetail(host)}${remoteHost(host)&&(host.id!=='chatgpt'||chatgptChoice()==='mcp')?remoteSettings():''}</div></dialog>`;
+ return `<dialog id="connection-dialog" aria-labelledby="connection-title"><header class="connection-dialog-header"><h2 id="connection-title">${esc(host.label)}</h2>${btn('Close','Kapat','connection-close')}</header><div class="connection-dialog-body">${grantCards(host)}${accountRow(host)}${connectionDetail(host)}${remoteHost(host)&&(host.id!=='chatgpt'||chatgptChoice()==='mcp')?remoteSettings():''}</div></dialog>`;
 }
 
 let renderedView=null,renderQueue=Promise.resolve();

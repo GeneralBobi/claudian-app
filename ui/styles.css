@@ -322,3 +322,4 @@ body[data-surface="panel"]>header,body[data-surface="panel"]>nav{padding-inline:
 
 .ring-okuma{margin:14px 0;padding:14px 16px;border:1px solid var(--line);background:#16161a;border-radius:6px}.ring-okuma p{font:15px/1.9 Lora,Georgia,serif;color:var(--text);margin:0 0 10px}.ring-okuma p:last-child{margin:0}.ring-voice-level{margin-top:6px;height:3px}.ring-phone-live{margin:10px 0 4px}.ring-phone-live h2{font-size:12px}
 button.with-icon{display:inline-flex;align-items:center;gap:8px}button.with-icon svg{flex:none}
+.grant-cards{margin:0 0 18px;padding-bottom:6px;border-bottom:1px solid var(--line)}.grant-cards h3{font-size:12px;font-weight:600;margin:0 0 6px}.grant-card{padding:12px 14px;margin:8px 0;background:#1c1c21;border:1px solid var(--line);border-radius:6px}.grant-card .row{justify-content:space-between}.grant-card p{margin:6px 0 10px;font-size:12px}

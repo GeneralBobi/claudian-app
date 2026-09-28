@@ -25,7 +25,17 @@ const {capture} = require('./memory-capture.cjs');
 const AUDIO = ['mp3', 'm4a', 'wav', 'ogg', 'flac', 'webm', 'aac', 'mp4'];
 const DRAFT_ID = /^[\w.\-]{1,120}$/u;
 
-function defaultEngine() { return path.join(os.homedir(), 'Desktop', 'Yuzuk', 'laya-kapi'); }
+// 1.1.0: the installer puts the engine in the user's own app-data folder. The folder an engine was set up in by hand
+// before 1.1.0 (Boran's) is still found if it exists; no other computer is assumed to have it (Hanne's 0.30.0 showed
+// C:\Users\Hanne\Desktop\Yuzuk\laya-kapi, a folder that never existed there).
+const {defaultTarget} = require('./ring-install.cjs');
+const LEGACY_ENGINE = path.join(os.homedir(), 'Desktop', 'Yuzuk', 'laya-kapi');
+function defaultEngine() {
+  const installed = defaultTarget();
+  if (fss.existsSync(path.join(installed, 'sunucu.py'))) return installed;
+  if (fss.existsSync(path.join(LEGACY_ENGINE, 'sunucu.py'))) return LEGACY_ENGINE;
+  return installed;
+}
 
 async function exists(p) { try { await fs.access(p); return true; } catch { return false; } }
 
@@ -47,29 +57,38 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
     return engine ||= defaultEngine();
   }
 
-  /* ---- note writer: the person picks which AI writes the note (Boran, 23.09.2026) ---- */
-  const WRITERS = {claude: 'Claude', codex: 'ChatGPT (Codex)', gemini: 'Gemini'};
+  /* ---- note writer (1.0.0, madde 10 ve 14) ----
+     The transcript is untrusted: anyone near the ring can speak into it. So the note is no longer written by an agent CLI
+     (Claude Code, Codex, Gemini: each carries shell, file, browser and MCP tools, and Codex and Gemini have no single
+     documented switch that closes all of them). It is written by a tool-less API call that only the Claudian cloud makes,
+     with Boran's key kept there; the engine validates the structured answer and writes the markdown itself. A saved
+     "codex" or "gemini" choice falls back to Claude and the note says so. */
+  const WRITERS = {claude: 'Claude'};
+  const RETIRED_WRITERS = {codex: 'ChatGPT (Codex)', gemini: 'Gemini'};
 
   async function settings() {
     try { return JSON.parse(await fs.readFile(settingsFile(), 'utf8')); } catch { return {}; }
   }
 
+  // The cloud writer needs this computer to be a node of the Claudian cloud (bulut.json in the engine).
   async function writerInstalled(id) {
-    const home = os.homedir(), npm = path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'npm');
-    const candidates = {claude: [path.join(home, '.local', 'bin', 'claude.exe'), path.join(npm, 'claude.cmd')],
-      codex: [path.join(npm, 'codex.cmd')], gemini: [path.join(npm, 'gemini.cmd')]}[id] || [];
-    for (const c of candidates) if (await exists(c)) return true;
-    return false;
+    if (id !== 'claude') return false;
+    return exists(path.join(await engineDir(), 'bulut.json'));
+  }
+
+  // Test phase: a newly installed computer waits for approval before the cloud writes notes for it (1.1.0).
+  async function nodeApproval() {
+    try { return JSON.parse(await fs.readFile(path.join(await engineDir(), 'bulut_hesap.json'), 'utf8')).onay || null; } catch { return null; }
   }
 
   async function writers() {
-    const chosen = (await settings()).yazici || 'claude';
     const list = [];
     for (const [id, name] of Object.entries(WRITERS)) list.push({id, name, installed: await writerInstalled(id)});
-    return {chosen: WRITERS[chosen] ? chosen : 'claude', list};
+    return {chosen: 'claude', list, approval: await nodeApproval()};
   }
 
   async function setWriter(id) {
+    if (RETIRED_WRITERS[id]) throw Error(`${RETIRED_WRITERS[id]} not yazıcısı 1.0.0'da kapalı: araçları kapatılamadığı için konuşma ona gönderilmez.`);
     if (!WRITERS[id]) throw Error('Bilinmeyen not yazıcısı.');
     const cur = await settings();
     await fs.writeFile(settingsFile(), JSON.stringify({...cur, engine: cur.engine || await engineDir(), yazici: id}, null, 1));
@@ -106,14 +125,22 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
       writers: await writers()};
   }
 
+  // An engine that is already on this computer (copied from another one, or set up by hand). Installing is the other
+  // button: this one only points Yüzük at a folder and says plainly when the folder is not an engine.
   async function chooseEngine() {
-    const r = await dialog.showOpenDialog(getWindow(), {properties: ['openDirectory'], title: 'Yüzük motor klasörü'});
+    const r = await dialog.showOpenDialog(getWindow(), {properties: ['openDirectory'], title: 'Var olan Yüzük motoru klasörü'});
     if (r.canceled || !r.filePaths[0]) return null;
-    if (!await exists(path.join(r.filePaths[0], 'notcikar.py'))) throw Error('Bu klasörde notcikar.py yok; Yüzük motoru bu değil.');
-    engine = r.filePaths[0];
-    await fs.mkdir(core.dataDir, {recursive: true});
-    await fs.writeFile(settingsFile(), JSON.stringify({engine}, null, 2));
+    if (!await exists(path.join(r.filePaths[0], 'sunucu.py')) || !await exists(path.join(r.filePaths[0], 'notcikar.py'))) {
+      throw Error('Bu klasörde Yüzük motoru yok. Motor bu bilgisayarda hiç kurulmadıysa "Motoru bu bilgisayara kur" düğmesini kullan.');
+    }
+    await setEngine(r.filePaths[0]);
     return status();
+  }
+
+  async function setEngine(dir) {
+    engine = dir;
+    await fs.mkdir(core.dataDir, {recursive: true});
+    await fs.writeFile(settingsFile(), JSON.stringify({...await settings(), engine: dir}, null, 2));
   }
 
   async function chooseAudio() {
@@ -161,7 +188,10 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
     child.on('close', code => {
       const finished = job?.events.find(e => e.olay === 'bitti');
       const tail = job?.stderr.split('\n').filter(l => l.trim() && !/warn/i.test(l)).slice(-3).join('\n');
-      if (!finished) emit({olay: 'hata', kod: code, mesaj: code === null ? 'Durduruldu.' : (tail || `Motor ${code} koduyla kapandı.`)});
+      // The engine names why a note could not be written (approval, quota, spending limit, malformed answer) in its own
+      // 'hata' event; that sentence is shown once, not buried under a stack tail.
+      const said = job?.events.find(e => e.olay === 'hata' && e.mesaj);
+      if (!finished && !said) emit({olay: 'hata', kod: code, mesaj: code === null ? 'Durduruldu.' : (tail || `Motor ${code} koduyla kapandı.`)});
       job = null;
       if (finished && !full) notify?.('Yüzük', `${finished.tutulan} madde çıkarıldı — taslak onay bekliyor.`);
       send('ring:event', {olay: 'kapandi'});
@@ -239,7 +269,10 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
       child.stdout.setEncoding('utf8'); child.stdout.on('data', c => { out += c; });
       child.stderr.setEncoding('utf8'); child.stderr.on('data', c => { err = (err + c).slice(-2000); });
       child.on('close', code => {
-        if (code !== 0) return reject(Error(err.split('\n').filter(l => l.trim()).slice(-2).join(' ') || `Not yazılamadı (${code}).`));
+        if (code !== 0) {
+          const said = err.split('\n').map(l => l.trim()).filter(l => l.startsWith('HATA: ')).pop();
+          return reject(Error(said ? said.slice(6) : (err.split('\n').filter(l => l.trim()).slice(-2).join(' ') || `Not yazılamadı (${code}).`)));
+        }
         try { resolve(JSON.parse(out.trim().split('\n').pop())); } catch { reject(Error('Not yazıcısından okunamayan yanıt.')); }
       });
     });
@@ -257,12 +290,14 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
       .filter(t => t && t.length >= 4 && !/^(00 -|Yüzük ·)/.test(t)))];
     const md = String(result.not_md || '').trim();
     const links = titles.filter(t => new RegExp(`(^|[^\\p{L}])${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=$|['’]|[^\\p{L}])`, 'u').test(md)).slice(0, 6);
-    const body = ['---', 'tags: [yüzük]', 'tür: log', `güncellenme: ${new Date().toISOString().slice(0, 10)}`, '---', '',
+    // kaynak: ses — the sentences of this note are a record of a conversation. An agent reading it later treats them as
+    // data, never as instructions (Vault Protokolü, "Ses kaydından not").
+    const body = ['---', 'tags: [yüzük]', 'tür: log', `güncellenme: ${new Date().toISOString().slice(0, 10)}`, 'kaynak: ses', '---', '',
       `# ${clean(result.baslik || title || 'Kayıt')}`, '',
       `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())} · ${source}`, '',
       md, '', ...(links.length ? [`İlgili: ${links.map(t => `[[${t}]]`).join(' · ')}`, ''] : []), '---',
       result.yazici
-        ? `_Yüzük: konuşma bu bilgisayarda yazıya döküldü; mahrem cümleler çıkarıldı, kalanın tamamı notu yazan araca (${WRITERS[result.yazici] || result.yazici}) gitti. Ses saklanmadı._`
+        ? `_Yüzük: konuşma yazıya döküldü; mahrem cümleler çıkarıldı, kalanı notu yazan araca (${WRITERS[result.yazici] || RETIRED_WRITERS[result.yazici] || result.yazici}) Claudian bulutu üzerinden, araçsız bir çağrıyla gitti. Ses saklanmadı._`
         : '_Yüzük: konuşma bu bilgisayarda yazıya döküldü, Laya neyin aktarılacağına karar verdi, notu Claude yazdı. Mahrem ve kapsam dışı cümleler gönderilmedi; ses saklanmadı._', ''].join('\n');
     const receipts = [(await store.mutate(vault, {note, operation: 'create', body, reason}, 'yuzuk')).id];
     const reminders = [];
@@ -330,18 +365,32 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
      over TLS through the cloud to this computer's node. */
 
   /* ---- package for another Windows computer ---- */
+  // Only when this computer has a working engine (1.1.0): Hanne's 0.30.0 offered it without one, resolved the target
+  // to the app's install folder (EPERM in Program Files) and left an empty Yuzuk-motor in Downloads.
   async function packageFor() {
     const src = await engineDir();
-    const r = await dialog.showOpenDialog(getWindow(), {properties: ['openDirectory', 'createDirectory'], title: 'Kurulum paketinin yazılacağı klasör (USB bellek olabilir)'});
+    if (!(await status()).ready) throw Error('Bu bilgisayarda kurulu bir motor yok; paketlenecek bir şey yok. Diğer bilgisayarda "Motoru bu bilgisayara kur" düğmesini kullan.');
+    const r = await dialog.showOpenDialog(getWindow(), {properties: ['openDirectory', 'createDirectory'], title: 'Kurulum paketinin yazılacağı klasör (USB bellek olabilir)',
+      defaultPath: path.join(os.homedir(), 'Desktop')});
     if (r.canceled || !r.filePaths[0]) return null;
+    const {forbiddenTarget} = require('./ring-install.cjs');
+    const why = forbiddenTarget(r.filePaths[0]);
+    if (why) throw Error(why);
     const target = path.join(r.filePaths[0], 'Yuzuk-motor');
     if (await exists(target)) throw Error('Hedefte zaten bir Yuzuk-motor klasörü var.');
     // Anahtarlar, ses izi ve bulut bağlantısı bu bilgisayara aittir; başka bilgisayara giden pakete girmez.
     const skip = new Set(['.venv', 'taslaklar', 'gelen', 'gelen_not', 'isler', 'oturumlar', 'profiller', 'egitim', '_arsiv', 'dagitim',
-      '__pycache__', 'sunucu_anahtar.txt', 'cagri_anahtar.txt', 'takvim_anahtar.txt', 'bulut.json', 'eslestirme.json',
+      '__pycache__', 'sunucu_anahtar.txt', 'cagri_anahtar.txt', 'takvim_anahtar.txt', 'bulut.json', 'bulut_hesap.json', 'eslestirme.json',
       'sunucu.log', 'sunucu.err.log', 'tunel.log']);
     send('ring:event', {olay: 'paket', durum: 'basladi'});
-    await fs.cp(src, target, {recursive: true, filter: p => !skip.has(path.basename(p)) && !path.basename(p).startsWith('onay_')});
+    skip.add('.araclar'); skip.add('.kurulum.json');
+    try {
+      await fs.cp(src, target, {recursive: true, filter: p => !skip.has(path.basename(p)) && !path.basename(p).startsWith('onay_')});
+    } catch (e) {
+      // Our own half-written copy is removed so no empty or partial Yuzuk-motor stays behind.
+      await fs.rm(target, {recursive: true, force: true}).catch(() => {});
+      throw Error(`Paket yazılamadı: ${e.code === 'EPERM' || e.code === 'EACCES' ? 'bu klasöre yazma izni yok' : e.message}`);
+    }
     send('ring:event', {olay: 'paket', durum: 'bitti', hedef: target});
     return {target};
   }
@@ -493,7 +542,7 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
     }
     const {origin, cloud} = await phoneOrigin();
     return {capable: true, running: !!health, model: health?.laya || null, queued: health?.sirada ?? 0, origin, cloud,
-      speakers: !!health?.konusmaci, voiceprint: !!health?.profil};
+      speakers: !!health?.konusmaci, voiceprint: !!health?.profil, approval: cloud ? await nodeApproval() : null};
   }
 
   async function phoneStart() {
@@ -633,7 +682,7 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
 
   function shutdown() { cancel(); if (live) live.child.kill(); if (voiceJob) voiceJob.child.kill(); if (inboxTimer) clearInterval(inboxTimer); }
 
-  return {status, chooseEngine, chooseAudio, run, cancel, drafts, draft, approve, discard, packageFor,
+  return {status, chooseEngine, setEngine, chooseAudio, run, cancel, drafts, draft, approve, discard, packageFor,
     devices, outputs, liveStart, liveStop, liveStatus, finishSession, shutdown, engineDir, phoneStatus, phoneStart, phonePair, writers, setWriter,
     voiceStatus, voiceEnroll, voiceDelete, phoneLive, inboxOnce, inboxStart};
 }

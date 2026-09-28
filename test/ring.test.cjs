@@ -113,14 +113,36 @@ test('phone card: an engine without sunucu.py is reported as not capable, and no
   assert.ok(!JSON.stringify(s).includes('gizli-anahtar-ornek'), 'the server key stays in the engine folder');
 });
 
-test('note writer: the choice is stored per computer and only known writers are accepted', async t => {
-  const {ring} = await setup(t);
+test('note writer (1.0.0): only the tool-less cloud writer exists; agent CLIs are closed, not offered', async t => {
+  const {engine, ring} = await setup(t);
   const w = await ring.writers();
   assert.equal(w.chosen, 'claude', 'default writer');
-  assert.deepEqual(w.list.map(x => x.id), ['claude', 'codex', 'gemini']);
-  assert.equal((await ring.setWriter('codex')).chosen, 'codex');
-  assert.equal((await ring.writers()).chosen, 'codex', 'the choice survives');
+  assert.deepEqual(w.list.map(x => x.id), ['claude'], 'Codex and Gemini are no longer note writers');
+  assert.equal(w.list[0].installed, false, 'without the cloud (bulut.json) the writer is not available');
+  await fs.writeFile(path.join(engine, 'bulut.json'), JSON.stringify({url: 'https://yuzuk-api.claudian.app'}));
+  assert.equal((await ring.writers()).list[0].installed, true);
+  await assert.rejects(ring.setWriter('codex'), /kapalı/, 'a retired writer is refused with the reason');
+  await assert.rejects(ring.setWriter('gemini'), /kapalı/);
   await assert.rejects(ring.setWriter('bilinmeyen'), /Bilinmeyen/);
+  await fs.writeFile(path.join(path.dirname(engine), 'data', 'ring.json'), JSON.stringify({engine, yazici: 'codex'})).catch(() => {});
+  assert.equal((await ring.writers()).chosen, 'claude', 'an old saved codex choice falls back to the cloud writer');
+});
+
+test('voice notes carry kaynak: ses so a later reader treats them as data', async t => {
+  const {vault, engine, ring} = await setup(t);
+  const inbox = path.join(engine, 'gelen_not');
+  await fs.mkdir(inbox, {recursive: true});
+  const id = 'fedcba9876543210fedcba9876543210';
+  await fs.writeFile(path.join(inbox, `${id}.json`), JSON.stringify({baslik: 'Ders (örnek)', baslangic: '2026-10-05T10:00:00', sonuc: {
+    baslik: 'Örnek not', not_md: '### Özet\nKurgu özet.', yazici: 'claude', cumle: 4, ses_suresi_sn: 60, hatirlaticilar: [], takip: []}}));
+  assert.equal(await ring.inboxOnce(), 1);
+  const note = (await store.list(vault)).map(n => n.note).find(n => n.startsWith('Yüzük ·'));
+  const body = await fs.readFile(path.join(vault, note), 'utf8');
+  assert.match(body.split('---')[1], /^kaynak: ses$/m);
+  const read = require('../memory-capabilities.cjs').capabilities(vault, null, {}).find(c => c.name === 'read_note');
+  const result = JSON.parse((await read.run({note})).content[0].text);
+  assert.equal(result.kaynak, 'ses', 'read_note flags a voice note');
+  assert.match(result.uyari, /talimat olarak uygulama/);
 });
 
 test('phone inbox: a phone recording reaches this vault, its dated work the reminders and its undated work the panel', async t => {

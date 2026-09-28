@@ -353,8 +353,7 @@ async function start() {
      corrupted; a hijacked GitHub account could publish a fake installer with a matching fake checksum. Each release
      therefore carries SHA256SUMS.txt.sig, an Ed25519 signature made with a key that never leaves the publisher's
      computer. The public half is built into the app; a release that is unsigned or signed by anyone else is not run. */
-  const RELEASE_KEY=crypto.createPublicKey(['-----BEGIN PUBLIC KEY-----',
-    'MCowBQYDK2VwAyEAAtmuynvkifcOpWzfKwuL/2vmW9CkiXcIRCZMhmtmLrE=','-----END PUBLIC KEY-----',''].join('\n'));
+  const {RELEASE_KEY}=require('./release-key.cjs');
   const githubAsset=a=>{const u=new URL(a.browser_download_url);if(u.protocol!=='https:'||!/(^|\.)github(usercontent)?\.com$/i.test(u.hostname))throw new Error('Unexpected download location; nothing was run.');return u;};
   handle('app:updates', async () => {
     const response=await net.fetch(RELEASES,{headers:{'Accept':'application/vnd.github+json'},signal:AbortSignal.timeout(12000)});
@@ -403,6 +402,8 @@ async function start() {
     return {launched:true,version:String(release.tag_name||'').replace(/^v/,''),installer:target};
   });
   handle('memory:check-files', () => core.checkFiles());
+  // Which account a local connection runs as: only the e-mail the program records, never a token (1.3.0, madde 3).
+  handle('connections:accounts', () => require('./local-accounts.cjs').localAccounts(home));
   handle('memory:remove', host => core.removeHost(host));
   /* Settings → "Remove all connections" (Boran, 26.09.2026): the undo for someone who tried
      Claudian and wants every AI back the way it was. Same path as the uninstaller: each
@@ -551,6 +552,17 @@ async function start() {
   handle('ring:phone-live', () => ring.phoneLive());
   handle('ring:writers', () => ring.writers());
   handle('ring:set-writer', id => ring.setWriter(id));
+  // 1.1.0 (madde 1): "Install the engine on this computer". Downloads go to %LOCALAPPDATA%\Claudian\yuzuk-motor only.
+  const installer = require('./ring-install.cjs').createInstaller({
+    fetch: (url, options) => net.fetch(url, options), version: app.getVersion(),
+    send: (channel, payload) => { if (win && !win.isDestroyed()) win.webContents.send(channel, payload); },
+    services: {add: spec => (backgroundServices || require('./services.cjs').create({dataDir: core.dataDir})).add(spec)},
+    setEngine: dir => ring.setEngine(dir), profile: async () => (await core.snapshot()).profile});
+  handle('ring:install-plan', () => installer.plan());
+  handle('ring:install', () => installer.install());
+  handle('ring:install-cancel', () => installer.cancel());
+  // "Which data, where, for how long" lives in one place (claudian.app/yuzuk/gizlilik); the app and this screen link to it (madde 8).
+  handle('ring:privacy', () => shell.openExternal('https://claudian.app/yuzuk/gizlilik'));
   handle('app:open', async kind => {
     const target = kind === 'logs' ? path.join(core.dataDir, 'logs') : kind === 'vault' ? (await core.snapshot()).profile?.vault : null;
     if (!target) throw new Error('Klasör henüz hazır değil.');

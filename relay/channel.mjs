@@ -47,7 +47,7 @@ export class DeviceChannel {
       const body=await limitedText(request),requestId=crypto.randomUUID();
       const headers={};for(const key of ['authorization','content-type','mcp-protocol-version'])if(request.headers.has(key))headers[key]=request.headers.get(key);
       return await new Promise(resolve=>{
-        const item={id:requestId,request:{path:u.pathname+u.search,method:request.method,headers,body}};
+        const item={id:requestId,request:{path:u.pathname+u.search,host:u.host,method:request.method,headers,body}};
         const abort=()=>item.finish(json({error:'request_cancelled'},499));
         const timer=setTimeout(()=>item.finish(json({error:'device_timeout'},504)),this.timeout);
         item.finish=value=>{clearTimeout(timer);request.signal.removeEventListener('abort',abort);this.inflight.delete(requestId);this.queue=this.queue.filter(x=>x!==item);resolve(value);};

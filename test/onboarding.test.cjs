@@ -189,7 +189,8 @@ test('a first review is not closed by prose, and a web report needs evidence of 
   const capabilities=fs.readFileSync(path.join(__dirname,'../memory-capabilities.cjs'),'utf8');
   assert.match(capabilities,/submit\(dataDir,vault,actor,args,options\.activity\)/);
   const http=fs.readFileSync(path.join(__dirname,'../remote-http.cjs'),'utf8');
-  assert.match(http,/activity:\(\)=>this\.auth\.activity\(grant\.id\)/);
+  // 1.1.0: the request is answered by the RemoteAuth of the address it came in on (relay move), still the device's own record.
+  assert.match(http,/activity:\(\)=>(?:this\.)?auth\.activity\(grant\.id\)/);
 });
 
 test('the global memory seed carries no personal path or name',()=>{
