@@ -33,6 +33,7 @@ const localStamp = iso => { const d = new Date(iso); const p = n => String(n).pa
 function ringBind() {
   if (ring.bound) return; ring.bound = true;
   api.onRingEvent(async ev => {
+    if (ev.olay === 'paket') return; // package progress has its own listener below
     if (ev.olay === 'alici') { ring.status = await api.ringStatus(); if (view === 'ring') await renderRing(); return; }
     if (ev.olay === 'basladi') ring.running = {file: ev.dosya, events: [], started: Date.now()};
     if (ring.running) ring.running.events.push(ev);
@@ -57,6 +58,15 @@ function ringBind() {
     if (ev.olay === 'aktar') { L.written.push(ev); L.written = L.written.slice(-8); L.passed = (L.passed || 0) + 1; }
     if (ev.olay === 'kapandi') { L.on = false; L.error = ev.mesaj || null; }
     if (ev.olay === 'sentez') { L.synth = ev; }
+    if (view === 'ring' && !ring.open) renderRing();
+  });
+  api.onRingEvent?.(ev => {
+    if (ev.olay !== 'paket') return;
+    ring.pkg = ev.durum === 'bitti' ? null : {...(ring.pkg || {}), ...ev};
+    if (ev.durum === 'bitti') ring.result = {packaged: ev.hedef, size: ev.boyut};
+    if (ev.durum === 'hata') ring.pkg = {durum: 'hata', mesaj: ev.mesaj};
+    const box = document.querySelector('#ring-pkg');
+    if (box && ev.durum === 'suruyor') { box.innerHTML = pkgProgress(); return; }
     if (view === 'ring' && !ring.open) renderRing();
   });
   api.onRingInstall?.(ev => {
@@ -105,12 +115,19 @@ function ringBind() {
 
 async function ringAction(a, el) {
   if (a === 'choose-audio') { const f = await api.ringChooseAudio(); if (f) ring.file = f; }
-  else if (a === 'choose-engine') { const s = await api.ringChooseEngine(); if (s) ring.status = s; }
-  else if (a === 'install') {
+  else if (a === 'choose-engine' || a === 'install') {
+    // 1.5.0: a chosen folder is either a working engine or a source to install from (package, USB, old copy).
+    let fromFolder = false;
+    if (a === 'choose-engine') {
+      const r = await api.ringChooseEngine();
+      if (!r) return;
+      if (r.engine) { ring.status = r.status; await renderRing(); return; }
+      fromFolder = true;
+    }
     const I = ring.install;
     Object.assign(I, {running: true, error: null, result: null, ev: null});
     await renderRing();
-    try { I.result = await api.ringInstall(); }
+    try { I.result = await api.ringInstall({fromFolder}); }
     catch (e) { I.error = e.message; }
     finally { I.running = false; I.plan = null; }
   }
@@ -159,18 +176,12 @@ async function ringAction(a, el) {
     await api.ringLiveStart({device: L.device, training: L.training, source: L.source, output: L.output});
   }
   else if (a === 'live-stop') await api.ringLiveStop();
-  else if (a === 'package') { const r = await api.ringPackage(); if (r) ring.result = {packaged: r.target}; }
+  else if (a === 'package') {
+    ring.pkg = {durum: 'basladi'}; await renderRing();
+    try { const r = await api.ringPackage(); if (r) ring.result = {packaged: r.target, size: r.size}; }
+    finally { if (ring.pkg?.durum !== 'hata') ring.pkg = null; }
+  }
   await renderRing();
-}
-
-function howItWorks() {
-  const steps = [
-    [t('Listen', 'Dinleme'), t('Start live listening, send from your phone, or choose a recording.', 'Canlı dinlemeyi başlat, telefondan gönder ya da bir kayıt seç.')],
-    [t('Transcribe', 'Yazıya dökme'), t('Whisper turns the speech into text on this computer.', 'Whisper konuşmayı bu bilgisayarda metne çevirir.')],
-    [t('Filter', 'Ayıklama'), t('Only private sentences are removed (someone else’s health or family, numbers, a request not to be recorded); everything else stays.', 'Yalnız mahrem cümleler çıkarılır (başkasının sağlığı ya da ailesi, numaralar, kaydedilmeme isteği); gerisi kalır.')],
-    [t('Write', 'Yazma'), t('The AI you pick reads the whole conversation and writes a note with a summary, headings and reminders into Obsidian.', 'Seçtiğin AI konuşmanın tamamını okur; özetli, başlıklı bir notu ve hatırlatıcıları Obsidian’a yazar.')],
-  ];
-  return `<details class="ring-how" open><summary>${t('How it works', 'Nasıl çalışır')}</summary><ol class="ring-steps">${steps.map(([h, p], i) => `<li><b>${i + 1}</b>${h}<span>${p}</span></li>`).join('')}</ol></details>`;
 }
 
 function liveMeter() {
@@ -193,16 +204,15 @@ function liveCard(s) {
   if (!L.on) {
     const opts = micOptions(L.devices, L.device);
     const sy = L.synth;
-    const sum = !sy ? '' : sy.durum === 'basladi' ? `<div class="health-row"><div><span>${t('Writing the note', 'Not yazılıyor')}</span><p>${sy.aktarilan} ${t('sentences went to the note writer. This takes up to a couple of minutes.', 'cümle not yazıcısına gitti. Bir iki dakika sürebilir.')}</p></div></div>`
+    const sum = !sy ? '' : sy.durum === 'basladi' ? `<div class="health-row"><div><span>${t('Writing the note', 'Not yazılıyor')}</span><p>${sy.aktarilan} ${t('sentences', 'cümle')}</p></div></div>`
       : sy.durum === 'bitti' ? `<div class="health-row"><div><span>${t('Written to memory', 'Hafızaya yazıldı')}</span><p class="path">${esc(sy.not)}</p><p>${sy.hatirlatici} ${t('reminders', 'hatırlatıcı')}${sy.gereksiz ? ` · ${sy.gereksiz} ${t('passed sentences judged noise', 'aktarılan cümle gereksiz bulundu')}` : ''}</p></div></div>`
       : sy.durum === 'hata' ? `<div class="health-row health-warn"><div><span>${t('The note could not be written', 'Not yazılamadı')}</span><p>${esc(sy.mesaj)}</p><p class="path">${esc(sy.oturum || '')}</p></div></div>`
       : `<p class="subtle">${t('Nothing worth a note was heard.', 'Not değerinde bir şey duyulmadı.')}</p>`;
-    return `<section class="ring-live card"><div class="toolbar"><h2>${t('Listen live', 'Canlı dinle')}</h2><span class="subtle">${t('The note goes straight to Obsidian', 'Not doğrudan Obsidian’a yazılır')}</span></div>
-    <p>${t('Speech is transcribed on this computer. Laya reads each sentence with what came before it and decides only what reaches the note writer; it writes nothing itself. When you stop, Claude writes the note from what was passed. Private things (someone else’s health or family, numbers, passwords, a request not to be recorded) are never sent. Audio is not kept.', (s.full ? 'Konuşma bu bilgisayarda yazıya dökülür. Durdurduğunda konuşmanın tamamı seçtiğin AI’a gider ve notu o yazar. Mahrem olanlar (başkasının sağlığı ya da ailesi, numaralar, şifreler, kaydedilmeme isteği) önce çıkarılır, hiç gönderilmez. Ses saklanmaz.' : 'Konuşma bu bilgisayarda yazıya dökülür. Laya her cümleyi öncesiyle birlikte okur ve yalnız neyin not yazıcısına gideceğine karar verir; kendisi hiçbir şey yazmaz. Durdurduğunda notu, aktarılanlardan Claude yazar. Mahrem olanlar (başkasının sağlığı ya da ailesi, numaralar, şifreler, kaydedilmeme isteği) hiç gönderilmez. Ses saklanmaz.'))}</p>
+    return `<section class="ring-live card"><div class="toolbar"><h2>${t('Listen live', 'Canlı dinle')}</h2></div>
     ${sourceFields(L, opts)}
     <label class="check" ${s.full ? 'hidden' : ''}><input type="checkbox" id="ring-train" ${L.training ? 'checked' : ''}> ${t('Keep the text of non-private sentences on this computer to train the next model', 'Mahrem olmayan cümlelerin metnini sonraki modeli eğitmek için bu bilgisayarda sakla')}</label>
     ${L.error ? `<div class="health-row health-warn"><div><span>${t('Stopped', 'Durdu')}</span><p>${esc(L.error)}</p></div></div>` : ''}${sum}
-    <div class="actions"><span class="subtle">${(L.outputs || []).length && L.source !== 'mikrofon' ? t('Zoom shows no recording notice for this. Tell the participants you are taking notes.', 'Zoom bunun için kayıt uyarısı göstermez. Katılımcılara not aldığını söyle.') : t('Tell the people around you that you are taking notes.', 'Çevrendekilere not aldığını söyle.')}</span>${rbtn('Start listening', 'Dinlemeye başla', 'live-start', true, '', MIC_ICON)}</div></section>`;
+    <div class="actions"><span class="subtle">${t('Let people know you are taking notes.', 'Not aldığını söyle.')}</span>${rbtn('Start listening', 'Dinlemeye başla', 'live-start', true, '', MIC_ICON)}</div></section>`;
   }
   const written = L.written.slice().reverse().map(w => `<li><time>${esc(w.saat)}</time><span>${esc(w.metin)}</span><small>${w.neden === 'komsu' ? t('context', 'bağlam') : ''}</small></li>`).join('');
   return `<section class="ring-live card" data-on="true"><div class="toolbar"><h2>${t('Listening', 'Dinleniyor')} <span class="ring-rec">● ${t('REC', 'KAYIT')}</span></h2><span class="subtle" id="ring-live-state">${t('Listening', 'Dinliyor')}</span>${rbtn('Stop', 'Durdur', 'live-stop', true, '', STOP_ICON)}</div>
@@ -210,7 +220,7 @@ function liveCard(s) {
   <p class="ring-ara" id="ring-ara">${esc(L.ara || '')}</p>
   ${L.error ? `<div class="health-row health-warn"><div><span>${t('Error', 'Hata')}</span><p>${esc(L.error)}</p></div></div>` : ''}
   <div class="ring-two"><div><h2>${t('Heard', 'Duyulan')}</h2><ul class="ring-decs">${decisions || `<li class="subtle">${t('Loading models, then waiting for speech…', 'Modeller yükleniyor, sonra konuşma bekleniyor…')}</li>`}</ul></div>
-  <div><h2>${t('Going to the note writer', 'Not yazıcısına gidecek')} <span class="subtle">${L.passed || 0}</span></h2><ul class="ring-written">${written || `<li class="subtle">${t('Nothing yet.', 'Henüz yok.')}</li>`}</ul><p class="subtle">${t('The note is written when you stop.', 'Not, durdurduğunda yazılır.')}</p></div></div></section>`;
+  <div><h2>${t('Going to the note writer', 'Not yazıcısına gidecek')} <span class="subtle">${L.passed || 0}</span></h2><ul class="ring-written">${written || `<li class="subtle">${t('Nothing yet.', 'Henüz yok.')}</li>`}</ul></div></div></section>`;
 }
 
 // Where the sound comes from. "Computer audio" is what the speakers play (a Zoom or Meet call, a video),
@@ -226,8 +236,7 @@ function sourceFields(L, micOpts) {
       ${srcOpt('sistem', 'Computer audio only (Zoom, Meet, video)', 'Yalnız bilgisayar sesi (Zoom, Meet, video)')}</select></div>` : '';
   const mic = src === 'sistem' ? '' : `<div><label for="ring-mic">${t('Microphone', 'Mikrofon')}</label><select id="ring-mic">${micOpts || `<option value="">${t('Default', 'Varsayılan')}</option>`}</select></div>`;
   const out = src === 'mikrofon' ? '' : `<div><label for="ring-output">${t('Computer audio from', 'Bilgisayar sesi')}</label><select id="ring-output">${outOpts}</select></div>`;
-  const hint = src === 'ikisi' ? `<p class="subtle">${t('Use headphones: through speakers your microphone hears the call too and every sentence arrives twice.', 'Kulaklık kullan: hoparlörden konuşursan mikrofon karşı tarafı da duyar ve her cümle iki kez gelir.')}</p>`
-    : src === 'sistem' ? `<p class="subtle">${t('Only what the computer plays is transcribed; your own voice is not included.', 'Yalnız bilgisayarın çaldığı ses yazıya dökülür; kendi sesin dahil değildir.')}</p>` : '';
+  const hint = src === 'ikisi' ? `<p class="subtle">${t('Use headphones.', 'Kulaklık kullan.')}</p>` : '';
   return `<div class="ring-fields ring-live-fields">${source}${mic}${out}</div>${hint}`;
 }
 
@@ -239,20 +248,19 @@ function voiceCard(s) {
   if (!s.full) return '';
   const V = ring.voice, st = V.status;
   const head = `<div class="toolbar"><h2>${t('Your voice', 'Sesin')}</h2><span class="subtle">${st?.enrolled ? `${t('enrolled', 'tanıtıldı')} · ${esc(String(st.created || '').slice(0, 10))} · ${st.seconds} ${t('s of speech', 'sn konuşma')}` : t('not enrolled', 'tanıtılmadı')}</span></div>`;
-  const why = `<p>${t('Enroll your voice once and notes keep what you said apart: your promises, your questions. The reading is used only to compute a voiceprint on this computer and is never saved; the voiceprint stays here and you can delete it any time. Enrolling on the phone does the same.', 'Sesini bir kez tanıtırsan notlar senin söylediklerini ayrı tutar: verdiğin sözler, sorduğun sorular. Okuma yalnız bu bilgisayarda bir ses izi çıkarmak için kullanılır, kaydedilmez; ses izi burada durur ve istediğin an silebilirsin. Telefonda tanıtmak da aynı işi görür.')}</p>`;
   if (V.running) {
     return `<section class="ring-voice card">${head}<blockquote class="ring-okuma">${OKUMA_METNI.map(p => `<p>${esc(p)}</p>`).join('')}</blockquote>
     <div class="progress-title"><span>${t('Read aloud', 'Sesli oku')}</span><span id="ring-voice-sec">${clock(V.elapsed)} / ${clock(V.seconds)}</span></div>
     <div class="ring-level-track"><div id="ring-voice-bar" style="width:${Math.round(V.elapsed / V.seconds * 100)}%"></div></div>
     <div class="ring-level-track ring-voice-level"><div id="ring-voice-level"></div></div>
-    <p class="subtle">${t('Recording stops by itself; the voiceprint is computed right after.', 'Kayıt kendiliğinden durur; ses izi hemen ardından çıkarılır.')}</p></section>`;
+    </section>`;
   }
   const opts = micOptions(ring.live.devices);
   const res = V.result ? `<div class="health-row"><div><span>${t('Voice enrolled', 'Sesin tanındı')}</span><p>${V.result.konusma_sn} ${t('s of speech', 'sn konuşma')} · ${t('consistency', 'tutarlılık')} ${Math.round((V.result.tutarlilik || 0) * 100)}</p></div></div>` : '';
   const err = V.error ? `<div class="health-row health-warn"><div><span>${t('Not enrolled', 'Tanıtılamadı')}</span><p>${esc(V.error)}</p></div></div>` : '';
-  return `<section class="ring-voice card">${head}${why}${res}${err}
+  return `<section class="ring-voice card">${head}${res}${err}
   <div class="ring-fields ring-live-fields"><div><label for="ring-voice-mic">${t('Microphone', 'Mikrofon')}</label><select id="ring-voice-mic">${opts || `<option value="">${t('Default', 'Varsayılan')}</option>`}</select></div></div>
-  <div class="actions"><span class="subtle">${t('About 25 seconds; the text to read appears when you start.', 'Yaklaşık 25 saniye; okunacak metin başlayınca görünür.')}</span>
+  <div class="actions"><span class="subtle">~25 ${t('s', 'sn')}</span>
   <div class="row">${st?.enrolled ? rbtn('Delete voiceprint', 'Ses izini sil', 'voice-delete') : ''}${rbtn(st?.enrolled ? 'Enroll again' : 'Enroll my voice', st?.enrolled ? 'Yeniden tanıt' : 'Sesimi tanıt', 'voice-start', true)}</div></div></section>`;
 }
 
@@ -260,13 +268,13 @@ function writerPicker(s) {
   const w = s.writers;
   if (!s.full || !w) return '';
   const chips = w.list.map(x => `<button data-ring="writer" data-id="${esc(x.id)}" class="${x.id === w.chosen ? 'primary' : ''}" ${x.installed ? '' : 'disabled'} title="${x.installed ? '' : esc(t('Not installed on this computer', 'Bu bilgisayarda kurulu değil'))}">${esc(x.name)}</button>`).join('');
-  const waiting = w.approval === 'bekliyor' ? `<p class="subtle"><b>${t('This computer is waiting for approval', 'Bu bilgisayar onay bekliyor')}</b> · ${t('During the test phase notes are written only for approved computers. Recordings are kept until then.', 'Test aşamasında not yalnız onaylanan bilgisayarlar için yazılır. Kayıtlar o zamana kadar bekler.')}</p>` : '';
-  const none = !w.list.some(x => x.installed) ? `<p class="subtle">${t('This computer is not connected to the Claudian cloud, so no note can be written yet. Install the engine with the button on this screen.', 'Bu bilgisayar Claudian bulutuna bağlı değil; bu yüzden henüz not yazılamaz. Motoru bu ekrandaki düğmeyle kur.')}</p>` : '';
-  return `<div class="ring-writer"><span>${t('Note written by', 'Notu yazan')}</span><div class="row">${chips}</div><p class="subtle">${t('The transcript, with private sentences removed, goes to the Claudian cloud, which asks Claude for the note in one call with no tools. What was said is treated as data, never as an instruction.', 'Mahrem cümleleri çıkarılmış döküm Claudian bulutuna gider; bulut notu Claude’a araçsız tek bir çağrıyla yazdırır. Söylenen her şey veri sayılır, asla talimat sayılmaz.')}</p>${waiting}${none}</div>`;
+  const waiting = w.approval === 'bekliyor' ? `<p class="subtle">${t('Waiting for approval', 'Onay bekliyor')}</p>` : '';
+  const none = !w.list.some(x => x.installed) ? `<p class="subtle">${t('Not connected to the cloud', 'Buluta bağlı değil')}</p>` : '';
+  return `<div class="ring-writer"><span>${t('Note written by', 'Notu yazan')}</span><div class="row">${chips}</div>${waiting}${none}</div>`;
 }
 
 function engineLine(s) {
-  if (s.full) return `<div class="ring-engine"><div><i>●</i><em>Whisper large-v3-turbo</em></div><div><i>●</i><em>${t('Whole transcript · Laya off', 'Tam döküm · Laya kapalı')}</em></div><div><span>${t('Transcription on this computer', 'Yazıya dökme bu bilgisayarda')}</span></div></div>${writerPicker(s)}`;
+  if (s.full) return `<div class="ring-engine"><div><i>●</i><em>Whisper large-v3-turbo</em></div></div>${writerPicker(s)}`;
   const tr = s.training;
   const model = s.checks.tuned ? `${esc(s.model)}${tr?.tarih ? ` · ${t('trained', 'eğitildi')} ${esc(tr.tarih.slice(0, 10))}` : ''}` : 'Laya multilingual';
   return `<div class="ring-engine"><div><i>●</i><em>Whisper large-v3-turbo</em></div><div><i>●</i><em>${model}</em></div><div><span>${t('Offline · models on this computer', 'Çevrimdışı · modeller bu bilgisayarda')}</span></div></div>`;
@@ -299,46 +307,38 @@ function installProgress() {
 // 1.1.0: one button installs it where this user can write; the old button stays for an engine that is already here.
 function setupNeeded(s) {
   const I = ring.install, p = I.plan;
-  const head = `<h2>${t('The Yüzük engine is not on this computer', 'Yüzük motoru bu bilgisayarda yok')}</h2>
-  <p>${t('The engine turns speech into text on this computer and is what your phone’s recordings are processed by. One button installs it: Python, the libraries and about 1.7 GB of models are downloaded into your own user folder, never into Program Files. If the connection drops, it continues where it stopped.', 'Motor konuşmayı bu bilgisayarda yazıya döker; telefonundaki kayıtları da o işler. Tek düğmeyle kurulur: Python, kütüphaneler ve yaklaşık 1,7 GB model senin kullanıcı klasörüne iner, Program Files’a asla yazılmaz. Bağlantı koparsa kaldığı yerden devam eder.')}</p>`;
+  const head = `<h2>${t('Install the engine', 'Motoru kur')}</h2>`;
   if (I.running) {
     return `<section class="card">${head}<div id="ring-install-progress">${installProgress()}</div>
-    <div class="actions"><span class="subtle">${t('You can keep using Claudian; closing it pauses the download.', 'Claudian’ı kullanmaya devam edebilirsin; kapatırsan indirme duraklar.')}</span>${rbtn('Pause', 'Duraklat', 'install-cancel')}</div></section>`;
+    <div class="actions">${rbtn('Pause', 'Duraklat', 'install-cancel')}</div></section>`;
   }
-  const rows = [];
-  if (p) {
-    rows.push(`<li>${t('Folder', 'Klasör')}: <span class="path">${esc(p.target)}</span></li>`);
-    if (p.free !== null) rows.push(`<li>${t('Free space', 'Boş alan')}: ${gb(p.free)} · ${t('needed about', 'gereken yaklaşık')} ${gb(p.need)}</li>`);
-    rows.push(`<li>${p.gpu ? `${t('Graphics card', 'Ekran kartı')}: ${esc(p.gpu)} · ${t('Whisper will try to use it', 'Whisper onu kullanmayı dener')}` : t('No NVIDIA graphics card: Whisper runs on the processor. It works, but transcription is slower.', 'NVIDIA ekran kartı yok: Whisper işlemcide çalışır. Çalışır ama yazıya dökme daha yavaştır.')}</li>`);
-  }
+  const facts = p ? [p.gpu ? esc(p.gpu) : t('No NVIDIA card · slower', 'NVIDIA kartı yok · daha yavaş'), p.free !== null ? `${gb(p.free)} ${t('free', 'boş')} · ${gb(p.need)} ${t('needed', 'gerekli')}` : ''].filter(Boolean) : [];
   const blocked = p?.forbidden || (p && !p.enough);
   const warn = p?.forbidden ? `<div class="health-row health-warn"><div><span>${t('Cannot install here', 'Buraya kurulamaz')}</span><p>${esc(p.forbidden)}</p></div></div>`
-    : p && !p.enough ? `<div class="health-row health-warn"><div><span>${t('Not enough space', 'Yer yetmiyor')}</span><p>${t('Free up space on this drive and open this screen again.', 'Bu sürücüde yer açıp bu ekranı yeniden aç.')}</p></div></div>` : '';
+    : p && !p.enough ? `<div class="health-row health-warn"><div><span>${t('Not enough space', 'Yer yetmiyor')}</span></div></div>` : '';
   const err = I.error ? `<div class="health-row health-warn"><div><span>${t('Installation stopped', 'Kurulum durdu')}</span><p>${esc(I.error)}</p></div></div>` : '';
-  const label = p?.resumable ? ['Continue installing', 'Kurulumu sürdür'] : ['Install the engine on this computer', 'Motoru bu bilgisayara kur'];
-  return `<section class="card">${head}${rows.length ? `<ul class="file-list">${rows.join('')}</ul>` : ''}${warn}${err}
-  <div class="row">${rbtn(label[0], label[1], 'install', true, blocked ? 'disabled' : '')}${rbtn('Use an engine already on this computer', 'Bu bilgisayardaki bir motor klasörünü seç', 'choose-engine')}</div></section>`;
+  const label = p?.resumable ? ['Continue', 'Sürdür'] : ['Install', 'Kur'];
+  return `<section class="card">${head}${facts.length ? `<p class="subtle">${facts.join(' · ')}</p>` : ''}${warn}${err}
+  <div class="row">${rbtn(label[0], label[1], 'install', true, blocked ? 'disabled' : '')}${rbtn('Install from a folder', 'Klasörden kur', 'choose-engine')}</div></section>`;
 }
 
 function installDone() {
   const r = ring.install.result;
   if (!r) return '';
-  const device = r.device === 'cuda' ? t('on the graphics card', 'ekran kartında') : t('on the processor (no usable NVIDIA card)', 'işlemcide (kullanılabilir NVIDIA kartı yok)');
-  const approval = r.approval === 'onayli' ? t('This computer is approved; notes can be written.', 'Bu bilgisayar onaylı; not yazılabilir.')
-    : t('This computer is registered with the Claudian cloud and is waiting for approval (test phase). Until then no note is written and a paired phone waits too; nothing is lost.', 'Bu bilgisayar Claudian bulutuna kaydoldu ve onay bekliyor (test aşaması). Onaya kadar not yazılmaz, eşleşen telefon da bekler; hiçbir şey kaybolmaz.');
-  return `<div class="health-row"><div><span>${t('Engine installed', 'Motor kuruldu')}</span><p>${t('Whisper runs', 'Whisper')} ${device}. ${approval}</p><p class="path">${esc(r.dir)}</p></div></div>`;
+  const device = r.device === 'cuda' ? 'GPU' : 'CPU';
+  const approval = r.approval === 'onayli' ? t('approved', 'onaylı') : t('waiting for approval', 'onay bekliyor');
+  return `<div class="health-row"><div><span>${t('Engine installed', 'Motor kuruldu')}</span><p>${device} · ${approval}</p></div></div>`;
 }
 
 function newRecording() {
-  if (!ring.file) return `<div class="ring-drop"><p>${t('Choose a recording of a lecture, a meeting or your own voice note.', 'Bir dersin, toplantının ya da kendi sesli notunun kaydını seç.')}<br><span class="subtle">mp3 · m4a · wav · ogg · flac</span></p>${rbtn('Choose audio file', 'Ses dosyası seç', 'choose-audio', true)}</div>`;
+  if (!ring.file) return `<div class="ring-drop"><p><span class="subtle">mp3 · m4a · wav · ogg · flac</span></p>${rbtn('Choose audio file', 'Ses dosyası seç', 'choose-audio', true)}</div>`;
   const f = ring.file, title = f.name.replace(/\.[^.]+$/, '');
   return `<section class="ring-form"><div class="toolbar"><h2>${esc(f.name)}</h2><span class="subtle">${(f.size / 1048576).toFixed(1)} MB</span>${rbtn('Change', 'Değiştir', 'clear-file')}</div>
   <div class="ring-fields"><div><label for="ring-title">${t('Title', 'Başlık')}</label><input id="ring-title" maxlength="80" value="${esc(title)}"></div>
   <div><label for="ring-start">${t('Recording started', 'Kaydın başladığı an')}</label><input id="ring-start" type="datetime-local" value="${localStamp(f.modified).replace(' ', 'T')}"></div>
   <div><label for="ring-lang">${t('Language', 'Dil')}</label><select id="ring-lang"><option value="">${t('Detect', 'Otomatik')}</option><option value="tr">Türkçe</option><option value="en">English</option></select></div></div>
-  <p class="subtle">${t('The start time turns “tomorrow” or “next Friday” into dates.', 'Başlangıç anı “yarın”, “gelecek cuma” gibi ifadeleri tarihe çevirmek için kullanılır.')}</p>
   <label class="check" ${ring.status?.full ? 'hidden' : ''}><input type="checkbox" id="ring-audit"> ${t('Audit mode — also keep the text of dropped sentences, so you can rescue them and teach the model', 'Denetim modu — atılan cümlelerin metnini de sakla; yanlışlıkla atılanı kurtarıp modele öğretebilirsin')}</label>
-  <div class="actions"><span class="subtle">${ring.status?.full ? t('Audio stays on this computer; the transcript goes to the note writer you picked.', 'Ses bu bilgisayarda kalır; döküm seçtiğin not yazıcısına gider.') : t('Nothing leaves this computer.', 'Hiçbir şey bu bilgisayardan çıkmaz.')}</span>${rbtn('Extract notes', 'Notu çıkar', 'run', true)}</div></section>`;
+  <div class="actions">${rbtn('Extract notes', 'Notu çıkar', 'run', true)}</div></section>`;
 }
 
 function runningView() {
@@ -351,7 +351,7 @@ function runningView() {
     ${stage(w ? 'done' : 'running', t('Transcribing', 'Yazıya dökme'), w ? `${w.cumle} ${t('sentences', 'cümle')}${w.mahrem ? ` · ${w.mahrem} ${t('private removed', 'mahrem çıkarıldı')}` : ''}` : prog ? `%${Math.round(prog.oran * 100)}` : t('loading model', 'model yükleniyor'))}
     ${stage(fin ? 'done' : w ? 'running' : '', w ? `${esc(w.yazici)} ${t('writes the note', 'notu yazıyor')}` : t('Writing the note', 'Not yazımı'), '')}
     ${stage(wrote ? 'done' : fin ? 'running' : '', t('Obsidian', 'Obsidian'), '')}
-    <div class="actions"><span class="subtle">${t('You can close the window; a notification arrives when the note is written.', 'Pencereyi kapatabilirsin; not yazılınca bildirim gelir.')}</span>${rbtn('Stop', 'Durdur', 'cancel')}</div>`;
+    <div class="actions">${rbtn('Stop', 'Durdur', 'cancel')}</div>`;
   }
   const last = (asama, olay) => [...ev].reverse().find(e => e.asama === asama && (!olay || e.olay === olay));
   const sttDone = ev.find(e => e.asama === 'yazi' && e.durum === 'bitti');
@@ -362,7 +362,7 @@ function runningView() {
   ${stage(sttDone ? 'done' : 'running', t('Transcribing', 'Yazıya dökme'), sttDone ? `${sttDone.cumle} ${t('sentences', 'cümle')} · ${clock(sttDone.ses_sn)} ${t('audio', 'ses')} · ${Math.round(sttDone.sure_sn)} sn · ${esc(sttDone.cihaz === 'cuda' ? 'GPU' : 'CPU')}` : sttProg ? `%${Math.round(sttProg.oran * 100)}` : t('loading model', 'model yükleniyor'))}
   ${stage(gateDone ? 'done' : sttDone ? 'running' : '', t('Selecting', 'Ayıklama'), gateDone ? `${gateDone.tutulan} ${t('kept', 'tutuldu')} · ${Math.round(gateDone.sure_sn)} sn` : gateProg ? `${gateProg.i} / ${gateProg.toplam}` : '')}
   ${stage(gateDone ? 'running' : '', t('Draft', 'Taslak'), '')}
-  <div class="actions"><span class="subtle">${t('You can close the window; a notification arrives when the draft is ready.', 'Pencereyi kapatabilirsin; taslak hazır olunca bildirim gelir.')}</span>${rbtn('Stop', 'Durdur', 'cancel')}</div>`;
+  <div class="actions">${rbtn('Stop', 'Durdur', 'cancel')}</div>`;
 }
 
 function reviewView(d) {
@@ -381,7 +381,7 @@ function reviewView(d) {
   if (approved) return `${head}<p>${t('Approved and written to memory as', 'Onaylandı ve hafızaya şu adla yazıldı:')} <span class="path">${esc(d.not)}</span></p>${groups}`;
   return `${head}${groups}${droppedBlock}
   <div class="actions"><button data-ring="discard" class="link">${t('Delete draft', 'Taslağı sil')}</button>${ring.approving ? `<span class="subtle">${t('Claude is writing the note…', 'Claude notu yazıyor…')}</span>` : rbtn('Approve: Claude writes the note', 'Onayla: notu Claude yazsın', 'approve', true)}</div>
-  <p class="subtle">${t('On approval the ticked sentences go to Claude, which writes the note and its reminders. Your corrections are saved as training data for Laya.', 'Onayda işaretli cümleler Claude’a gider; notu ve hatırlatıcıları o yazar. Düzeltmelerin Laya için eğitim verisi olarak saklanır.')}</p>`;
+  `;
 }
 
 function history() {
@@ -395,31 +395,41 @@ function phoneCard() {
   const via = p?.cloud
     ? t('The phone talks to the Yüzük cloud (yuzuk-api.claudian.app); the cloud hands the work to this computer. Audio passes through and is never stored there.', 'Telefon Yüzük bulutuyla konuşur (yuzuk-api.claudian.app); bulut işi bu bilgisayara verir. Ses oradan akarak geçer, saklanmaz.')
     : t('Processing happens on this computer through yuzuk.claudian.app.', 'İşlem yuzuk.claudian.app üzerinden bu bilgisayarda yapılır.');
-  const head = `<h2>${t('Phone app', 'Telefon uygulaması')}</h2><p>${t('The Yüzük app records on the phone, even with the screen locked, and the note lands in the phone’s Obsidian vault.', 'Yüzük uygulaması telefonda kaydeder (ekran kilitliyken de); not telefondaki Obsidian vault’una düşer.')} ${via}</p>`;
-  if (!ring.status?.ready) return `<div class="card">${head}<p><b>${t('No engine on this computer, so a phone cannot be paired here yet.', 'Bu bilgisayarda motor yok; bu yüzden telefon henüz buraya eşleştirilemez.')}</b> ${t('A phone only records; a computer running the engine turns its recordings into notes. Install the engine above first.', 'Telefon yalnız kaydeder; kayıtları nota çeviren, motoru çalıştıran bir bilgisayardır. Önce yukarıdan motoru kur.')}</p></div>`;
-  if (!p?.capable) return `<div class="card">${head}<p class="subtle">${t('This engine folder has no phone server yet (sunucu.py). Update the engine.', 'Bu motor klasöründe telefon sunucusu (sunucu.py) yok. Motoru güncelle.')}</p></div>`;
+  void via;
+  const head = `<h2>${t('Phone', 'Telefon')}</h2>`;
+  if (!ring.status?.ready) return `<div class="card">${head}<p class="subtle">${t('Install the engine first', 'Önce motoru kur')}</p></div>`;
+  if (!p?.capable) return `<div class="card">${head}<p class="subtle">${t('Update the engine', 'Motoru güncelle')}</p></div>`;
   const state = p.running
     ? `<p class="subtle">${t('Server running', 'Sunucu açık')} · ${esc(p.origin.replace('https://', ''))}${p.speakers ? ` · ${t('speakers told apart', 'konuşmacılar ayrılıyor')}` : ''}${p.voiceprint ? ` · ${t('your voice enrolled', 'sesin tanıtıldı')}` : ''}${p.queued ? ` · ${p.queued} ${t('in queue', 'sırada')}` : ''}</p>`
-    : `<p class="subtle">${t('Server closed: the phone’s recordings wait on the phone until it opens.', 'Sunucu kapalı: telefondaki kayıtlar sunucu açılana kadar telefonda bekler.')}</p>${ring.phoneBusy ? `<p class="subtle">${t('Starting…', 'Başlatılıyor…')}</p>` : rbtn('Start server', 'Sunucuyu başlat', 'phone-start', true)}`;
+    : `<p class="subtle">${t('Server closed', 'Sunucu kapalı')}</p>${ring.phoneBusy ? `<p class="subtle">${t('Starting…', 'Başlatılıyor…')}</p>` : rbtn('Start server', 'Sunucuyu başlat', 'phone-start', true)}`;
   const pair = ring.pair
-    ? `<div class="ring-pair"><div class="ring-qr" aria-label="${t('Pairing QR code', 'Eşleştirme QR kodu')}">${ring.pair.qr}</div><div><p>${t('Scan with the phone camera, or open the address. It installs the app and pairs it with a one-time code.', 'Telefon kamerasıyla okut ya da adresi aç. Uygulamayı kurar ve tek kullanımlık kodla eşleştirir.')}</p><div class="ring-addr">${esc(ring.pair.url)}</div><p class="subtle">${t('Code', 'Kod')}: <b>${esc(ring.pair.code)}</b> · ${t('valid 24 hours, once', '24 saat, bir kez geçerli')}</p><div class="row">${rbtn('Copy address', 'Adresi kopyala', 'copy-pair')}</div></div></div>`
+    ? `<div class="ring-pair"><div class="ring-qr" aria-label="${t('Pairing QR code', 'Eşleştirme QR kodu')}">${ring.pair.qr}</div><div><div class="ring-addr">${esc(ring.pair.url)}</div><p class="subtle">${t('Code', 'Kod')}: <b>${esc(ring.pair.code)}</b> · ${t('valid 24 hours, once', '24 saat, bir kez geçerli')}</p><div class="row">${rbtn('Copy address', 'Adresi kopyala', 'copy-pair')}</div></div></div>`
     : (p.running ? rbtn('Pair a phone', 'Telefonu bağla', 'phone-pair', true) : '');
   const err = ring.pairError ? `<p class="subtle">${esc(ring.pairError)}</p>` : '';
   const pl = ring.phoneLive;
   const since = iso => { if (!iso) return t('never', 'hiç'); const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 1 ? t('just now', 'şimdi') : m < 60 ? `${m} ${t('min ago', 'dk önce')}` : dayStamp(iso); };
   const jobLabel = d => ({teslim: t('in Obsidian', 'Obsidian’da'), hazir: t('ready', 'hazır'), isleniyor: t('processing', 'işleniyor'), sirada: t('queued', 'sırada'), hata: t('error', 'hata')}[d] || d);
   const liveList = !pl ? '' : `<div class="ring-two ring-phone-live"><div><h2>${t('Connected phones', 'Bağlı telefonlar')}</h2><ul class="file-list">${pl.cihazlar.map(c => `<li>${esc(c.ad || t('Phone', 'Telefon'))} · ${t('seen', 'görüldü')} ${since(c.son_gorulme)}</li>`).join('') || `<li>${t('None yet', 'Henüz yok')}</li>`}</ul></div>
-    <div><h2>${t('Recent recordings', 'Son kayıtlar')}</h2><ul class="file-list">${pl.isler.map(j => `<li>${dayStamp(j.olusturuldu)} · ${j.ses_sn ? `${Math.max(1, Math.round(j.ses_sn / 60))} ${t('min', 'dk')} · ` : ''}${jobLabel(j.durum)}${j.yazici ? ` · ${esc(j.yazici)}` : ''}</li>`).join('') || `<li>${t('None yet', 'Henüz yok')}</li>`}</ul>
+    <div><h2>${t('Recent recordings', 'Son kayıtlar')}</h2><ul class="file-list">${pl.isler.map(j => `<li>${dayStamp(j.olusturuldu)} · ${j.ses_sn ? `${Math.max(1, Math.round(j.ses_sn / 60))} ${t('min', 'dk')} · ` : ''}${jobLabel(j.durum)}${j.yazici ? ` · ${esc({codex: 'ChatGPT', claude: 'Claude'}[j.yazici] || j.yazici)}` : ''}</li>`).join('') || `<li>${t('None yet', 'Henüz yok')}</li>`}</ul>
     <p class="subtle">${t('Cloud heartbeat', 'Bulut nabzı')}: ${since(pl.son_nabiz)}</p></div></div>`;
-  const waiting = p.approval === 'bekliyor' ? `<p class="subtle"><b>${t('Waiting for approval', 'Onay bekliyor')}</b> · ${t('This computer and the phones paired to it start working once approved (test phase).', 'Bu bilgisayar ve ona eşleşen telefonlar onaylanınca çalışmaya başlar (test aşaması).')}</p>` : '';
-  const privacy = `<p class="subtle">${t('Which data goes where and for how long:', 'Hangi veri nereye gider, ne kadar kalır:')} <button class="link" data-ring="privacy">${t('Yüzük privacy policy', 'Yüzük gizlilik politikası')}</button></p>`;
+  const waiting = p.approval === 'bekliyor' ? `<p class="subtle">${t('Waiting for approval', 'Onay bekliyor')}</p>` : '';
+  const privacy = `<p class="subtle"><button class="link" data-ring="privacy">${t('Privacy', 'Gizlilik')}</button></p>`;
   return `<div class="card ring-phone">${head}${state}${waiting}${liveList}${pair}${err}${privacy}</div>`;
 }
 
+function pkgProgress() {
+  const k = ring.pkg || {};
+  if (k.durum === 'hata') return `<div class="health-row health-warn"><div><span>${t('Package stopped', 'Paket durdu')}</span><p>${esc(k.mesaj || '')}</p></div></div>`;
+  const pct = k.indirilen && k.toplam ? ` · %${Math.floor(k.indirilen / k.toplam * 100)}` : '';
+  return `<div class="stage running"><b>●</b>${esc(k.dosya || t('Preparing', 'Hazırlanıyor'))}${k.kaynaktan ? ` · ${t('copied', 'kopyalandı')}` : pct}</div>`;
+}
+
 function devices(s) {
-  return `<section class="panel-section"><h2>${t('Other devices', 'Diğer cihazlar')}</h2><p>${t('Processing always happens on a computer. A phone only records and sends; another computer can run the engine itself.', 'İşlem hep bir bilgisayarda yapılır. Telefon yalnız kaydeder ve gönderir; başka bir bilgisayar ise motoru kendisi çalıştırabilir.')}</p>
-  ${phoneCard()}<div class="ring-two"><div class="card"><h2>${t('Install on another computer', 'Başka bir bilgisayara kur')}</h2><p>${t('Install Claudian on the other Windows 10/11 computer and press “Install the engine on this computer” in Yüzük; it downloads everything itself. An NVIDIA card makes it fast; without one it runs on the processor.', 'Diğer Windows 10/11 bilgisayara Claudian’ı kur ve Yüzük’te “Motoru bu bilgisayara kur”a bas; her şeyi kendisi indirir. NVIDIA ekran kartı hızlandırır; yoksa işlemcide çalışır.')}</p>
-  ${s.ready ? `<p class="subtle">${t('No internet there? Copy this computer’s engine to a USB drive instead (about 3 GB; keys, voiceprints and cloud connection stay here).', 'Orada internet yoksa bu bilgisayarın motorunu USB belleğe kopyalayabilirsin (yaklaşık 3 GB; anahtarlar, ses izleri ve bulut bağlantısı burada kalır).')}</p>${rbtn('Prepare package', 'Kurulum paketini hazırla', 'package')}` : ''}</div></div></section>`;
+  void s;
+  const pkg = ring.pkg ? `<div id="ring-pkg">${pkgProgress()}</div>` : rbtn('Prepare package', 'Kurulum paketini hazırla', 'package');
+  return `<section class="panel-section"><h2>${t('Other devices', 'Diğer cihazlar')}</h2>
+  ${phoneCard()}<div class="ring-two"><div class="card"><h2>${t('Another computer', 'Başka bir bilgisayar')}</h2>
+  <p class="subtle">${t('USB or folder · ~2 GB · installer, engine and models', 'USB ya da klasör · ~2 GB · kurulum, motor ve modeller')}</p>${pkg}</div></div></section>`;
 }
 
 async function renderRing() {
@@ -432,11 +442,11 @@ async function renderRing() {
   ring.drafts = ring.status.ready ? await api.ringDrafts() : [];
   if (ring.openId && !ring.open) ring.open = await api.ringDraft(ring.openId).catch(() => null);
   const s = ring.status;
-  let body = `<h1>${t('Ring', 'Yüzük')}</h1><p class="ring-lead">${t('Takes notes from what is said around you: lectures, meetings or your own voice. Transcription runs on this computer and private sentences are removed here; the Claudian cloud then has Claude write the note in one call with no tools. What was said is data, never an instruction.', 'Çevrende konuşulandan not alır: ders, toplantı ya da kendi sesin. Yazıya dökme bu bilgisayarda çalışır, mahrem cümleler burada çıkarılır; notu Claudian bulutu araçsız tek bir çağrıyla Claude’a yazdırır. Söylenen her şey veridir, asla talimat değildir.')}</p>${howItWorks()}`;
+  let body = `<h1>${t('Ring', 'Yüzük')}</h1>`;
   if (!s.ready) {
     if (!ring.install.plan && !ring.install.running) ring.install.plan = await api.ringInstallPlan?.().catch(() => null) ?? null;
     if (ring.install.plan?.running) ring.install.running = true;
-    content.innerHTML = body + setupNeeded(s) + devices(s);
+    content.innerHTML = body + setupNeeded(s) + phoneCard();
     return;
   }
   body += installDone() + engineLine(s);
@@ -450,10 +460,10 @@ async function renderRing() {
   if (ring.result?.written) body += ring.result.written.bos
     ? `<div class="health-row"><div><span>${t('No note', 'Not yok')}</span><p>${t('No speech worth a note was found in the recording.', 'Kayıtta not değerinde konuşma bulunamadı.')}</p></div></div>`
     : `<div class="health-row"><div><span>${t('Written to memory', 'Hafızaya yazıldı')}</span><p class="path">${esc(ring.result.written.not)}</p><p>${ring.result.written.hatirlatici || 0} ${t('reminders added', 'hatırlatıcı eklendi')}</p></div></div>`;
-  if (ring.result?.packaged) body += `<div class="health-row"><div><span>${t('Package ready', 'Paket hazır')}</span><p class="path">${esc(ring.result.packaged)}</p></div></div>`;
+  if (ring.result?.packaged) body += `<div class="health-row"><div><span>${t('Package ready', 'Paket hazır')}</span><p class="path">${esc(ring.result.packaged)}</p><p class="subtle">${t('On the other computer: Claudian-Setup, then Yüzük → Install from a folder', 'Diğer bilgisayarda: Claudian-Setup, sonra Yüzük → Klasörden kur')}</p></div></div>`;
   if (ring.running) body += `<section class="ring-block">${runningView()}</section>`;
   else if (ring.open) body += `<section class="ring-block">${reviewView(ring.open)}</section>`;
-  else body += `<section class="ring-block"><h2>${t('Or process a recording', 'Ya da bir kaydı işle')}</h2>${newRecording()}</section>`;
+  else body += `<section class="ring-block"><h2>${t('Process a recording', 'Kaydı işle')}</h2>${newRecording()}</section>`;
   content.innerHTML = body + history() + devices(s);
 }
 window.renderRing = renderRing;

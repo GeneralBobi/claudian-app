@@ -55,7 +55,7 @@ test("approval sends only the ticked sentences to the note writer and writes its
   await fs.writeFile(path.join(vault, 'Claudian.md'), '# x (örnek)\n');
   const r = await ring.approve('d1', {kept: [1, 2]});
   assert.deepEqual(calls[0], ['Tanım cümlesi (örnek)', 'Ödev teslimi yedi Ekim (örnek)'], 'unticked and dropped sentences never reach the LLM');
-  assert.equal(r.note, 'Yüzük · 2026-09-23 10.30 Örnek not başlığı.md');
+  assert.equal(r.note, 'Yüzük/2026-09-23 1030 Örnek not başlığı.md');
   const body = await fs.readFile(path.join(vault, r.note), 'utf8');
   assert.ok(body.includes('# Örnek not başlığı'));
   assert.ok(body.includes('- Birleştirilmiş madde, Claudian ile ilgili (örnek).'));
@@ -72,7 +72,7 @@ test("approval sends only the ticked sentences to the note writer and writes its
 test('if the note writer fails, nothing is written and the draft stays open', async t => {
   const {vault, engine, ring} = await setup(t, {fail: true});
   await assert.rejects(ring.approve('d1', {kept: [1]}), /Claude Code 1/);
-  assert.ok(!(await fs.readdir(vault)).some(n => n.startsWith('Yüzük ·')));
+  assert.ok(!(await fs.readdir(vault)).some(n => n.startsWith('Yüzük')));
   assert.equal(JSON.parse(await fs.readFile(path.join(engine, 'taslaklar', 'd1', 'kararlar.json'), 'utf8')).durum, 'taslak');
 });
 
@@ -113,19 +113,33 @@ test('phone card: an engine without sunucu.py is reported as not capable, and no
   assert.ok(!JSON.stringify(s).includes('gizli-anahtar-ornek'), 'the server key stays in the engine folder');
 });
 
-test('note writer (1.0.0): only the tool-less cloud writer exists; agent CLIs are closed, not offered', async t => {
+test('note writer (1.5.0): Claude in the cloud, ChatGPT on this computer with its tools off; Gemini stays closed', async t => {
   const {engine, ring} = await setup(t);
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'codex-home-')), appdata = await fs.mkdtemp(path.join(os.tmpdir(), 'appdata-'));
+  const env = {CODEX_HOME: process.env.CODEX_HOME, APPDATA: process.env.APPDATA};
+  process.env.CODEX_HOME = home; process.env.APPDATA = appdata;
+  t.after(async () => {
+    for (const [k, v] of Object.entries(env)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    await fs.rm(home, {recursive: true, force: true}); await fs.rm(appdata, {recursive: true, force: true});
+  });
   const w = await ring.writers();
   assert.equal(w.chosen, 'claude', 'default writer');
-  assert.deepEqual(w.list.map(x => x.id), ['claude'], 'Codex and Gemini are no longer note writers');
-  assert.equal(w.list[0].installed, false, 'without the cloud (bulut.json) the writer is not available');
+  assert.deepEqual(w.list.map(x => x.id), ['claude', 'codex']);
+  assert.deepEqual(w.list.map(x => x.installed), [false, false], 'no cloud, no signed-in Codex: neither is available');
   await fs.writeFile(path.join(engine, 'bulut.json'), JSON.stringify({url: 'https://yuzuk-api.claudian.app'}));
   assert.equal((await ring.writers()).list[0].installed, true);
-  await assert.rejects(ring.setWriter('codex'), /kapalı/, 'a retired writer is refused with the reason');
   await assert.rejects(ring.setWriter('gemini'), /kapalı/);
   await assert.rejects(ring.setWriter('bilinmeyen'), /Bilinmeyen/);
-  await fs.writeFile(path.join(path.dirname(engine), 'data', 'ring.json'), JSON.stringify({engine, yazici: 'codex'})).catch(() => {});
-  assert.equal((await ring.writers()).chosen, 'claude', 'an old saved codex choice falls back to the cloud writer');
+  await ring.setWriter('codex');
+  assert.equal((await ring.writers()).chosen, 'claude', 'ChatGPT chosen but not signed in here: the cloud writes');
+  await fs.mkdir(path.join(appdata, 'npm'), {recursive: true});
+  await fs.writeFile(path.join(appdata, 'npm', 'codex.cmd'), '@echo off\n');
+  await fs.writeFile(path.join(home, 'auth.json'), '{}');
+  assert.equal((await ring.writers()).chosen, 'claude', 'an engine before 1.5.0 cannot run ChatGPT without tools');
+  await fs.writeFile(path.join(engine, 'baglam.py'), '# 1.5.0\n');
+  const now = await ring.writers();
+  assert.equal(now.chosen, 'codex', 'the saved ChatGPT choice holds once it can run');
+  assert.equal(now.list[1].installed, true);
 });
 
 test('voice notes carry kaynak: ses so a later reader treats them as data', async t => {
@@ -136,7 +150,7 @@ test('voice notes carry kaynak: ses so a later reader treats them as data', asyn
   await fs.writeFile(path.join(inbox, `${id}.json`), JSON.stringify({baslik: 'Ders (örnek)', baslangic: '2026-10-05T10:00:00', sonuc: {
     baslik: 'Örnek not', not_md: '### Özet\nKurgu özet.', yazici: 'claude', cumle: 4, ses_suresi_sn: 60, hatirlaticilar: [], takip: []}}));
   assert.equal(await ring.inboxOnce(), 1);
-  const note = (await store.list(vault)).map(n => n.note).find(n => n.startsWith('Yüzük ·'));
+  const note = (await store.list(vault)).map(n => n.note).find(n => n.startsWith('Yüzük/'));
   const body = await fs.readFile(path.join(vault, note), 'utf8');
   assert.match(body.split('---')[1], /^kaynak: ses$/m);
   const read = require('../memory-capabilities.cjs').capabilities(vault, null, {}).find(c => c.name === 'read_note');
@@ -159,7 +173,7 @@ test('phone inbox: a phone recording reaches this vault, its dated work the remi
   const answer = JSON.parse(await fs.readFile(path.join(inbox, `${id}.sonuc.json`), 'utf8'));
   assert.equal(answer.hatirlatici, 1);
   assert.equal(answer.takip, 1);
-  assert.match(answer.not, /^Yüzük · 2026-09-26 14\.00 Örnek ders notu\.md$/);
+  assert.match(answer.not, /^Yüzük\/2026-09-26 1400 Örnek ders notu\.md$/);
   await assert.rejects(fs.access(path.join(inbox, `${id}.json`)), 'the note text does not linger in the inbox');
   await fs.access(path.join(inbox, 'baska-bir-dosya.json')); // not a server id: left alone
   const all = (await store.list(vault)).map(n => n.note);
@@ -167,4 +181,55 @@ test('phone inbox: a phone recording reaches this vault, its dated work the remi
   assert.match(await text('reminders'), /Quiz \(örnek\) · saat 10:30\*\* · \*\*3 Ekim 2026\*\*/);
   assert.match(await text('panel'), /Hoca örnek ödevi verdi, tarih söylenmedi \(örnek\)\*\* · açıldı:/);
   assert.equal(await ring.inboxOnce(), 0, 'nothing is written twice');
+});
+
+// 1.5.0 · kaydın bağlamı: motorun seçtiği ders nota ve dersin kendi notuna işlenir; randevu kaydına bağlanır.
+async function inboxWith(t, sonuc, extra = async () => {}) {
+  const {vault, engine, ring} = await setup(t);
+  await extra(vault);
+  const inbox = path.join(engine, 'gelen_not');
+  await fs.mkdir(inbox, {recursive: true});
+  const id = 'abcdef0123456789abcdef0123456789';
+  await fs.writeFile(path.join(inbox, `${id}.json`), JSON.stringify({baslik: 'Ders (örnek)', baslangic: '2026-10-05T08:32', sonuc: {
+    baslik: 'Başlık etiketleri', not_md: '### Özet\n- Konu anlatıldı (örnek).', yazici: 'claude', cumle: 40, ses_suresi_sn: 3000,
+    hatirlaticilar: [], takip: [], ...sonuc}}));
+  assert.equal(await ring.inboxOnce(), 1);
+  const answer = JSON.parse(await fs.readFile(path.join(inbox, `${id}.sonuc.json`), 'utf8'));
+  return {vault, note: answer.not, body: await fs.readFile(path.join(vault, answer.not), 'utf8')};
+}
+
+const COURSE = '---\ntür: ders\n---\n\n# KOD101 — Örnek Ders\n\n## Ders kayıtları\n\nHenüz yok.\n';
+
+test('context: the chosen course is linked from the note and the course note lists the recording', async t => {
+  const {vault, note, body} = await inboxWith(t, {baglam: {tur: 'ders', ad: 'KOD101 — Örnek Ders', zaman: 'Pazartesi 08:30–10:20 · SALON 1',
+    hoca: 'Örnek Hoca', not: 'Dersler/KOD101 - Örnek Ders'}}, async v => {
+    await fs.mkdir(path.join(v, 'Dersler'), {recursive: true});
+    await fs.writeFile(path.join(v, 'Dersler', 'KOD101 - Örnek Ders.md'), COURSE);
+  });
+  assert.equal(note, 'Yüzük/2026-10-05 0832 Başlık etiketleri.md');
+  assert.match(body.split('---')[1], /^tarih: 2026-10-05 08:32$/m);
+  assert.match(body.split('---')[1], /^ders: "\[\[Dersler\/KOD101 - Örnek Ders\]\]"$/m);
+  assert.ok(body.includes('**Ders:** [[Dersler/KOD101 - Örnek Ders|KOD101 — Örnek Ders]] · Pazartesi 08:30–10:20 · SALON 1 · Örnek Hoca'));
+  const course = await fs.readFile(path.join(vault, 'Dersler', 'KOD101 - Örnek Ders.md'), 'utf8');
+  assert.ok(course.includes('| 05.10 Pzt | Başlık etiketleri | [[2026-10-05 0832 Başlık etiketleri]] |'));
+  assert.ok(!course.includes('Henüz yok.'));
+});
+
+test('context: a course note that does not exist is not linked', async t => {
+  const {body} = await inboxWith(t, {baglam: {tur: 'ders', ad: 'KOD999 — Olmayan', zaman: 'Pazartesi 08:30–10:20', not: 'Dersler/Olmayan'}});
+  assert.ok(!/^ders:/m.test(body.split('---')[1]));
+  assert.ok(body.includes('**Ders:** KOD999 — Olmayan · Pazartesi 08:30–10:20'));
+  assert.ok(!body.includes('[[Dersler/Olmayan'));
+});
+
+test('context: an appointment gets a link to its recording', async t => {
+  const {vault} = await inboxWith(t, {baglam: {tur: 'hatirlatici', ad: 'Örnek Şirket toplantısı', zaman: '05.10 19:00'}}, async v => {
+    for (const n of (await fs.readdir(v)).filter(n => n.endsWith('.md'))) {
+      const b = await fs.readFile(path.join(v, n), 'utf8');
+      if (b.includes('claudian_role: reminders')) await fs.writeFile(path.join(v, n), b + '\n- [ ] **Örnek Şirket toplantısı · saat 19:00** · **5 Ekim 2026**\n');
+    }
+  });
+  const all = (await store.list(vault)).map(n => n.note);
+  const reminders = (await Promise.all(all.map(n => fs.readFile(path.join(vault, n), 'utf8')))).find(b => b.includes('claudian_role: reminders'));
+  assert.match(reminders, /Örnek Şirket toplantısı · saat 19:00\*\* · \*\*5 Ekim 2026\*\*\n  → kayıt: \[\[2026-10-05 0832 Başlık etiketleri\]\]/);
 });

@@ -21,6 +21,9 @@ const crypto = require('crypto');
 const {spawn} = require('child_process');
 const store = require('./memory-store.cjs');
 const {capture} = require('./memory-capture.cjs');
+const roles = require('./roles.cjs');
+const {frontmatterLine, contextLine, addRecordRow, linkReminder, dayLabel} = require('./ring-context.cjs');
+const {closeDue, applyAction} = require('./reminder-sweep.cjs');
 
 const AUDIO = ['mp3', 'm4a', 'wav', 'ogg', 'flac', 'webm', 'aac', 'mp4'];
 const DRAFT_ID = /^[\w.\-]{1,120}$/u;
@@ -61,10 +64,12 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
      The transcript is untrusted: anyone near the ring can speak into it. So the note is no longer written by an agent CLI
      (Claude Code, Codex, Gemini: each carries shell, file, browser and MCP tools, and Codex and Gemini have no single
      documented switch that closes all of them). It is written by a tool-less API call that only the Claudian cloud makes,
-     with Boran's key kept there; the engine validates the structured answer and writes the markdown itself. A saved
-     "codex" or "gemini" choice falls back to Claude and the note says so. */
-  const WRITERS = {claude: 'Claude'};
-  const RETIRED_WRITERS = {codex: 'ChatGPT (Codex)', gemini: 'Gemini'};
+     with Boran's key kept there; the engine validates the structured answer and writes the markdown itself.
+     1.5.0: ChatGPT is back as a writer (Boran: "bu özelliği elimden alma"). Codex runs on this computer with the user's
+     own ChatGPT sign-in and every tool switched off one by one (laya-kapi/yazicilar.py); it is as tool-less as the cloud
+     writer. Gemini stays closed. */
+  const WRITERS = {claude: 'Claude', codex: 'ChatGPT'};
+  const RETIRED_WRITERS = {gemini: 'Gemini'};
 
   async function settings() {
     try { return JSON.parse(await fs.readFile(settingsFile(), 'utf8')); } catch { return {}; }
@@ -72,8 +77,11 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
 
   // The cloud writer needs this computer to be a node of the Claudian cloud (bulut.json in the engine).
   async function writerInstalled(id) {
-    if (id !== 'claude') return false;
-    return exists(path.join(await engineDir(), 'bulut.json'));
+    if (id === 'claude') return exists(path.join(await engineDir(), 'bulut.json'));
+    if (id !== 'codex' || !await exists(path.join(await engineDir(), 'baglam.py'))) return false; // 1.5.0 engine and up
+    const home = process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
+    const cli = path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'npm', 'codex.cmd');
+    return await exists(path.join(home, 'auth.json')) && await exists(cli);
   }
 
   // Test phase: a newly installed computer waits for approval before the cloud writes notes for it (1.1.0).
@@ -84,11 +92,13 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
   async function writers() {
     const list = [];
     for (const [id, name] of Object.entries(WRITERS)) list.push({id, name, installed: await writerInstalled(id)});
-    return {chosen: 'claude', list, approval: await nodeApproval()};
+    const saved = (await settings()).yazici;
+    const chosen = list.find(w => w.id === saved && w.installed) ? saved : 'claude';
+    return {chosen, list, approval: await nodeApproval()};
   }
 
   async function setWriter(id) {
-    if (RETIRED_WRITERS[id]) throw Error(`${RETIRED_WRITERS[id]} not yazıcısı 1.0.0'da kapalı: araçları kapatılamadığı için konuşma ona gönderilmez.`);
+    if (RETIRED_WRITERS[id]) throw Error(`${RETIRED_WRITERS[id]} not yazıcısı kapalı.`);
     if (!WRITERS[id]) throw Error('Bilinmeyen not yazıcısı.');
     const cur = await settings();
     await fs.writeFile(settingsFile(), JSON.stringify({...cur, engine: cur.engine || await engineDir(), yazici: id}, null, 1));
@@ -127,15 +137,23 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
 
   // An engine that is already on this computer (copied from another one, or set up by hand). Installing is the other
   // button: this one only points Yüzük at a folder and says plainly when the folder is not an engine.
+  /* 1.5.0: a chosen folder is either a working engine (used as is) or a source to install from: the package written by
+     "Kurulum paketini hazırla", a USB drive, or a hand-copied engine without its Python environment (Hanne's 0.30.0).
+     In the second case the installer runs into the user's own folder and takes every verified file it finds there.
+     The folder stays on this side: the panel only says "install from the chosen folder", never names a path. */
+  let chosenSource = null;
   async function chooseEngine() {
-    const r = await dialog.showOpenDialog(getWindow(), {properties: ['openDirectory'], title: 'Var olan Yüzük motoru klasörü'});
+    const r = await dialog.showOpenDialog(getWindow(), {properties: ['openDirectory'], title: 'Yüzük klasörü (kurulum paketi ya da motor)'});
     if (r.canceled || !r.filePaths[0]) return null;
-    if (!await exists(path.join(r.filePaths[0], 'sunucu.py')) || !await exists(path.join(r.filePaths[0], 'notcikar.py'))) {
-      throw Error('Bu klasörde Yüzük motoru yok. Motor bu bilgisayarda hiç kurulmadıysa "Motoru bu bilgisayara kur" düğmesini kullan.');
+    const dir = r.filePaths[0];
+    if (await exists(path.join(dir, 'sunucu.py')) && await exists(path.join(dir, '.venv', 'Scripts', 'python.exe'))) {
+      await setEngine(dir);
+      return {engine: true, status: await status()};
     }
-    await setEngine(r.filePaths[0]);
-    return status();
+    chosenSource = dir;
+    return {source: true, name: path.basename(dir)};
   }
+  function takeSource() { const s = chosenSource; chosenSource = null; return s; }
 
   async function setEngine(dir) {
     engine = dir;
@@ -163,6 +181,7 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
     if (clean(input.title)) args.push('--baslik', clean(input.title).slice(0, 80));
     if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(input.start || '')) args.push('--baslangic', input.start);
     if (input.language === 'tr' || input.language === 'en') args.push('--dil', input.language);
+    if (full) args.push(...await contextArgs(dir));
     if (input.audit === true && !full) args.push('--denetim');
     const startedAt = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(input.start || '') ? input.start.replace(' ', 'T') : new Date().toISOString();
     const child = spawn(path.join(dir, '.venv', 'Scripts', 'python.exe'), args, {cwd: dir, windowsHide: true,
@@ -255,6 +274,14 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
     Claude Code on this computer and returns a structured note, reminders, and which passed sentences
     were noise (kept as Laya's next training labels). This side only writes the result, with receipts.
   */
+  /* Context (1.5.0): a recording made on this computer is its owner's, so the engine may match its time against the
+     owner's own vault (courses, events, appointments). Engines before 1.5.0 do not know the flag. */
+  async function contextArgs(dir) {
+    if (!await exists(path.join(dir, 'baglam.py'))) return [];
+    const vault = (await core.snapshot()).profile?.vault;
+    return vault && await exists(vault) ? ['--baglam-vault', vault] : [];
+  }
+
   async function synthesize(sessionFile, title) {
     if (synth) return synth(sessionFile, title);
     const dir = await engineDir();
@@ -262,6 +289,7 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
     const args = full ? [path.join(dir, 'sentez.py'), sessionFile, '--tam', '--yazici', await writer()]
       : [path.join(dir, 'sentez.py'), sessionFile, '--etiket'];
     if (clean(title)) args.push('--baslik', clean(title).slice(0, 120));
+    if (full) args.push(...await contextArgs(dir));
     return new Promise((resolve, reject) => {
       const child = spawn(path.join(dir, '.venv', 'Scripts', 'python.exe'), args, {cwd: dir, windowsHide: true,
         env: {...process.env, PYTHONIOENCODING: 'utf-8'}});
@@ -283,23 +311,57 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
     if (!profile?.vault) throw Error('Hafıza klasörü kurulu değil.');
     const vault = profile.vault, language = profile.language === 'en' ? 'en' : 'tr';
     const d = new Date(startedAt);
-    const heading = clean(result.baslik || title || 'Kayıt').replace(/[\\/:*?"<>|#^[\]]+/g, '-').slice(0, 60);
-    let note = `Yüzük · ${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}.${pad(d.getMinutes())} ${heading}.md`;
+    const heading = clean(result.baslik || title || 'Kayıt');
+    // 1.5.0: the phone and this computer write one and the same note — Yüzük/<date> <HHMM> <title>.md in local time,
+    // the name the phone app has always used. Before, this side wrote "Yüzük · …" at the vault root with the hour of a
+    // time-zone-less UTC start, and the phone wrote its own copy: every phone recording twice, three hours apart (28.09.2026).
+    const fileTitle = heading.replace(/[\\/:*?"<>|#^[\]]/g, ' ').replace(/\s+/g, ' ').trim() || 'Not';
+    const day = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`, time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    let note = `Yüzük/${day} ${time.replace(':', '')} ${fileTitle}.md`;
     if (await exists(path.join(vault, note))) note = note.replace(/\.md$/, ` (${Date.now() % 10000}).md`);
-    const titles = [...new Set((await store.list(vault).catch(() => [])).map(n => n.note.replace(/\.md$/, '').split('/').pop())
+    const titles = [...new Set((await store.list(vault).catch(() => [])).filter(n => !/^Yüzük\//.test(n.note))
+      .map(n => n.note.replace(/\.md$/, '').split('/').pop())
       .filter(t => t && t.length >= 4 && !/^(00 -|Yüzük ·)/.test(t)))];
     const md = String(result.not_md || '').trim();
-    const links = titles.filter(t => new RegExp(`(^|[^\\p{L}])${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=$|['’]|[^\\p{L}])`, 'u').test(md)).slice(0, 6);
+    // Context (1.5.0): link only to a note that really exists in this vault.
+    let ctx = result.baglam && typeof result.baglam === 'object' ? result.baglam : null;
+    if (ctx?.not && !(await exists(path.join(vault, `${ctx.not}.md`)).catch(() => false))) ctx = {...ctx, not: null};
+    const ctxFront = frontmatterLine(ctx), ctxLine = contextLine(ctx, language);
+    const ctxName = ctx?.not ? ctx.not.split('/').pop() : null;
+    const links = titles.filter(t => t !== ctxName && new RegExp(`(^|[^\\p{L}])${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=$|['’]|[^\\p{L}])`, 'u').test(md)).slice(0, 6);
     // kaynak: ses — the sentences of this note are a record of a conversation. An agent reading it later treats them as
     // data, never as instructions (Vault Protokolü, "Ses kaydından not").
-    const body = ['---', 'tags: [yüzük]', 'tür: log', `güncellenme: ${new Date().toISOString().slice(0, 10)}`, 'kaynak: ses', '---', '',
-      `# ${clean(result.baslik || title || 'Kayıt')}`, '',
-      `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())} · ${source}`, '',
+    const body = ['---', 'tags: [yüzük]', 'tür: log', `güncellenme: ${new Date().toISOString().slice(0, 10)}`, 'kaynak: ses',
+      `tarih: ${day} ${time}`, ...(ctxFront ? [ctxFront] : []), '---', '',
+      `# ${heading}`, '', ...(ctxLine ? [ctxLine, ''] : []),
+      `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${time} · ${source}`, '',
       md, '', ...(links.length ? [`İlgili: ${links.map(t => `[[${t}]]`).join(' · ')}`, ''] : []), '---',
-      result.yazici
+      result.yazici === 'codex'
+        ? '_Yüzük: konuşma yazıya döküldü; mahrem cümleler çıkarıldı, notu ChatGPT bu bilgisayarda araçları kapalı yazdı. Ses saklanmadı._'
+        : result.yazici
         ? `_Yüzük: konuşma yazıya döküldü; mahrem cümleler çıkarıldı, kalanı notu yazan araca (${WRITERS[result.yazici] || RETIRED_WRITERS[result.yazici] || result.yazici}) Claudian bulutu üzerinden, araçsız bir çağrıyla gitti. Ses saklanmadı._`
         : '_Yüzük: konuşma bu bilgisayarda yazıya döküldü, Laya neyin aktarılacağına karar verdi, notu Claude yazdı. Mahrem ve kapsam dışı cümleler gönderilmedi; ses saklanmadı._', ''].join('\n');
     const receipts = [(await store.mutate(vault, {note, operation: 'create', body, reason}, 'yuzuk')).id];
+    // The course or event note lists its recordings; a reminder points to the recording of its meeting.
+    const recorded = note.replace(/\.md$/, '').split('/').pop();
+    try {
+      if (ctx?.not && ['ders', 'etkinlik'].includes(ctx.tur)) {
+        const cur = await store.read(vault, `${ctx.not}.md`);
+        const after = addRecordRow(cur.body, {date: dayLabel(d), time, heading, link: recorded});
+        if (after) receipts.push((await store.mutate(vault, {note: `${ctx.not}.md`, operation: 'patch', expected_sha256: cur.sha256,
+          old_text: cur.body, new_text: after, reason: `Yüzük kaydı bu ${ctx.tur === 'ders' ? 'derse' : 'etkinliğe'} bağlandı`}, 'yuzuk')).id);
+      } else if (ctx?.tur === 'hatirlatici') {
+        const reminderNote = (await roles.resolve(vault)).roles.reminders;
+        if (reminderNote) {
+          const cur = await store.read(vault, reminderNote);
+          const after = linkReminder(cur.body, ctx.ad, recorded);
+          if (after) receipts.push((await store.mutate(vault, {note: reminderNote, operation: 'patch', expected_sha256: cur.sha256,
+            old_text: cur.body, new_text: after, reason: 'Randevunun Yüzük kaydı bağlandı'}, 'yuzuk')).id);
+        }
+      }
+    } catch {
+      // Linking is a courtesy: a busy or changed note never costs the recording its note.
+    }
     const reminders = [];
     for (const h of result.hatirlaticilar || []) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(h.tarih || '') || !clean(h.metin)) continue;
@@ -367,32 +429,26 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
   /* ---- package for another Windows computer ---- */
   // Only when this computer has a working engine (1.1.0): Hanne's 0.30.0 offered it without one, resolved the target
   // to the app's install folder (EPERM in Program Files) and left an empty Yuzuk-motor in Downloads.
-  async function packageFor() {
-    const src = await engineDir();
-    if (!(await status()).ready) throw Error('Bu bilgisayarda kurulu bir motor yok; paketlenecek bir şey yok. Diğer bilgisayarda "Motoru bu bilgisayara kur" düğmesini kullan.');
-    const r = await dialog.showOpenDialog(getWindow(), {properties: ['openDirectory', 'createDirectory'], title: 'Kurulum paketinin yazılacağı klasör (USB bellek olabilir)',
+  /* "Kurulum paketini hazırla" (1.5.0): a self-contained install folder for another computer (ring-package.cjs).
+     Keys, voiceprints, the cloud link and the vault never enter it. */
+  let packaging = null;
+  async function packageFor({fetch, version} = {}) {
+    if (packaging) throw Error('Paket zaten hazırlanıyor.');
+    const r = await dialog.showOpenDialog(getWindow(), {properties: ['openDirectory', 'createDirectory'], title: 'Paketin yazılacağı klasör (USB bellek olabilir)',
       defaultPath: path.join(os.homedir(), 'Desktop')});
     if (r.canceled || !r.filePaths[0]) return null;
     const {forbiddenTarget} = require('./ring-install.cjs');
     const why = forbiddenTarget(r.filePaths[0]);
     if (why) throw Error(why);
-    const target = path.join(r.filePaths[0], 'Yuzuk-motor');
-    if (await exists(target)) throw Error('Hedefte zaten bir Yuzuk-motor klasörü var.');
-    // Anahtarlar, ses izi ve bulut bağlantısı bu bilgisayara aittir; başka bilgisayara giden pakete girmez.
-    const skip = new Set(['.venv', 'taslaklar', 'gelen', 'gelen_not', 'isler', 'oturumlar', 'profiller', 'egitim', '_arsiv', 'dagitim',
-      '__pycache__', 'sunucu_anahtar.txt', 'cagri_anahtar.txt', 'takvim_anahtar.txt', 'bulut.json', 'bulut_hesap.json', 'eslestirme.json',
-      'sunucu.log', 'sunucu.err.log', 'tunel.log']);
     send('ring:event', {olay: 'paket', durum: 'basladi'});
-    skip.add('.araclar'); skip.add('.kurulum.json');
+    packaging = new AbortController();
     try {
-      await fs.cp(src, target, {recursive: true, filter: p => !skip.has(path.basename(p)) && !path.basename(p).startsWith('onay_')});
+      const here = (await status()).ready ? await engineDir() : null;
+      return await require('./ring-package.cjs').writePackage({folder: r.filePaths[0], version, fetch, engineDir: here, send, signal: packaging.signal});
     } catch (e) {
-      // Our own half-written copy is removed so no empty or partial Yuzuk-motor stays behind.
-      await fs.rm(target, {recursive: true, force: true}).catch(() => {});
-      throw Error(`Paket yazılamadı: ${e.code === 'EPERM' || e.code === 'EACCES' ? 'bu klasöre yazma izni yok' : e.message}`);
-    }
-    send('ring:event', {olay: 'paket', durum: 'bitti', hedef: target});
-    return {target};
+      send('ring:event', {olay: 'paket', durum: 'hata', mesaj: e.code === 'EPERM' || e.code === 'EACCES' ? 'Bu klasöre yazma izni yok.' : e.message});
+      throw e;
+    } finally { packaging = null; }
   }
 
   /* ---- live listening: Laya decides what reaches the LLM; the LLM writes the note at the end ----
@@ -673,18 +729,75 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
     return done;
   }
 
+  /* Reminders whose time has passed are marked as reminded (1.5.0, reminder-sweep.cjs). Runs with the inbox, at most
+     once a minute; writes only when something changed, through the same receipted store. */
+  let sweptAt = 0;
+  async function reminderSweep(now = new Date()) {
+    const profile = (await core.snapshot()).profile;
+    if (!profile?.vault) return [];
+    const note = (await roles.resolve(profile.vault)).roles.reminders;
+    if (!note) return [];
+    const cur = await store.read(profile.vault, note);
+    const {body, closed} = closeDue(cur.body, now, profile.language === 'en' ? 'en' : 'tr');
+    if (!closed.length) return [];
+    await store.mutate(profile.vault, {note, operation: 'patch', expected_sha256: cur.sha256, old_text: cur.body, new_text: body,
+      reason: `Vakti geçen hatırlatıcı kapandı: ${closed.slice(0, 3).join(' · ').slice(0, 300)}`}, 'yuzuk');
+    return closed;
+  }
+
+  /* Phone notification buttons (1.5.0): "Yaptım" closes the reminder, "Yarın tekrar" moves it to tomorrow. The server
+     (sunucu.py) checks the owner and that the item is still open, drops the request into gelen_islem/, and waits for the
+     answer; the line is written here, receipted like every other memory write. */
+  let actionsBusy = false;
+  async function actionsOnce(now = new Date()) {
+    if (actionsBusy) return 0;
+    actionsBusy = true;
+    let done = 0;
+    try {
+      const dir = path.join(await engineDir(), 'gelen_islem');
+      for (const name of await fs.readdir(dir).catch(() => [])) {
+        const id = name.replace(/\.json$/, '');
+        if (!name.endsWith('.json') || !INBOX_ID.test(id)) continue;
+        const file = path.join(dir, name), answer = path.join(dir, `${id}.sonuc.json`);
+        let item;
+        try { item = JSON.parse(await fs.readFile(file, 'utf8')); } catch { continue; }
+        try {
+          const profile = (await core.snapshot()).profile;
+          if (!profile?.vault) throw Error('Hafıza klasörü kurulu değil.');
+          const note = (await roles.resolve(profile.vault)).roles.reminders;
+          if (!note) throw Error('Hatırlatıcılar notu bulunamadı.');
+          const cur = await store.read(profile.vault, note);
+          const r = applyAction(cur.body, item.kimlik, item.islem, now);
+          await store.mutate(profile.vault, {note, operation: 'patch', expected_sha256: cur.sha256, old_text: cur.body, new_text: r.body,
+            reason: item.islem === 'yapildi' ? 'Telefon bildiriminden: yapıldı' : 'Telefon bildiriminden: yarın tekrar hatırlat'}, 'yuzuk');
+          await fs.writeFile(answer, JSON.stringify({tamam: true, tarih: r.date}), 'utf8');
+          done++;
+        } catch (e) {
+          await fs.writeFile(answer, JSON.stringify({hata: e.message}), 'utf8').catch(() => {});
+        }
+        await fs.rm(file, {force: true});
+      }
+    } finally { actionsBusy = false; }
+    return done;
+  }
+
   function inboxStart(ms = 15000) {
     if (inboxTimer) return;
-    inboxOnce().catch(() => {});
-    inboxTimer = setInterval(() => inboxOnce().catch(() => {}), ms);
+    const tick = () => {
+      inboxOnce().catch(() => {});
+      actionsOnce().catch(() => {});
+      if (Date.now() - sweptAt >= 60000) { sweptAt = Date.now(); reminderSweep().catch(() => {}); }
+    };
+    tick();
+    inboxTimer = setInterval(tick, ms);
     inboxTimer.unref?.();
   }
 
   function shutdown() { cancel(); if (live) live.child.kill(); if (voiceJob) voiceJob.child.kill(); if (inboxTimer) clearInterval(inboxTimer); }
 
-  return {status, chooseEngine, setEngine, chooseAudio, run, cancel, drafts, draft, approve, discard, packageFor,
+  return {status, chooseEngine, takeSource, setEngine, chooseAudio, run, cancel, drafts, draft, approve, discard, packageFor,
     devices, outputs, liveStart, liveStop, liveStatus, finishSession, shutdown, engineDir, phoneStatus, phoneStart, phonePair, writers, setWriter,
-    voiceStatus, voiceEnroll, voiceDelete, phoneLive, inboxOnce, inboxStart};
+    voiceStatus, voiceEnroll, voiceDelete, phoneLive, inboxOnce, inboxStart, reminderSweep, actionsOnce};
 }
 
 module.exports = {createRing, draftDir};

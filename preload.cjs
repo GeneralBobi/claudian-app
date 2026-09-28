@@ -29,7 +29,7 @@ contextBridge.exposeInMainWorld('claudian', {
   ringPhoneLive: () => invoke('ring:phone-live'),
   onRingVoice: fn => { const h = (_e, v) => fn(v); ipcRenderer.on('ring:voice', h); return () => ipcRenderer.removeListener('ring:voice', h); },
   ringInstallPlan: () => invoke('ring:install-plan'),
-  ringInstall: () => invoke('ring:install'),
+  ringInstall: options => invoke('ring:install', options),
   ringInstallCancel: () => invoke('ring:install-cancel'),
   ringPrivacy: () => invoke('ring:privacy'),
   onRingInstall: fn => { const h = (_e, v) => fn(v); ipcRenderer.on('ring:install', h); return () => ipcRenderer.removeListener('ring:install', h); },

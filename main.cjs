@@ -538,7 +538,7 @@ async function start() {
   handle('ring:draft', id => ring.draft(id));
   handle('ring:approve', (id, choice) => ring.approve(id, choice));
   handle('ring:discard', id => ring.discard(id));
-  handle('ring:package', () => ring.packageFor());
+  handle('ring:package', () => ring.packageFor({fetch: (url, options) => net.fetch(url, options), version: app.getVersion()}));
   handle('ring:devices', () => ring.devices());
   handle('ring:outputs', () => ring.outputs());
   handle('ring:live-start', options => ring.liveStart(options));
@@ -559,7 +559,8 @@ async function start() {
     services: {add: spec => (backgroundServices || require('./services.cjs').create({dataDir: core.dataDir})).add(spec)},
     setEngine: dir => ring.setEngine(dir), profile: async () => (await core.snapshot()).profile});
   handle('ring:install-plan', () => installer.plan());
-  handle('ring:install', () => installer.install());
+  // 1.5.0: "install from the chosen folder" — the path itself was chosen in the main process (ring:choose-engine).
+  handle('ring:install', options => installer.install({source: options?.fromFolder ? ring.takeSource() : null}));
   handle('ring:install-cancel', () => installer.cancel());
   // "Which data, where, for how long" lives in one place (claudian.app/yuzuk/gizlilik); the app and this screen link to it (madde 8).
   handle('ring:privacy', () => shell.openExternal('https://claudian.app/yuzuk/gizlilik'));

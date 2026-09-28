@@ -52,6 +52,42 @@ const SPEAKER = {file: '3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.o
   size: 28281164, sha256: 'aa3cfc16963a10586a9393f5035d6d6b57e98d358b347f80c2a30bf4f00ceba2'};
 
 const STEPS = ['motor', 'uv', 'python', 'kutuphane', 'whisper', 'konusmaci', 'tunel', 'dogrulama', 'kayit', 'servis'];
+const KNOWN = [UV, CLOUDFLARED, SPEAKER, ...WHISPER];
+const RELEASE_ZIP = /^yuzuk-motor-[0-9.]+\.zip$/;
+
+/*
+  A folder as a source (1.5.0 · 28.09.2026). Boran: "Başka bir bilgisayara kur dediğimde ve klasör seçtiğimde o
+  kurulumun ilerlemesini istiyorum." Whatever folder is chosen — the package written by "Kurulum paketini hazırla", a USB
+  drive, or an engine folder copied by hand before 1.1 (Hanne's) — is searched for the pinned downloads. A file is used
+  only if its size and SHA-256 match the pinned value; everything else is downloaded as usual. Engine code is never
+  taken from the folder unless it is the publisher's signed package with its signed checksum list: a hand-copied
+  engine only lends its models.
+*/
+const SKIP_DIRS = new Set(['.venv', '.git', 'node_modules', '__pycache__', 'site-packages', 'Lib', 'isler', 'gelen', 'oturumlar', 'taslaklar']);
+
+async function sourceIndex(root, {maxEntries = 20000} = {}) {
+  const found = new Map(), bySize = new Map(KNOWN.map(k => [k.size, k]));
+  let release = null, seen = 0;
+  async function walk(dir, depth) {
+    if (depth > 6 || seen > maxEntries) return;
+    let entries;
+    try { entries = await fs.readdir(dir, {withFileTypes: true}); } catch { return; }
+    const names = entries.map(e => e.name);
+    if (!release && names.some(n => RELEASE_ZIP.test(n)) && names.some(n => /^SHA256SUMS-[0-9.]+\.txt\.sig$/.test(n))) release = dir;
+    for (const e of entries) {
+      if (++seen > maxEntries) return;
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name)) await walk(full, depth + 1); continue; }
+      if (!e.isFile()) continue;
+      let size;
+      try { size = (await fs.stat(full)).size; } catch { continue; }
+      const item = bySize.get(size);
+      if (item && !found.has(item.sha256) && e.name === item.file && await sha256File(full) === item.sha256) found.set(item.sha256, full);
+    }
+  }
+  if (root) await walk(root, 0);
+  return {release, files: found, has: item => found.get(item.sha256) || null};
+}
 
 function defaultTarget() {
   const base = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
@@ -125,19 +161,20 @@ function createInstaller({fetch, version, send = () => {}, services, setEngine, 
       running: !!job, resumable: await exists(path.join(target, '.kurulum.json'))};
   }
 
-  async function install({target = defaultTarget()} = {}) {
+  async function install({target = defaultTarget(), source = null} = {}) {
     if (job) throw Error('Kurulum zaten sürüyor.');
     const why = forbiddenTarget(target);
     if (why) throw Error(why);
+    if (source && path.resolve(source) === path.resolve(target)) source = null;
     const controller = new AbortController();
     job = {controller, target};
-    try { return await steps(target, controller.signal); }
+    try { return await steps(target, controller.signal, source); }
     finally { job = null; }
   }
 
   function cancel() { job?.controller.abort(); return {cancelled: !!job}; }
 
-  async function steps(target, signal) {
+  async function steps(target, signal, source = null) {
     const tools = path.join(target, '.araclar');
     const cache = path.join(tools, 'indirilen');
     const stampFile = path.join(target, '.kurulum.json');
@@ -155,13 +192,24 @@ function createInstaller({fetch, version, send = () => {}, services, setEngine, 
       throw Error(`Yeterli boş alan yok: ${(free / GB).toFixed(1)} GB boş, yaklaşık ${(need / GB).toFixed(1)} GB gerekiyor (${target}).`);
     }
     const emit = (adim, extra = {}) => send('ring:install', {adim, adimlar: STEPS, gpu, hedef: target, ...extra});
-    const fetchFile = (item, dest, adim) => download(item.url, dest, {size: item.size, sha256: item.sha256, signal,
-      onBytes: (n, total) => emit(adim, {indirilen: n, toplam: total, dosya: path.basename(dest)})});
+    if (source) emit('motor', {kaynak: source});
+    const local = source ? await sourceIndex(source) : null;
+    const fetchFile = async (item, dest, adim) => {
+      const from = local?.has(item);
+      if (from && !(await exists(dest) && (await fs.stat(dest)).size === item.size)) {
+        emit(adim, {dosya: path.basename(dest), kaynaktan: true});
+        await fs.mkdir(path.dirname(dest), {recursive: true});
+        await fs.copyFile(from, dest + '.part');
+        await fs.rename(dest + '.part', dest);
+      }
+      return download(item.url, dest, {size: item.size, sha256: item.sha256, signal,
+        onBytes: (n, total) => emit(adim, {indirilen: n, toplam: total, dosya: path.basename(dest)})});
+    };
 
     // 1. Engine package from this version's signed release.
     if (stamp.motor !== version) {
       emit('motor');
-      const {zip} = await enginePackage(cache, signal, n => emit('motor', {indirilen: n}));
+      const {zip} = await enginePackage(cache, signal, n => emit('motor', {indirilen: n}), local?.release);
       await run(tar, ['-xf', zip, '-C', target, '--strip-components=1'], {signal});
       if (!await exists(path.join(target, 'sunucu.py')) || !await exists(path.join(target, 'requirements.txt'))) {
         throw Error('Motor paketi beklenen dosyaları içermiyor; kurulum durdu.');
@@ -255,15 +303,16 @@ function createInstaller({fetch, version, send = () => {}, services, setEngine, 
     await done('servis', true);
     await fs.rm(path.join(tools, 'uv-cache'), {recursive: true, force: true}).catch(() => {});
     await fs.rm(cache, {recursive: true, force: true}).catch(() => {});
-    const result = {dir: target, device, gpu, node: node?.dugum || null, approval: node?.onay || null, service: service?.added ?? null};
+    const result = {dir: target, device, gpu, node: node?.dugum || null, approval: node?.onay || null, service: service?.added ?? null,
+      fromFolder: local ? local.files.size + (local.release ? 1 : 0) : 0};
     emit('bitti', result);
     return result;
   }
 
-  async function enginePackage(cache, signal, onBytes) {
-    // Acceptance before a release exists: a local folder with the package, its checksum file and signature. The same
-    // public-key check applies, so only a package the publisher signed passes.
-    const local = process.env.CLAUDIAN_ENGINE_RELEASE_DIR;
+  async function enginePackage(cache, signal, onBytes, folder = null) {
+    // A local folder with the package, its checksum file and signature: a USB package, or acceptance before a release
+    // exists. The same public-key check applies, so only a package the publisher signed passes.
+    const local = folder || process.env.CLAUDIAN_ENGINE_RELEASE_DIR;
     let assets, sums;
     if (local) {
       const names = await fs.readdir(local);
@@ -323,4 +372,5 @@ async function downloadFile(fetch, url, file, {size, sha256, signal, onBytes} = 
     await fs.rename(part, file);
 }
 
-module.exports = {createInstaller, downloadFile, defaultTarget, forbiddenTarget, STEPS, WHISPER, SPEAKER, UV, CLOUDFLARED};
+module.exports = {createInstaller, downloadFile, defaultTarget, forbiddenTarget, sourceIndex, sha256File, STEPS, WHISPER, SPEAKER, UV, CLOUDFLARED,
+  RELEASES};
