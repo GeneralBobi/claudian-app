@@ -98,6 +98,35 @@ class RemoteAuth {
     const request={id,code:crypto.randomBytes(3).toString('hex').toUpperCase(),host,clientId:input.client_id,name:client.name,redirect:input.redirect_uri,state:input.state,challenge:input.code_challenge,resource:input.resource,scope:requested.join(' '),vault:p.vault,expires:this.now()+300000,status:'pending'};
     this.pending.set(id,request); return request;
   }
+  /* 1.8.0 · mcp.claudian.app (planning/PUBLIC-GATEWAY.md). The gateway showed a code; the user typed it into Claudian and
+     approved the request here, on this device. The device registers the gateway's callback as a client, records the
+     grant and mints the authorization code bound to the AI app's own PKCE challenge. The gateway never sees the
+     verifier; tokens are still minted and checked only by this device (token(), authenticate()). */
+  async approveGateway({gateway,name,host,scope,challenge}) {
+    return this.exclusive(async()=>{
+      this.clean();
+      let base; try { base=new URL(gateway); } catch { throw fail('Invalid gateway'); }
+      if(base.protocol!=='https:'&&!(base.protocol==='http:'&&base.hostname==='127.0.0.1'))throw fail('Invalid gateway');
+      if(!hosts.includes(host))throw fail('Unknown AI connection');
+      if(!/^[-_A-Za-z0-9]{43}$/.test(challenge||''))throw fail('Authorization code with S256 PKCE required');
+      const asked=[...new Set(String(scope||scopes[0]).split(' ').filter(Boolean))];
+      if(!asked.includes(scopes[0])||asked.some(s=>!advertised.includes(s)))throw fail('invalid_scope');
+      const requested=asked.filter(s=>s!==OFFLINE);
+      const p=await this.profile();
+      if(!p?.hosts?.some(h=>h.id===host))throw fail('Enable this AI in Claudian first',403);
+      if(requested.includes(scopes[1])&&p.access!=='write')throw fail('Write access is disabled in Claudian',403);
+      const redirect=base.origin+'/oauth/callback', label=String(name||'AI application').slice(0,100);
+      let clientId=Object.entries(this.state.clients).find(([,c])=>c.gateway===base.origin&&c.name===label)?.[0];
+      if(!clientId){clientId=random();this.state.clients[clientId]={name:label,redirects:[redirect],method:'none',secretHash:null,created:this.now(),gateway:base.origin};}
+      const grantId=random();
+      this.state.grants[grantId]={id:grantId,host,clientId,name:label,redirect,resource:this.resource(host),scope:requested.join(' '),vault:p.vault,
+        authorizedAt:new Date(this.now()).toISOString(),revoked:false,via:base.origin};
+      await this.save();
+      const code=random();
+      this.codes.set(hash(code),{grantId,clientId,redirect,challenge,resource:this.resource(host),expires:this.now()+120000});
+      return {code,client_id:clientId,redirect_uri:redirect,resource:this.resource(host)};
+    });
+  }
   requests() { this.clean(); return [...this.pending.values()].filter(p=>p.status==='pending').map(({id,code,host,name,redirect,scope,vault,expires})=>({id,code,host,name,redirect,scope,vault,expires})); }
   async approve(id,allowed) {
     return this.exclusive(async()=>{

@@ -20,7 +20,7 @@
 
 const fs = require('fs/promises');
 const path = require('path');
-const {downloadFile, sourceIndex, WHISPER, SPEAKER, UV, CLOUDFLARED, PYTHON, RELEASES} = require('./ring-install.cjs');
+const {downloadFile, sourceIndex, WHISPER, SPEAKER, UV, CLOUDFLARED, PYTHON, CUBLAS, RELEASES} = require('./ring-install.cjs');
 const {githubUrl, signedSums} = require('./release-key.cjs');
 
 const RELEASE_FILES = [/^Claudian-Setup-[0-9.]+\.exe$/, /^yuzuk-motor-[0-9.]+\.zip$/, /^yuzuk-tekerlek(-gpu)?-[0-9.]+\.zip$/,
@@ -31,6 +31,7 @@ const LAYOUT = [
   {item: UV, rel: path.join('araclar', UV.file)},
   {item: CLOUDFLARED, rel: path.join('araclar', CLOUDFLARED.file)},
   {item: PYTHON, rel: path.join('araclar', 'python', PYTHON.tag, PYTHON.file)},
+  {item: CUBLAS, rel: path.join('araclar', 'tekerlek-gpu', CUBLAS.file)},
 ];
 
 async function exists(p) { try { await fs.access(p); return true; } catch { return false; } }

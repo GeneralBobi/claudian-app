@@ -56,6 +56,8 @@ contextBridge.exposeInMainWorld('claudian', {
   connectorStart: url => invoke('connector:start',url),
   connectorStop: () => invoke('connector:stop'),
   connectorApprove: (id,allowed) => invoke('connector:approve',id,allowed),
+  gatewayClaim: code => invoke('gateway:claim',code),
+  gatewayDecide: (id,allowed,host) => invoke('gateway:decide',id,allowed,host),
   connectorRevoke: id => invoke('connector:revoke',id),
   localAccounts: () => invoke('connections:accounts'),
   connectorExport: provider => invoke('connector:export',provider),

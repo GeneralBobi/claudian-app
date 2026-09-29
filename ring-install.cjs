@@ -58,10 +58,15 @@ const PYTHON = {file: 'cpython-3.12.14+20260924-x86_64-pc-windows-msvc-install_o
   size: 22052624, sha256: 'c5bf8edfe858c1df9891be498b5bbc8761d383df5b9790658b088fea4870433a'};
 // 1.7.0: the libraries come from the publisher's signed release (wheels for Windows, Python 3.12), not from PyPI at
 // install time: the install works offline from a package folder, and only files the publisher signed are installed.
-const WHEELS = /^yuzuk-tekerlek-[0-9.]+\.zip$/, WHEELS_GPU = /^yuzuk-tekerlek-gpu-[0-9.]+\.zip$/;
+const WHEELS = /^yuzuk-tekerlek-[0-9.]+\.zip$/;
+// 1.8.0: the one GPU wheel (cuBLAS, ~530 MB) is the publisher's own file from PyPI, pinned; it is not re-uploaded with
+// every release.
+const CUBLAS = {file: 'nvidia_cublas_cu12-12.9.1.4-py3-none-win_amd64.whl', size: 553153899,
+  url: 'https://files.pythonhosted.org/packages/45/a1/a17fade6567c57452cfc8f967a40d1035bb9301db52f27808167fbb2be2f/nvidia_cublas_cu12-12.9.1.4-py3-none-win_amd64.whl',
+  sha256: '1e5fee10662e6e52bd71dec533fbbd4971bb70a5f24f3bc3793e5c2e9dc640bf'};
 
 const STEPS = ['motor', 'uv', 'python', 'kutuphane', 'whisper', 'konusmaci', 'tunel', 'dogrulama', 'kayit', 'servis'];
-const KNOWN = [UV, CLOUDFLARED, SPEAKER, PYTHON, ...WHISPER];
+const KNOWN = [UV, CLOUDFLARED, SPEAKER, PYTHON, CUBLAS, ...WHISPER];
 const RELEASE_ZIP = /^yuzuk-motor-[0-9.]+\.zip$/;
 
 /*
@@ -262,11 +267,15 @@ function createInstaller({fetch, version, send = () => {}, services, setEngine, 
       // has none; then uv installs from PyPI as before.
       const wheels = path.join(tools, 'tekerlek');
       const cpuZip = await releaseFile(WHEELS, cache, signal, n => emit('kutuphane', {indirilen: n}), local?.release);
-      const gpuZip = gpu ? await releaseFile(WHEELS_GPU, cache, signal, n => emit('kutuphane', {indirilen: n}), local?.release) : null;
-      if (cpuZip && (!gpu || gpuZip)) {
+      if (cpuZip) {
         await fs.rm(wheels, {recursive: true, force: true});
         await fs.mkdir(wheels, {recursive: true});
-        for (const zip of [cpuZip, gpuZip].filter(Boolean)) await run(tar, ['-xf', zip, '-C', wheels], {signal});
+        await run(tar, ['-xf', cpuZip, '-C', wheels], {signal});
+        if (gpu) {
+          const whl = path.join(cache, CUBLAS.file);
+          await fetchFile(CUBLAS, whl, 'kutuphane');
+          await fs.copyFile(whl, path.join(wheels, CUBLAS.file));
+        }
         args.push('--no-index', '--find-links', wheels);
       }
       let count = 0;
@@ -402,4 +411,4 @@ async function downloadFile(fetch, url, file, {size, sha256, signal, onBytes} = 
 }
 
 module.exports = {createInstaller, downloadFile, defaultTarget, forbiddenTarget, sourceIndex, sha256File, STEPS, WHISPER, SPEAKER, UV, CLOUDFLARED,
-  PYTHON, RELEASES};
+  PYTHON, CUBLAS, RELEASES};
