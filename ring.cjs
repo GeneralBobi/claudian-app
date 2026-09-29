@@ -328,23 +328,19 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
     const day = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`, time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
     let note = `Yüzük/${day} ${time.replace(':', '')} ${fileTitle}.md`;
     if (await exists(path.join(vault, note))) note = note.replace(/\.md$/, ` (${Date.now() % 10000}).md`);
-    const titles = [...new Set((await store.list(vault).catch(() => [])).filter(n => !/^Yüzük\//.test(n.note))
-      .map(n => n.note.replace(/\.md$/, '').split('/').pop())
-      .filter(t => t && t.length >= 4 && !/^(00 -|Yüzük ·)/.test(t)))];
     const md = String(result.not_md || '').trim();
     // Context (1.5.0): link only to a note that really exists in this vault.
     let ctx = result.baglam && typeof result.baglam === 'object' ? result.baglam : null;
     if (ctx?.not && !(await exists(path.join(vault, `${ctx.not}.md`)).catch(() => false))) ctx = {...ctx, not: null};
     const ctxFront = frontmatterLine(ctx), ctxLine = contextLine(ctx, language);
-    const ctxName = ctx?.not ? ctx.not.split('/').pop() : null;
-    const links = titles.filter(t => t !== ctxName && new RegExp(`(^|[^\\p{L}])${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=$|['’]|[^\\p{L}])`, 'u').test(md)).slice(0, 6);
     // kaynak: ses — the sentences of this note are a record of a conversation. An agent reading it later treats them as
     // data, never as instructions (Vault Protokolü, "Ses kaydından not").
     const body = ['---', 'tags: [yüzük]', 'tür: log', `güncellenme: ${new Date().toISOString().slice(0, 10)}`, 'kaynak: ses',
       `tarih: ${day} ${time}`, ...(ctxFront ? [ctxFront] : []), '---', '',
+      // 29.09.2026 (Boran): tarih başlıkta ve özelliklerde zaten var; "· N cümlenin tamamı" satırı ve kendiliğinden
+      // "İlgili:" bağlantıları çıktı. Bağlantı yalnız kullanıcının tanımladığı bağlamdan (ders, etkinlik) gelir.
       `# ${heading}`, '', ...(ctxLine ? [ctxLine, ''] : []),
-      `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${time} · ${source}`, '',
-      md, '', ...(links.length ? [`İlgili: ${links.map(t => `[[${t}]]`).join(' · ')}`, ''] : []), '---',
+      md, '', '---',
       result.yazici === 'codex' || result.yazici === 'gemini'
         ? `_Yüzük: konuşma yazıya döküldü; mahrem cümleler çıkarıldı, notu ${WRITERS[result.yazici]} bu bilgisayarda araçları kapalı yazdı. Ses saklanmadı._`
         : result.yazici

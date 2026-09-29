@@ -59,7 +59,8 @@ test("approval sends only the ticked sentences to the note writer and writes its
   const body = await fs.readFile(path.join(vault, r.note), 'utf8');
   assert.ok(body.includes('# Örnek not başlığı'));
   assert.ok(body.includes('- Birleştirilmiş madde, Claudian ile ilgili (örnek).'));
-  assert.ok(body.includes('İlgili: [[Claudian]]'));
+  assert.ok(!body.includes('İlgili:'), 'no automatic related links (29.09.2026)');
+  assert.ok(!/cümlenin|cümle duyuldu|dk kayıt/.test(body), 'no "N sentences" line under the title');
   assert.ok(!body.includes('Tanım cümlesi (örnek)'), "Laya's selected sentences are not pasted into the note");
   assert.match(await fs.readFile(path.join(vault, 'Hatırlatıcılar.md'), 'utf8'), /Ödev teslimi \(örnek\).*7 Ekim 2026/);
   const receipts = await store.history(vault);
@@ -89,7 +90,7 @@ test('a live session is written by the note writer when listening stops', async 
     .map(x => JSON.stringify(x)).join('\n') + '\n');
   const r = await ring.finishSession(session, Date.parse('2026-09-23T11:00:00'), {cumle: 5, aktarilan: 1, baglam: 0, mahrem: 1});
   assert.deepEqual(calls[0], ['Aktarılan cümle (örnek)']);
-  assert.ok((await fs.readFile(path.join(vault, r.note), 'utf8')).includes('5 cümle duyuldu, 1 mahrem çıkarıldı'));
+  assert.ok(!(await fs.readFile(path.join(vault, r.note), 'utf8')).includes('cümle duyuldu'), 'no sentence counts in the note');
   assert.equal(await ring.finishSession(session, Date.now(), {cumle: 3, aktarilan: 0}), null, 'nothing passed, no note');
 });
 
