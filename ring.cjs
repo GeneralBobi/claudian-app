@@ -341,13 +341,10 @@ function createRing({core, send, dialog, getWindow, notify, alert, synth}) {
       `tarih: ${day} ${time}`, ...(ctxFront ? [ctxFront] : []), '---', '',
       // 29.09.2026 (Boran): tarih başlıkta ve özelliklerde zaten var; "· N cümlenin tamamı" satırı ve kendiliğinden
       // "İlgili:" bağlantıları çıktı. Bağlantı yalnız kullanıcının tanımladığı bağlamdan (ders, etkinlik) gelir.
+      // 1.8.1: sondaki "_Yüzük: konuşma yazıya döküldü … Ses saklanmadı._" satırı da çıktı; süre, cümle ve yazan
+      // Yüzük'te görünür, notta yalnız içerik kalır.
       `# ${heading}`, '', ...(ctxLine ? [ctxLine, ''] : []),
-      md, '', '---',
-      result.yazici === 'codex' || result.yazici === 'gemini'
-        ? `_Yüzük: konuşma yazıya döküldü; mahrem cümleler çıkarıldı, notu ${WRITERS[result.yazici]} bu bilgisayarda araçları kapalı yazdı. Ses saklanmadı._`
-        : result.yazici
-        ? `_Yüzük: konuşma yazıya döküldü; mahrem cümleler çıkarıldı, kalanı notu yazan araca (${WRITERS[result.yazici] || RETIRED_WRITERS[result.yazici] || result.yazici}) Claudian bulutu üzerinden, araçsız bir çağrıyla gitti. Ses saklanmadı._`
-        : '_Yüzük: konuşma bu bilgisayarda yazıya döküldü, Laya neyin aktarılacağına karar verdi, notu Claude yazdı. Mahrem ve kapsam dışı cümleler gönderilmedi; ses saklanmadı._', ''].join('\n');
+      md, ''].join('\n');
     const receipts = [(await store.mutate(vault, {note, operation: 'create', body, reason}, 'yuzuk')).id];
     // The course or event note lists its recordings; a reminder points to the recording of its meeting.
     const recorded = note.replace(/\.md$/, '').split('/').pop();
