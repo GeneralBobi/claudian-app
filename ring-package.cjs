@@ -10,6 +10,8 @@
 
     Claudian-Setup-<v>.exe, yuzuk-motor-<v>.zip, SHA256SUMS-<v>.txt(.sig)   the publisher's signed release
     modeller/…, araclar/uv.zip, araclar/cloudflared.exe                     the pinned downloads (~1.7 GB)
+    araclar/python/<tag>/cpython-….tar.gz, yuzuk-tekerlek(-gpu)-<v>.zip    1.7.0: Python and the signed libraries,
+                                                                           so the other computer installs offline
 
   On the other computer: run Claudian-Setup, then in Yüzük choose "Klasörden kur" and pick this folder. The installer
   takes every file whose SHA-256 matches (ring-install.cjs, sourceIndex) and downloads only the rest; engine code is
@@ -18,15 +20,17 @@
 
 const fs = require('fs/promises');
 const path = require('path');
-const {downloadFile, sourceIndex, WHISPER, SPEAKER, UV, CLOUDFLARED, RELEASES} = require('./ring-install.cjs');
+const {downloadFile, sourceIndex, WHISPER, SPEAKER, UV, CLOUDFLARED, PYTHON, RELEASES} = require('./ring-install.cjs');
 const {githubUrl, signedSums} = require('./release-key.cjs');
 
-const RELEASE_FILES = [/^Claudian-Setup-[0-9.]+\.exe$/, /^yuzuk-motor-[0-9.]+\.zip$/, /^SHA256SUMS-[0-9.]+\.txt$/, /^SHA256SUMS-[0-9.]+\.txt\.sig$/];
+const RELEASE_FILES = [/^Claudian-Setup-[0-9.]+\.exe$/, /^yuzuk-motor-[0-9.]+\.zip$/, /^yuzuk-tekerlek(-gpu)?-[0-9.]+\.zip$/,
+  /^SHA256SUMS-[0-9.]+\.txt$/, /^SHA256SUMS-[0-9.]+\.txt\.sig$/];
 const LAYOUT = [
   ...WHISPER.map(item => ({item, rel: path.join('modeller', 'whisper-large-v3-turbo', item.file)})),
   {item: SPEAKER, rel: path.join('modeller', 'konusmaci', SPEAKER.file)},
   {item: UV, rel: path.join('araclar', UV.file)},
   {item: CLOUDFLARED, rel: path.join('araclar', CLOUDFLARED.file)},
+  {item: PYTHON, rel: path.join('araclar', 'python', PYTHON.tag, PYTHON.file)},
 ];
 
 async function exists(p) { try { await fs.access(p); return true; } catch { return false; } }

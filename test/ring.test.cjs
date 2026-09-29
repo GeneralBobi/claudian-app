@@ -41,8 +41,9 @@ async function setup(t, opts = {}) {
     return {baslik: 'Örnek not başlığı', not_md: '### Konu (örnek)\n- Birleştirilmiş madde, Claudian ile ilgili (örnek).',
       hatirlaticilar: [{tarih: '2026-10-07', metin: 'Ödev teslimi (örnek)'}], gereksiz: [3], maliyet_usd: 0.01};
   };
-  const ring = createRing({core, send: () => {}, dialog: {}, getWindow: () => null, synth});
-  return {vault, engine, ring, calls};
+  const alerts = [];
+  const ring = createRing({core, send: () => {}, dialog: {}, getWindow: () => null, synth, alert: (...a) => alerts.push(a)});
+  return {vault, engine, ring, calls, alerts, data};
 }
 
 test('a draft id cannot leave the drafts folder', () => {
@@ -242,4 +243,17 @@ test('context: an appointment gets a link to its recording', async t => {
   const all = (await store.list(vault)).map(n => n.note);
   const reminders = (await Promise.all(all.map(n => fs.readFile(path.join(vault, n), 'utf8')))).find(b => b.includes('claudian_role: reminders'));
   assert.match(reminders, /Örnek Şirket toplantısı · saat 19:00\*\* · \*\*5 Ekim 2026\*\*\n  → kayıt: \[\[2026-10-05 0832 Başlık etiketleri\]\]/);
+});
+
+test('approvals (1.7.0): a device waiting for approval becomes one notification that opens the admin panel', async t => {
+  const {engine, ring, alerts} = await setup(t);
+  assert.deepEqual(await ring.approvalsOnce(), [], 'no file, nothing to show');
+  await fs.writeFile(path.join(engine, 'bekleyen_onay.json'), JSON.stringify([{tur: 'telefon', id: 'c_ornek1', ad: 'Android telefon', hesap_ad: 'Deniz'}]));
+  assert.equal((await ring.approvalsOnce()).length, 1);
+  assert.deepEqual(alerts[0], ['Onay bekliyor · telefon', 'Android telefon · Deniz', 'https://admin.claudian.app']);
+  assert.equal((await ring.approvalsOnce()).length, 0, 'the same device is not announced twice');
+  await fs.writeFile(path.join(engine, 'bekleyen_onay.json'), JSON.stringify([{tur: 'bilgisayar', id: 'd_ornek2', ad: null}]));
+  await ring.approvalsOnce();
+  assert.deepEqual(alerts[1], ['Onay bekliyor · bilgisayar', 'Bilgisayar', 'https://admin.claudian.app']);
+  assert.equal(alerts.length, 2);
 });

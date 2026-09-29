@@ -32,6 +32,11 @@ const localStamp = iso => { const d = new Date(iso); const p = n => String(n).pa
 
 function ringBind() {
   if (ring.bound) return; ring.bound = true;
+  api.onRingWriterSetup?.(ev => {
+    const W = ring.writerSetup ||= {};
+    W.progress = ev.adim === 'indiriliyor' ? ev : null;
+    if (view === 'ring' && (ev.adim !== 'indiriliyor' || !W.drawn || Date.now() - W.drawn > 500)) { W.drawn = Date.now(); renderRing(); }
+  });
   api.onRingEvent(async ev => {
     if (ev.olay === 'paket') return; // package progress has its own listener below
     if (ev.olay === 'alici') { ring.status = await api.ringStatus(); if (view === 'ring') await renderRing(); return; }
@@ -134,6 +139,14 @@ async function ringAction(a, el) {
   else if (a === 'install-cancel') await api.ringInstallCancel();
   else if (a === 'privacy') { await api.ringPrivacy(); return; }
   else if (a === 'writer') { await api.ringSetWriter(el.dataset.id); }
+  else if (a === 'writer-install' || a === 'writer-signin') {
+    const W = ring.writerSetup ||= {};
+    W.busy = el.dataset.id; W.error = null; W.progress = null;
+    await renderRing();
+    try { await (a === 'writer-install' ? api.ringWriterInstall(el.dataset.id) : api.ringWriterSignIn(el.dataset.id)); }
+    catch (e) { W.error = e.message; }
+    finally { W.busy = null; }
+  }
   else if (a === 'voice-start') {
     const V = ring.voice;
     const mic = document.querySelector('#ring-voice-mic');
@@ -270,7 +283,17 @@ function writerPicker(s) {
   const chips = w.list.map(x => `<button data-ring="writer" data-id="${esc(x.id)}" class="${x.id === w.chosen ? 'primary' : ''}" ${x.installed ? '' : 'disabled'} title="${x.installed ? '' : esc(t('Not installed on this computer', 'Bu bilgisayarda kurulu değil'))}">${esc(x.name)}</button>`).join('');
   const waiting = w.approval === 'bekliyor' ? `<p class="subtle">${t('Waiting for approval', 'Onay bekliyor')}</p>` : '';
   const none = !w.list.some(x => x.installed) ? `<p class="subtle">${t('Not connected to the cloud', 'Buluta bağlı değil')}</p>` : '';
-  return `<div class="ring-writer"><span>${t('Note written by', 'Notu yazan')}</span><div class="row">${chips}</div>${waiting}${none}</div>`;
+  // 1.7.0: a writer that is not ready gets its next step as one button: install, then sign in.
+  const W = ring.writerSetup || {}, st = W.status || {};
+  const setup = w.list.filter(x => !x.installed && st[x.id]).map(x => {
+    const need = st[x.id].installed ? 'writer-signin' : 'writer-install';
+    const label = need === 'writer-install' ? t(`Install ${x.name}`, `${x.name}'yi kur`) : t(`Sign in to ${x.name}`, `${x.name} girişi`);
+    const pct = W.progress?.id === x.id && W.progress.toplam ? ` · %${Math.round(100 * W.progress.indirilen / W.progress.toplam)}` : '';
+    return `<button data-ring="${need}" data-id="${esc(x.id)}" ${W.busy ? 'disabled' : ''}>${esc(label)}${W.busy === x.id ? esc(pct || ' …') : ''}</button>`;
+  }).join('');
+  const setupRow = setup ? `<div class="row">${setup}</div>` : '';
+  const err = W.error ? `<p class="subtle">${esc(W.error)}</p>` : '';
+  return `<div class="ring-writer"><span>${t('Note written by', 'Notu yazan')}</span><div class="row">${chips}</div>${setupRow}${err}${waiting}${none}</div>`;
 }
 
 function engineLine(s) {
@@ -435,6 +458,7 @@ function devices(s) {
 async function renderRing() {
   ringBind();
   ring.status = await api.ringStatus();
+  (ring.writerSetup ||= {}).status = await api.ringWriterSetup?.().catch(() => null) ?? null;
   ring.phone = await api.ringPhoneStatus?.().catch(() => null) ?? null;
   ring.phoneLive = ring.phone?.cloud ? await api.ringPhoneLive?.().catch(() => null) ?? null : null;
   if (!ring.voice.running) ring.voice.status = await api.ringVoiceStatus?.().catch(() => null) ?? null;

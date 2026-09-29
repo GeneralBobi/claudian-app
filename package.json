@@ -1,7 +1,7 @@
 {
   "name": "claudian-desktop",
   "productName": "Claudian",
-  "version": "1.6.3",
+  "version": "1.7.0",
   "private": true,
   "description": "Claudian ortak hafÄ±za uygulamasÄ±",
   "author": "Claudian",
@@ -31,6 +31,7 @@
       "ring-context.cjs",
       "reminder-sweep.cjs",
       "ring-package.cjs",
+      "writer-install.cjs",
       "local-accounts.cjs",
       "secure-tunnel.cjs",
       "secure-tunnel-entry.cjs",

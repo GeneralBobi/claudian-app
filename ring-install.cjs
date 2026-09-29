@@ -51,8 +51,17 @@ const SPEAKER = {file: '3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.o
   url: 'https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx',
   size: 28281164, sha256: 'aa3cfc16963a10586a9393f5035d6d6b57e98d358b347f80c2a30bf4f00ceba2'};
 
+// 1.7.0: Python itself, pinned (uv 0.12.19 installs this build for "3.12"). uv takes it from a local mirror folder
+// (UV_PYTHON_INSTALL_MIRROR), so a package on a USB drive installs Python without the internet.
+const PYTHON = {file: 'cpython-3.12.14+20260924-x86_64-pc-windows-msvc-install_only_stripped.tar.gz', tag: '20260924',
+  url: 'https://releases.astral.sh/github/python-build-standalone/releases/download/20260924/cpython-3.12.14%2B20260924-x86_64-pc-windows-msvc-install_only_stripped.tar.gz',
+  size: 22052624, sha256: 'c5bf8edfe858c1df9891be498b5bbc8761d383df5b9790658b088fea4870433a'};
+// 1.7.0: the libraries come from the publisher's signed release (wheels for Windows, Python 3.12), not from PyPI at
+// install time: the install works offline from a package folder, and only files the publisher signed are installed.
+const WHEELS = /^yuzuk-tekerlek-[0-9.]+\.zip$/, WHEELS_GPU = /^yuzuk-tekerlek-gpu-[0-9.]+\.zip$/;
+
 const STEPS = ['motor', 'uv', 'python', 'kutuphane', 'whisper', 'konusmaci', 'tunel', 'dogrulama', 'kayit', 'servis'];
-const KNOWN = [UV, CLOUDFLARED, SPEAKER, ...WHISPER];
+const KNOWN = [UV, CLOUDFLARED, SPEAKER, PYTHON, ...WHISPER];
 const RELEASE_ZIP = /^yuzuk-motor-[0-9.]+\.zip$/;
 
 /*
@@ -232,10 +241,13 @@ function createInstaller({fetch, version, send = () => {}, services, setEngine, 
       UV_PYTHON_PREFERENCE: 'only-managed', UV_NO_CONFIG: '1', UV_LINK_MODE: 'copy', UV_NO_PROGRESS: '1'};
     const python = path.join(target, '.venv', 'Scripts', 'python.exe');
 
-    // 3. Python 3.12, managed by uv inside the engine folder.
+    // 3. Python 3.12, managed by uv inside the engine folder, from the pinned archive (package folder or download).
     if (!stamp.python || !await exists(python)) {
       emit('python');
-      await run(uv, ['venv', '.venv', '--python', '3.12', '--allow-existing'], {cwd: target, env: uvEnv, signal});
+      const mirror = path.join(tools, 'python-ayna');
+      await fetchFile(PYTHON, path.join(mirror, PYTHON.tag, PYTHON.file), 'python');
+      await run(uv, ['venv', '.venv', '--python', '3.12', '--allow-existing'], {cwd: target, signal,
+        env: {...uvEnv, UV_PYTHON_INSTALL_MIRROR: require('url').pathToFileURL(mirror).href}});
       await done('python');
     }
 
@@ -246,6 +258,17 @@ function createInstaller({fetch, version, send = () => {}, services, setEngine, 
       emit('kutuphane');
       const args = ['pip', 'install', '--python', python, '-r', 'requirements.txt'];
       if (gpu && await exists(path.join(target, 'requirements-gpu.txt'))) args.push('-r', 'requirements-gpu.txt');
+      // Signed wheels from the release (or the package folder): nothing is fetched from PyPI. A release before 1.7.0
+      // has none; then uv installs from PyPI as before.
+      const wheels = path.join(tools, 'tekerlek');
+      const cpuZip = await releaseFile(WHEELS, cache, signal, n => emit('kutuphane', {indirilen: n}), local?.release);
+      const gpuZip = gpu ? await releaseFile(WHEELS_GPU, cache, signal, n => emit('kutuphane', {indirilen: n}), local?.release) : null;
+      if (cpuZip && (!gpu || gpuZip)) {
+        await fs.rm(wheels, {recursive: true, force: true});
+        await fs.mkdir(wheels, {recursive: true});
+        for (const zip of [cpuZip, gpuZip].filter(Boolean)) await run(tar, ['-xf', zip, '-C', wheels], {signal});
+        args.push('--no-index', '--find-links', wheels);
+      }
       let count = 0;
       await run(uv, args, {cwd: target, env: uvEnv, signal, onLine: line => { if (/^(Prepared|Installed|Downloading|Built)/.test(line)) emit('kutuphane', {satir: line.slice(0, 120), n: ++count}); }});
       await done('kutuphane', libs);
@@ -309,7 +332,13 @@ function createInstaller({fetch, version, send = () => {}, services, setEngine, 
     return result;
   }
 
-  async function enginePackage(cache, signal, onBytes, folder = null) {
+  /** A signed release asset matching `pattern`, or null if this release has none (older releases). */
+  async function releaseFile(pattern, cache, signal, onBytes, folder = null) {
+    try { return (await enginePackage(cache, signal, onBytes, folder, pattern)).zip; }
+    catch (e) { if (e.missing) return null; throw e; }
+  }
+
+  async function enginePackage(cache, signal, onBytes, folder = null, pattern = /^yuzuk-motor-[0-9.]+\.zip$/) {
     // A local folder with the package, its checksum file and signature: a USB package, or acceptance before a release
     // exists. The same public-key check applies, so only a package the publisher signed passes.
     const local = folder || process.env.CLAUDIAN_ENGINE_RELEASE_DIR;
@@ -330,8 +359,8 @@ function createInstaller({fetch, version, send = () => {}, services, setEngine, 
       assets = release.assets || [];
       sums = await signedSums(release, fetch);
     }
-    const asset = assets.find(a => /^yuzuk-motor-[0-9.]+\.zip$/.test(String(a.name || '')));
-    if (!asset) throw Error('Bu sürümde motor paketi yok.');
+    const asset = assets.find(a => pattern.test(String(a.name || '')));
+    if (!asset) throw Object.assign(Error('Bu sürümde motor paketi yok.'), {missing: true});
     const expected = sums.get(asset.name);
     if (!expected) throw Error('Motor paketi imzalı sağlama listesinde yok; açılmadı.');
     const zip = path.join(cache, asset.name);
@@ -373,4 +402,4 @@ async function downloadFile(fetch, url, file, {size, sha256, signal, onBytes} = 
 }
 
 module.exports = {createInstaller, downloadFile, defaultTarget, forbiddenTarget, sourceIndex, sha256File, STEPS, WHISPER, SPEAKER, UV, CLOUDFLARED,
-  RELEASES};
+  PYTHON, RELEASES};

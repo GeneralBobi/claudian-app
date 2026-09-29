@@ -50,7 +50,7 @@ function draftDir(engine, id) {
 const clean = v => String(v ?? '').replace(/\s+/g, ' ').trim();
 
 
-function createRing({core, send, dialog, getWindow, notify, synth}) {
+function createRing({core, send, dialog, getWindow, notify, alert, synth}) {
   let engine = null, job = null;
   const settingsFile = () => path.join(core.dataDir, 'ring.json');
 
@@ -90,7 +90,9 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
     if (id !== 'codex' || !await exists(path.join(await engineDir(), 'baglam.py'))) return false; // 1.5.0 engine and up
     const home = process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
     const cli = path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'npm', 'codex.cmd');
-    return await exists(path.join(home, 'auth.json')) && await exists(cli);
+    // 1.7.0: or the Codex that Claudian installed (writer-install.cjs); the engine looks there too.
+    const own = path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'Claudian', 'araclar', 'codex', 'codex.exe');
+    return await exists(path.join(home, 'auth.json')) && (await exists(cli) || await exists(own));
   }
 
   // Test phase: a newly installed computer waits for approval before the cloud writes notes for it (1.1.0).
@@ -786,11 +788,34 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
     return done;
   }
 
+  /* 1.7.0: devices waiting for approval. The cloud lists them only in the heartbeat answer of the admin's own node; the
+     engine writes bekleyen_onay.json. Each new one becomes a notification once; clicking it opens the admin panel. */
+  async function approvalsOnce() {
+    let list;
+    try { list = JSON.parse(await fs.readFile(path.join(await engineDir(), 'bekleyen_onay.json'), 'utf8')); } catch { return []; }
+    if (!Array.isArray(list)) return [];
+    const seenFile = path.join(core.dataDir, 'onay-bildirildi.json');
+    let seen = [];
+    try { seen = JSON.parse(await fs.readFile(seenFile, 'utf8')); } catch {}
+    const fresh = list.filter(x => x && typeof x.id === 'string' && !seen.includes(x.id));
+    for (const x of fresh) {
+      const who = [x.ad || (x.tur === 'bilgisayar' ? 'Bilgisayar' : 'Telefon'), x.hesap_ad].filter(Boolean).join(' · ');
+      alert?.(`Onay bekliyor · ${x.tur === 'bilgisayar' ? 'bilgisayar' : 'telefon'}`, who, 'https://admin.claudian.app');
+    }
+    const ids = list.map(x => x?.id).filter(Boolean);
+    if (fresh.length || seen.some(id => !ids.includes(id))) {
+      await fs.mkdir(core.dataDir, {recursive: true});
+      await fs.writeFile(seenFile, JSON.stringify([...new Set([...seen.filter(id => ids.includes(id)), ...ids])]), 'utf8');
+    }
+    return fresh;
+  }
+
   function inboxStart(ms = 15000) {
     if (inboxTimer) return;
     const tick = () => {
       inboxOnce().catch(() => {});
       actionsOnce().catch(() => {});
+      approvalsOnce().catch(() => {});
       if (Date.now() - sweptAt >= 60000) { sweptAt = Date.now(); reminderSweep().catch(() => {}); }
     };
     tick();
@@ -802,7 +827,7 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
 
   return {status, chooseEngine, takeSource, setEngine, chooseAudio, run, cancel, drafts, draft, approve, discard, packageFor,
     devices, outputs, liveStart, liveStop, liveStatus, finishSession, shutdown, engineDir, phoneStatus, phoneStart, phonePair, writers, setWriter,
-    voiceStatus, voiceEnroll, voiceDelete, phoneLive, inboxOnce, inboxStart, reminderSweep, actionsOnce};
+    voiceStatus, voiceEnroll, voiceDelete, phoneLive, inboxOnce, inboxStart, reminderSweep, actionsOnce, approvalsOnce};
 }
 
 module.exports = {createRing, draftDir};

@@ -525,7 +525,14 @@ async function start() {
   // Yüzük: the note-taking ring's local engine. Drafts reach memory only through ring:approve.
   const ring = require('./ring.cjs').createRing({core, dialog, getWindow: () => win,
     send: (channel, payload) => { if (win && !win.isDestroyed()) win.webContents.send(channel, payload); },
-    notify: (title, body) => { if (Notification.isSupported() && !win?.isFocused()) new Notification({title, body}).show(); }});
+    notify: (title, body) => { if (Notification.isSupported() && !win?.isFocused()) new Notification({title, body}).show(); },
+    // 1.7.0: a new device waiting for approval; clicking opens the admin panel (Cloudflare Access login).
+    alert: (title, body, url) => {
+      if (!Notification.isSupported()) return;
+      const toast = new Notification({title, body});
+      if (url) toast.on('click', () => shell.openExternal(url));
+      toast.show();
+    }});
   ringModule = ring;
   // Phone recordings reach this vault through the engine's inbox (0.29); smoke runs never touch it.
   if (!smoke && !process.env.CLAUDIAN_ACCEPTANCE_ROOT) ring.inboxStart();
@@ -551,6 +558,12 @@ async function start() {
   handle('ring:voice-delete', () => ring.voiceDelete());
   handle('ring:phone-live', () => ring.phoneLive());
   handle('ring:writers', () => ring.writers());
+  // 1.7.0: ChatGPT and Gemini writers installed and signed in from Claudian (writer-install.cjs).
+  const writerSetup = require('./writer-install.cjs').createWriterSetup({fetch: (url, options) => net.fetch(url, options),
+    send: (channel, payload) => { if (win && !win.isDestroyed()) win.webContents.send(channel, payload); }});
+  handle('ring:writer-setup', () => writerSetup.status());
+  handle('ring:writer-install', id => writerSetup.install(String(id)));
+  handle('ring:writer-signin', id => writerSetup.signIn(String(id)));
   handle('ring:set-writer', id => ring.setWriter(id));
   // 1.1.0 (madde 1): "Install the engine on this computer". Downloads go to %LOCALAPPDATA%\Claudian\yuzuk-motor only.
   const installer = require('./ring-install.cjs').createInstaller({
