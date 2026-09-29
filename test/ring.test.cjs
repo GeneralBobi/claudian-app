@@ -113,22 +113,23 @@ test('phone card: an engine without sunucu.py is reported as not capable, and no
   assert.ok(!JSON.stringify(s).includes('gizli-anahtar-ornek'), 'the server key stays in the engine folder');
 });
 
-test('note writer (1.5.0): Claude in the cloud, ChatGPT on this computer with its tools off; Gemini stays closed', async t => {
+test('note writer (1.6.0): Claude in the cloud, ChatGPT and Gemini on this computer with their tools off', async t => {
   const {engine, ring} = await setup(t);
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'codex-home-')), appdata = await fs.mkdtemp(path.join(os.tmpdir(), 'appdata-'));
-  const env = {CODEX_HOME: process.env.CODEX_HOME, APPDATA: process.env.APPDATA};
-  process.env.CODEX_HOME = home; process.env.APPDATA = appdata;
+  const localapp = await fs.mkdtemp(path.join(os.tmpdir(), 'localapp-'));
+  const env = {CODEX_HOME: process.env.CODEX_HOME, APPDATA: process.env.APPDATA, LOCALAPPDATA: process.env.LOCALAPPDATA};
+  process.env.CODEX_HOME = home; process.env.APPDATA = appdata; process.env.LOCALAPPDATA = localapp;
   t.after(async () => {
     for (const [k, v] of Object.entries(env)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
     await fs.rm(home, {recursive: true, force: true}); await fs.rm(appdata, {recursive: true, force: true});
+    await fs.rm(localapp, {recursive: true, force: true});
   });
   const w = await ring.writers();
   assert.equal(w.chosen, 'claude', 'default writer');
-  assert.deepEqual(w.list.map(x => x.id), ['claude', 'codex']);
-  assert.deepEqual(w.list.map(x => x.installed), [false, false], 'no cloud, no signed-in Codex: neither is available');
+  assert.deepEqual(w.list.map(x => x.id), ['claude', 'codex', 'gemini']);
+  assert.deepEqual(w.list.map(x => x.installed), [false, false, false], 'no cloud, no signed-in Codex, no agy: none is available');
   await fs.writeFile(path.join(engine, 'bulut.json'), JSON.stringify({url: 'https://yuzuk-api.claudian.app'}));
   assert.equal((await ring.writers()).list[0].installed, true);
-  await assert.rejects(ring.setWriter('gemini'), /kapalı/);
   await assert.rejects(ring.setWriter('bilinmeyen'), /Bilinmeyen/);
   await ring.setWriter('codex');
   assert.equal((await ring.writers()).chosen, 'claude', 'ChatGPT chosen but not signed in here: the cloud writes');
@@ -140,6 +141,14 @@ test('note writer (1.5.0): Claude in the cloud, ChatGPT on this computer with it
   const now = await ring.writers();
   assert.equal(now.chosen, 'codex', 'the saved ChatGPT choice holds once it can run');
   assert.equal(now.list[1].installed, true);
+  // Gemini: agy installed, but a 1.5 engine has no tool-locked Gemini path; a 1.6 engine does.
+  await fs.mkdir(path.join(localapp, 'agy', 'bin'), {recursive: true});
+  await fs.writeFile(path.join(localapp, 'agy', 'bin', 'agy.exe'), '');
+  await fs.writeFile(path.join(engine, 'yazicilar.py'), '# 1.5.0\n');
+  assert.equal((await ring.writers()).list[2].installed, false, 'an engine before 1.6.0 cannot run Gemini without tools');
+  await fs.writeFile(path.join(engine, 'yazicilar.py'), 'def agy_yolu(): ...\n');
+  await ring.setWriter('gemini');
+  assert.equal((await ring.writers()).chosen, 'gemini');
 });
 
 test('voice notes carry kaynak: ses so a later reader treats them as data', async t => {

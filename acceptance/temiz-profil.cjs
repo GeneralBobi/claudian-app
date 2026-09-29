@@ -4,6 +4,10 @@
   install from nothing → start the engine → quick tunnel → register → pair a phone → a transcript becomes a note.
 
     node acceptance/temiz-profil.cjs <release dir with yuzuk-motor-*.zip + SHA256SUMS.txt(.sig)> [--birak]
+    node acceptance/temiz-profil.cjs --paket <engine folder to lend models> [--surum 1.5.0] [--birak]
+
+  --paket (1.5.0): "Kurulum paketini hazırla" first writes a real Yuzuk-kurulum folder from the published GitHub
+  release and the given engine's models, then the clean profile installs with "Klasörden kur" from that folder.
 
   "Clean" means: the user profile folders (LOCALAPPDATA, APPDATA, USERPROFILE, TEMP) point into a new empty folder
   whose name has a space and Turkish letters (usernames like "Boran Birtanır" exist), and PATH holds only Windows
@@ -15,7 +19,10 @@ const fs = require('fs/promises');
 const path = require('path');
 const {spawn, execFileSync} = require('child_process');
 
-const releaseDir = path.resolve(process.argv[2] || '');
+const argv = process.argv.slice(2);
+const packageFrom = argv.includes('--paket') ? path.resolve(argv[argv.indexOf('--paket') + 1]) : null;
+const version = argv.includes('--surum') ? argv[argv.indexOf('--surum') + 1] : packageFrom ? '1.5.0' : '1.1.0';
+const releaseDir = packageFrom ? null : path.resolve(argv[0] || '');
 const keep = process.argv.includes('--birak');
 const BULUT = 'https://yuzuk-api.claudian.app';
 const PORT = 3060; // 3050 belongs to this computer's real engine
@@ -57,14 +64,25 @@ async function api(method, yol, anahtar, govde) {
   await fs.mkdir(env.TEMP, {recursive: true});
   const vault = path.join(root, 'Belgeler', 'Kabul Vault');
   await fs.mkdir(vault, {recursive: true});
+  // --paket: the package is written first, the way "Kurulum paketini hazırla" does on the computer that has an engine.
+  let source = null;
+  if (packageFrom) {
+    const {writePackage} = require('../ring-package.cjs');
+    const t = Date.now();
+    const pkg = await writePackage({folder: path.join(root, 'USB'), version, fetch, engineDir: packageFrom,
+      send: (_c, ev) => { if (!ev.indirilen || ev.indirilen % (100 * 1048576) < 2e6) log('paket', ev.durum, ev.dosya || '', ev.kaynaktan ? 'kopya' : '', ev.indirilen ? `${Math.round(ev.indirilen / 1048576)} MB` : ''); }});
+    report.adimlar.paket = {...pkg, sure_dk: +((Date.now() - t) / 60000).toFixed(1)};
+    source = pkg.target;
+    log('paket hazır', JSON.stringify(pkg));
+  }
   // Child processes of the installer inherit process.env: replace it with the clean profile.
   const saved = {...process.env};
   for (const k of Object.keys(process.env)) delete process.env[k];
-  Object.assign(process.env, env, {CLAUDIAN_ENGINE_RELEASE_DIR: releaseDir});
+  Object.assign(process.env, env, releaseDir ? {CLAUDIAN_ENGINE_RELEASE_DIR: releaseDir} : {});
   const {createInstaller, defaultTarget} = require('../ring-install.cjs');
   const target = defaultTarget();
   let engineSet = null, serviceSpec = null;
-  const installer = createInstaller({fetch, version: '1.1.0', setEngine: async d => { engineSet = d; },
+  const installer = createInstaller({fetch, version, setEngine: async d => { engineSet = d; },
     services: {add: async s => { serviceSpec = s; return {added: true}; }}, profile: async () => ({name: 'Kabul Testi', vault}),
     send: (_c, ev) => { if (!ev.indirilen || ev.indirilen % (200 * 1048576) < 2e6) log('kurulum', ev.adim, ev.dosya || '', ev.indirilen ? `${Math.round(ev.indirilen / 1048576)} MB` : '', ev.satir || ''); }});
   const t0 = Date.now();
@@ -72,7 +90,7 @@ async function api(method, yol, anahtar, govde) {
   log('plan', JSON.stringify(plan));
   report.adimlar.plan = plan;
   let result;
-  try { result = await installer.install(); }
+  try { result = await installer.install(source ? {source} : {}); }
   catch (e) { report.adimlar.kurulum = {hata: e.message, tail: e.tail}; throw e; }
   finally { Object.assign(process.env, saved); }
   report.adimlar.kurulum = {...result, sure_dk: +((Date.now() - t0) / 60000).toFixed(1), motor: engineSet, servis: serviceSpec};

@@ -66,7 +66,9 @@ After this initial review, keep routine memory maintenance quiet. This is a user
 const basePrompt=exports.prompt;
 exports.commandScript=(vault,executable,instruction,id)=>{
  const quote=s=>"'"+String(s).replace(/['‘’‚‛]/g,m=>m+m)+"'";
- const argument='Read '+path.basename(instruction)+' and follow its instructions.';
+ // 1.5.0: the instruction lives under .claudian/sessions (hidden from Obsidian); the CLI gets the vault-relative path.
+ const rel=(path.isAbsolute(instruction)?path.relative(vault,instruction):instruction).split(path.sep).join('/');
+ const argument='Read '+rel+' and follow its instructions.';
  return `Set-Location -LiteralPath ${quote(vault)}\n& ${quote(executable)} ${id==='gemini-cli'?'-i ':''}${quote(argument)}\n`;
 };
 exports.prompt=profile=>basePrompt(profile)+'\n\n'+(profile.language==='tr'?'Uygulamanın yönettiği gerçek başlangıç dosyaları (kendi AI bağlantının dosyasını kullan):':'Actual application-managed entry files (use your own host entry):')+'\n'+(profile.hosts||[]).filter(h=>h.artifacts?.skill).map(h=>(h.label||h.id)+': '+h.artifacts.skill).join('\n');
@@ -84,8 +86,15 @@ exports.launch=async(profile,id,prompt,executablePath,loginOnly=false)=>{
  const quote=s=>"'"+String(s).replace(/['‘’‚‛]/g,m=>m+m)+"'";
  // A short ASCII-only argument avoids Windows PowerShell 5.1 re-quoting embedded
  // double quotes and npm .cmd reparsing. The full instruction remains in UTF-8.
- const instruction=path.join(profile.vault,`.claudian-session-${require('node:crypto').randomUUID()}.md`);
- if(!loginOnly)await fs.writeFile(instruction,prompt,{flag:'wx'});
+ // 1.5.0 (madde 5): session instructions no longer pile up at the vault root. They go to .claudian/sessions, which
+ // Obsidian and the memory search skip; instructions older than seven days are removed there.
+ const sessions=path.join(profile.vault,'.claudian','sessions');
+ const instruction=path.join(sessions,`${require('node:crypto').randomUUID()}.md`);
+ if(!loginOnly){
+  await fs.mkdir(sessions,{recursive:true});
+  for(const name of await fs.readdir(sessions).catch(()=>[])){const f=path.join(sessions,name);const st=await fs.stat(f).catch(()=>null);if(st?.isFile()&&/^[0-9a-f-]{36}\.md$/.test(name)&&Date.now()-st.mtimeMs>7*864e5)await fs.rm(f,{force:true});}
+  await fs.writeFile(instruction,prompt,{flag:'wx'});
+ }
  const script=loginOnly?`Set-Location -LiteralPath ${quote(profile.vault)}\n& ${quote(executable)}\n`:exports.commandScript(profile.vault,executable,instruction,id);
  // No shell interpolation of user text; PowerShell literals double embedded quotes.
  // A GUI Electron parent cannot provide an interactive console through ignored stdio.

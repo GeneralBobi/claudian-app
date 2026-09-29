@@ -67,9 +67,12 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
      with Boran's key kept there; the engine validates the structured answer and writes the markdown itself.
      1.5.0: ChatGPT is back as a writer (Boran: "bu özelliği elimden alma"). Codex runs on this computer with the user's
      own ChatGPT sign-in and every tool switched off one by one (laya-kapi/yazicilar.py); it is as tool-less as the cloud
-     writer. Gemini stays closed. */
-  const WRITERS = {claude: 'Claude', codex: 'ChatGPT'};
-  const RETIRED_WRITERS = {gemini: 'Gemini'};
+     writer.
+     1.6.0: Gemini is a writer too, through the Antigravity CLI (agy) and the user's own Google sign-in (Google closed
+     the Gemini CLI to personal accounts). agy runs in a throwaway home with a PreToolUse hook that denies every tool,
+     web search included (laya-kapi/yazicilar.py). */
+  const WRITERS = {claude: 'Claude', codex: 'ChatGPT', gemini: 'Gemini'};
+  const RETIRED_WRITERS = {};
 
   async function settings() {
     try { return JSON.parse(await fs.readFile(settingsFile(), 'utf8')); } catch { return {}; }
@@ -78,6 +81,12 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
   // The cloud writer needs this computer to be a node of the Claudian cloud (bulut.json in the engine).
   async function writerInstalled(id) {
     if (id === 'claude') return exists(path.join(await engineDir(), 'bulut.json'));
+    if (id === 'gemini') {
+      // 1.6.0 engine and up: its writer module knows agy.
+      const mod = await fs.readFile(path.join(await engineDir(), 'yazicilar.py'), 'utf8').catch(() => '');
+      const agy = path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'agy', 'bin', 'agy.exe');
+      return mod.includes('agy_yolu') && exists(agy);
+    }
     if (id !== 'codex' || !await exists(path.join(await engineDir(), 'baglam.py'))) return false; // 1.5.0 engine and up
     const home = process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
     const cli = path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'npm', 'codex.cmd');
@@ -336,8 +345,8 @@ function createRing({core, send, dialog, getWindow, notify, synth}) {
       `# ${heading}`, '', ...(ctxLine ? [ctxLine, ''] : []),
       `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${time} · ${source}`, '',
       md, '', ...(links.length ? [`İlgili: ${links.map(t => `[[${t}]]`).join(' · ')}`, ''] : []), '---',
-      result.yazici === 'codex'
-        ? '_Yüzük: konuşma yazıya döküldü; mahrem cümleler çıkarıldı, notu ChatGPT bu bilgisayarda araçları kapalı yazdı. Ses saklanmadı._'
+      result.yazici === 'codex' || result.yazici === 'gemini'
+        ? `_Yüzük: konuşma yazıya döküldü; mahrem cümleler çıkarıldı, notu ${WRITERS[result.yazici]} bu bilgisayarda araçları kapalı yazdı. Ses saklanmadı._`
         : result.yazici
         ? `_Yüzük: konuşma yazıya döküldü; mahrem cümleler çıkarıldı, kalanı notu yazan araca (${WRITERS[result.yazici] || RETIRED_WRITERS[result.yazici] || result.yazici}) Claudian bulutu üzerinden, araçsız bir çağrıyla gitti. Ses saklanmadı._`
         : '_Yüzük: konuşma bu bilgisayarda yazıya döküldü, Laya neyin aktarılacağına karar verdi, notu Claude yazdı. Mahrem ve kapsam dışı cümleler gönderilmedi; ses saklanmadı._', ''].join('\n');

@@ -11,4 +11,6 @@ test('Windows PowerShell passes one prompt through npm cmd in a Turkish spaced p
   const {stdout}=await run('powershell.exe',['-NoProfile','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],{windowsHide:true});
   const args=JSON.parse(stdout.trim());assert.deepEqual(args,host==='gemini-cli'?['-i','Read .claudian-session-123.md and follow its instructions.']:['Read .claudian-session-123.md and follow its instructions.']);
  }
+ const abs=require('../scan.cjs').commandScript(dir,exe,path.join(dir,'.claudian','sessions','abc.md'),'codex');
+ assert.match(abs,/'Read \.claudian\/sessions\/abc\.md and follow its instructions\.'/,'session instructions live under .claudian/sessions');
 });
