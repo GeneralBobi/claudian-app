@@ -42,6 +42,21 @@ Before writing ANY user-visible response text, silently complete necessary memor
   }
   return {};
 }
+// The label a turn is opened under must be the connection that will actually serve it. A
+// Claude Code session started inside the Claude application (CLAUDE_CODE_ENTRYPOINT is
+// 'claude-desktop') loads that application's own 'claudian' entry, and that entry wins over
+// the one in .claude.json; its server names itself claude-desktop. Opening the turn as
+// claude-code then refuses every NO_OP review, because a turn nobody wrote in cannot be
+// rebound. Measured 20.09 and again 30.09.2026 on this profile.
+function servingHost(env=process.env,home=require('node:os').homedir()){
+  if(env.CLAUDE_CODE_ENTRYPOINT!=='claude-desktop')return 'claude-code';
+  try{
+    const mcpHosts=require('./mcp-hosts.cjs');
+    const entry=JSON.parse(require('node:fs').readFileSync(mcpHosts.configFile(home),'utf8'))?.mcpServers?.[mcpHosts.SERVER];
+    if(entry)return entry.env?.CLAUDIAN_HOST||'claude-desktop';
+  }catch{}
+  return 'claude-code';
+}
 async function run(event,dataDir,profile,host='claude-code'){
  if(!event.session_id||!profile?.vault)return {};
  return runtime.exclusive(dataDir,event.session_id,()=>runUnlocked(event,dataDir,profile,host));
@@ -52,7 +67,7 @@ if(require.main===module){
     if(!input.trim()){process.stdout.write('{}');return;}
     input=input.replace(/^\uFEFF/,'');
     const dir=process.argv[2];const profile=JSON.parse(await fs.readFile(require('node:path').join(dir,'profile.json'),'utf8'));
-    process.stdout.write(JSON.stringify(await run(JSON.parse(input),dir,profile,process.argv[3]||'claude-code')));
+    process.stdout.write(JSON.stringify(await run(JSON.parse(input),dir,profile,process.argv[3]||servingHost())));
   }catch(e){process.stderr.write('Claudian maintenance hook failed: '+e.message+'\n');process.exitCode=1;}});
 }
-module.exports={run};
+module.exports={run,servingHost};

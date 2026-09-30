@@ -164,3 +164,22 @@ test('a retried review does not duplicate the write it reports', async t => {
   // And the write itself is still refused a second time by the store's own guard.
   await assert.rejects(write(vault, 'A', 'claude-desktop'), /already exists/);
 });
+
+test('a hook inside the Claude application opens the turn under the connection that serves it', async t => {
+  const {vault, data, profile} = await fixture(t);
+  const home = path.join(path.dirname(vault), 'home');
+  const config = path.join(home, 'AppData', 'Roaming', 'Claude', 'claude_desktop_config.json');
+  const inside = {CLAUDE_CODE_ENTRYPOINT: 'claude-desktop'};
+  // Terminal Claude Code, or the application without its own Claudian entry: the hook's label.
+  assert.equal(hook.servingHost({}, home), 'claude-code');
+  assert.equal(hook.servingHost(inside, home), 'claude-code');
+  await fs.mkdir(path.dirname(config), {recursive: true});
+  await fs.writeFile(config, JSON.stringify({mcpServers: {claudian: {command: 'x', env: {}}}}));
+  const host = hook.servingHost(inside, home);
+  assert.equal(host, 'claude-desktop');
+  // The case that used to fail: a first turn with nothing to write closes with NO_OP.
+  const state = await runtime.begin(data, 's-desktop', host);
+  const done = await runtime.review(data, {session_id: 's-desktop', turn: state.turn, outcome: 'NO_OP'}, 'claude-desktop', vault);
+  assert.equal(done.outcome, 'NO_OP');
+  assert.equal(done.connection, undefined);
+});
