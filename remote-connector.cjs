@@ -8,8 +8,6 @@ const {RemoteHttp}=require('./remote-http.cjs');
 // app added under it (their grants, tokens and OAuth metadata stay bound to the old address). Retiring the old address
 // is a separate, later step, taken only after those connectors have been re-added.
 const RELAY_ALIASES={'https://claudian-device-relay.boranbirtanir.workers.dev':'https://relay.claudian.app'};
-// 1.8.0: the one address every user adds to an AI app; it forwards to this device and stores no content.
-const GATEWAY='https://mcp.claudian.app';
 class RemoteConnector {
   constructor({dataDir,profile,safeStorage,fetch:request=fetch,allowLoopback=false}) {
     Object.assign(this,{dataDir,profile,safeStorage,request,allowLoopback});
@@ -96,38 +94,6 @@ class RemoteConnector {
     s.progress=Object.fromEntries(['chatgpt','gemini','perplexity'].map(h=>[h,require('./cloud-progress.cjs').progress(s,h)]));return s;
   }
   async approve(id,allowed) {if(!this.http)throw Error('Remote connection is stopped');await this.http.auth.approve(id,allowed);return this.status();}
-  /* 1.8.0 · the shared address mcp.claudian.app (planning/PUBLIC-GATEWAY.md, section 3). The AI app's browser page shows a
-     code; the user types it here. The device proves itself with its key (the gateway checks sha256(key) = device id,
-     like the relay), sees who is asking, and decides. On approval the device mints the authorization code itself. */
-  secretKey() {
-    if(!this.state.credential||!this.state.device)throw Error('Uzak bağlantı açık değil: önce Bağlantılar\'dan bir AI bağla.');
-    return this.safeStorage.decryptString(Buffer.from(this.state.credential,'base64'));
-  }
-  async gatewayCall(gateway,pathname,body) {
-    const r=await this.request(gateway.replace(/\/$/,'')+pathname,{method:'POST',redirect:'error',signal:AbortSignal.timeout(15000),
-      headers:{authorization:'Bearer '+this.secretKey(),'content-type':'application/json'},body:JSON.stringify({cihaz:this.state.device,...body})});
-    const j=await r.json().catch(()=>({}));
-    if(!r.ok)throw Error(j.hata||`mcp.claudian.app ${r.status}`);
-    return j;
-  }
-  async gatewayClaim(code,gateway=GATEWAY) {
-    if(!this.http)throw Error('Uzak bağlantı kapalı: önce Bağlantılar\'dan bir AI bağla.');
-    const clean=String(code||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
-    if(clean.length!==8)throw Error('Kod 8 karakter olmalı.');
-    const t=await this.gatewayCall(gateway,'/v1/sahiplen',{kod:clean});
-    (this.gatewayPending||=new Map()).set(t.talep,{...t,gateway,expires:Date.now()+300000});
-    // The app's name is its own claim; the redirect host is what the gateway checked.
-    return {talep:t.talep,ad:t.ad,yonlendirme:t.yonlendirme,kapsam:t.kapsam,host:t.host};
-  }
-  async gatewayDecide(talep,allowed,host) {
-    const t=this.gatewayPending?.get(talep);
-    if(!t||t.expires<Date.now())throw Error('İstek süresi doldu; AI uygulamasında yeniden bağlan.');
-    this.gatewayPending.delete(talep);
-    if(!allowed){await this.gatewayCall(t.gateway,'/v1/onay',{talep,red:true});return this.status();}
-    const r=await this.http.primary.approveGateway({gateway:t.gateway,name:t.ad,host:host||t.host,scope:t.kapsam,challenge:t.challenge});
-    await this.gatewayCall(t.gateway,'/v1/onay',{talep,kod:r.code,istemci:r.client_id,kaynak:r.resource,host:host||t.host});
-    return this.status();
-  }
   async revoke(id) {if(!this.http)throw Error('Remote connection is stopped');await this.http.auth.revoke(id);return this.status();}
   // "Remove everything" (0.29): every AI loses its grant, then the device stops polling. The
   // grants file is read even when the connection is stopped, so a stopped device is not left

@@ -244,9 +244,6 @@ async function start() {
   handle('connector:start',url=>remoteConnector.start(url));
   handle('connector:stop',()=>remoteConnector.stop());
   handle('connector:approve',(id,allowed)=>remoteConnector.approve(id,allowed===true));
-  // 1.8.0: the shared address mcp.claudian.app — the code from the browser page is claimed and decided here.
-  handle('gateway:claim',code=>remoteConnector.gatewayClaim(String(code||'')));
-  handle('gateway:decide',(id,allowed,host)=>remoteConnector.gatewayDecide(String(id||''),allowed===true,typeof host==='string'?host:undefined));
   handle('connector:revoke',id=>remoteConnector.revoke(id));
   handle('connector:export',async provider=>{
     const status=remoteConnector.status(),url=status.urls[provider];
