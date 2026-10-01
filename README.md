@@ -1,177 +1,22 @@
-# claudian.app
+# Claudian
 
-A Windows application for a local, user-owned Markdown memory shared by AI tools.
+One shared memory for all your AI tools — stored on your own computer as plain Markdown notes.
 
-**0.21.2 — protocol 2.9.0.** Claudian keeps running with its window closed, and the panel derives your state from this computer — including which reminders are due and which connections are broken. A hosted device relay is available for account connectors; native account acceptance remains host-specific. This is not a guarantee that every AI host will automatically use memory.
+Claude, ChatGPT, Codex, Gemini and others read from and write to the same notes, so you don't start from zero when you switch tools.
 
-[Windows installer](https://github.com/GeneralBobi/claudian-app/releases/download/v0.21.2/Claudian-Setup-0.21.2.exe) · [Website](https://claudian.app) · [Connection coverage](COMPATIBILITY.md)
+## Install
 
-## Setup and updates
+1. Download the **Claudian-Setup** `.exe` from the [latest release](https://github.com/GeneralBobi/claudian-app/releases/latest).
+2. Run it. If Windows shows "unknown publisher", click **More info → Run anyway**.
 
-Setup proposes a new folder under Documents and lets you change its path or choose an existing vault. A detected personal vault is never selected implicitly. Preview the changes and choose read-only or read/write access before installation.
+Windows only for now.
 
-Updates preserve existing user notes and customized protocol copies. The runtime has an application-owned protocol, and generated skills include a fallback: removing the vault protocol copy does not remove the memory instructions. Removing a connection preserves the notes.
+## Use
 
-Connections distinguishes installed files, file-access verification and observed conversation maintenance. Technical capability names, configuration paths and repair are available on demand. No remote connection is claimed from installing local files.
+1. **Pick a notes folder.** Claudian suggests one under Documents, or you can choose an existing Obsidian vault.
+2. **Connect your AI tools.** Open **Connections**, pick a tool and follow the steps on screen.
+3. **Restart the AI tool** and start chatting. It will now remember across conversations and across tools.
 
-## Memory maintenance
+Claudian keeps running in the tray when you close the window.
 
-Local MCP tools provide bounded retrieval and guarded create, patch, append and archive operations. Updates use current content hashes, backups and write receipts. Conversation hooks and memory reviews expose missing checks; a later successful turn does not erase earlier failures. Long tool sequences request another review.
-
-These controls verify writes and observed checks, not the model's semantic judgment. Direct filesystem writes outside these tools do not receive these protections. External writers can still race; receipt storage is local, not a tamper-proof audit system. Archive is reversible and is not permanent erasure of backups.
-
-## Validation
-
-224 unit tests and the Electron setup smoke test pass. Controlled real-model tests passed 20 Claude Code turns and 5 Codex turns, checking final notes, cancellation, preferences, no-op turns and quiet maintenance. These sessions explicitly supplied generated instructions and connector configuration in synthetic vaults. They do not establish automatic activation in all native apps. See acceptance/ for sanitized evidence.
-
-## Development
-
-Use Windows and Node.js 22.12 or newer:
-
-```sh
-npm ci
-npm test
-npm start
-npm run dist
-```
-
-Installers are generated in release/. End users do not need a separate Node.js installation for the packaged local bridge. AI applications and their accounts are separate installations.
-
-The installer is unsigned. Production signing and Windows VM install/uninstall coverage remain incomplete. Notes stay in the selected folder; application state and migration backups live under %APPDATA%/Claudian Desktop.
-
-This public repository excludes personal vaults, credentials and the separate legacy backend. Third-party font licenses are included; an application redistribution license has not yet been assigned.
-
-The connection test now uses host-scoped MCP test tools; the hidden-note boundary remains in place. A real Claude test read and submitted the challenge successfully. The provider-memory pointer is available under Connections, but saving it in a provider account is not automatically verified.
-
-## 0.18 connection experience
-
-AI tools appear in a compact status grid. Selecting a tool opens its setup and verification dialog. Read/write proof and first-review receipts are separate and persist across restarts. A simple acknowledgement is never counted as proof. Instructions no longer force a response language. Windows launchers use an instruction file to preserve paths with spaces and smart quotes.
-
-The deployed relay passed HTTPS OAuth, authenticated read/write and revocation acceptance with a synthetic client. This is service evidence, not a claim that every provider account or mobile surface is verified.
-
-## 0.18.6 corrections
-
-Only the recommended action is accented: terminal when available, otherwise opening the AI app. Completed checks and first reviews show green confirmation with neutral retry controls. File readiness now uses the same managed-section check as connection diagnostics, so unrelated provider settings changes no longer produce conflicting status. Empty first reviews finish without onboarding questions. Hook input accepts a UTF-8 BOM and empty input; session writes retry transient Windows file locks. The reported Codex hook failure still requires native confirmation. No additional provider acceptance tests were run for this patch.
-
-### 0.18.6: Gemini web and Perplexity
-
-Gemini opens the actual Gemini website. Spark custom-app setup copies the device address and opens Connected Apps; without Spark, a separate guide supports manual context sharing without claiming connected memory. Gemini CLI is retained only for existing installations and is not offered for new setup. Its test results are not migrated to Gemini web.
-
-Perplexity setup opens its Connectors page, with device OAuth and an optional AI setup guide. Account approval and real MCP calls remain separate from setup preparation. Both web connections have independent test and first-review receipts.
-
-Gemini Spark and Perplexity account acceptance remain pending. This release adds setup support; it does not certify a connection in your account.
-
-### 0.18.7: Guided cloud setup
-
-ChatGPT, Gemini Spark and Perplexity now open a focused setup guide. It prepares the device URL, provides ready-to-copy form values, puts matching-code approval in the connection window, and provides an explicit unavailable-account exit. OAuth approval returns to the AI automatically. Authorization alone cannot unlock testing: the required tools must have been requested. ChatGPT web tests and first reviews require their MCP receipt, never a local-file fallback.
-
-Provider-owned create-app forms and account eligibility still apply; this is not a marketplace-listed, one-click installation. Account acceptance is scheduled separately with Claude Code after publication.
-
-### 0.21.1: Gaps closed
-
-The two note-application states the engine could name and never reach are wired to the window
-that learns them. The panel re-reads on every entry, and the tray and notifications settle
-immediately after anything that changes the installation rather than following a one-minute
-tick. One change now produces one line per fact instead of up to five with two redundant
-pairs, worries keep their own detail, and the history is written for the reader rather than
-the code. The tray and the panel draw their words from one vocabulary, with a test that fails
-if a state is added to one and not the other. A stored preference nothing read, an exported
-list nothing imported, and a function returning two shapes are gone.
-
-Full notes: [release-notes-0.21.1.md](release-notes-0.21.1.md)
-
-### 0.21.0: A panel that knows more, and interrupts less
-
-The derived state now covers what it was missing: a dated reminder is due, overdue or neither
-(three date spellings, and an impossible date produces nothing rather than something
-invented); a connection that fails Claudian's own self-check is *broken* rather than merely
-unverified, with the failing layer named; a verification that was started and abandoned is its
-own state; and attention going away is recorded, so a solved problem simply leaves the list.
-
-Five kinds of transition may raise a Windows notification — an authorization awaiting
-approval, a broken connection, a dropped device connection, and a reminder due or overdue.
-Once a day per worry, three a day at most, silent on resolution, and switchable from the tray.
-
-The client for the separate web Core is no longer attached: nothing in the normal user's path
-needs `run.bat`, a tunnel or a source tree. A superseded first review no longer leaves its
-instruction file behind in your notes folder.
-
-Full notes: [release-notes-0.21.0.md](release-notes-0.21.0.md) · Parity: [CONNECTION-PARITY.md](CONNECTION-PARITY.md)
-
-### 0.20.0: Background runtime and a panel that knows your state
-
-Closing the window used to quit Claudian and stop the device connection with it, silently.
-There is now a tray icon: closing hides, Quit is explicit and disconnects cleanly, and
-**Start with Windows** is available and off by default. The Panel tab shows what Claudian
-derives from this computer — what needs you, each connection's connected/verified/review
-facts, your open loops and reminders from the active parts of your own notes, and what
-changed recently. No AI has to be open for any of it.
-
-Also: an application update that moves the memory protocol now supersedes an in-flight first
-review explicitly, in both the screen and the tool error, instead of leaving it reading as
-"waiting"; a refused tool call is recorded as refused, with its reason; and releasing the
-public site is one command that needs nothing else running.
-
-Full notes: [release-notes-0.20.0.md](release-notes-0.20.0.md) · Signing: [SIGNING.md](SIGNING.md)
-
-### 0.19.2: Setup, review and connection screens
-
-A patch release about the screens, carrying protocol 2.9.0 unchanged. Nothing in the vault
-changes and there is no migration. The recommended-action pulse is removed from the stylesheet
-rather than hidden behind a media query; the setup banner's **Verify access** button now opens
-the connection it names and issues its real read/write test instead of re-rendering the screen
-it already lives on; the review screen's five body paragraphs become one helper line plus a
-collapsed detail, with consent still in the open; providers are cards that keep *selected*,
-*connected* and *verified* as three separate claims; Antigravity's IDE and terminal are one
-connection with two ways in rather than two AI applications; the Spark action opens Spark and
-the manual-sharing fallback says that it is one; and a first review on a web provider can be
-completed deterministically, with Claudian requiring its own evidence that a scan happened and
-never reading the provider's prose for success.
-
-Full notes: [release-notes-0.19.2.md](release-notes-0.19.2.md)
-
-### 0.19.1: Memory and runtime reliability — protocol 2.9.0
-
-A patch release. 0.19.0 made Claudian point the user in the right direction; this one makes
-Claudian point its own memory in the right direction. No new architecture, no new service, and
-upgrading from 0.19.0 requires no migration beyond the protocol note the application rewrites
-itself.
-
-**History is preserved but no longer treated as current context.** Protocol 2.9.0 gives
-information a lifecycle — active, superseded, archived — with a visible marker under the
-heading it retires. Archived and superseded sections stay in the notes and stay searchable for
-rollback and provenance, and they no longer arrive as today's decisions. An unchecked box
-inside an abandoned plan is not an open task.
-
-Startup retrieval is bounded by whole records rather than by truncation, and a vault protocol
-copy identical to the one the application already carries is no longer requested a second time.
-Persistent memory setup records its answer once, so it stops asking after a successful first
-review. A memory turn opened by one connection's prompt hook can now be reviewed by the
-connection that actually did the writing, which is what a Claude Code session running inside
-the Claude application always was.
-
-### 0.19.0: Setup, routing and connection reliability
-
-The controlled continuation of 0.18.7. No new architecture. Upgrading requires no migration.
-
-Obsidian is the default note application instead of a guess derived from what happens to be
-installed; plain Markdown stays as an explicit advanced choice. Claudian derives one
-recommended next action from state it already had and marks a single control with it, with a
-static border in place of the pulse under reduced motion. "Selected", "connected" and
-"read/write verified" are stated as three separate facts, because they are. Finishing setup
-now actually opens Connections; the destination was previously discarded by the panel reload.
-
-The working Google integration is presented as **Spark**, with a Beta badge, because ordinary
-Gemini chat cannot use it. Perplexity is marked **Untested**: it has never been exercised with
-a real account here. No plan requirement is shown for any provider, because none is recorded
-in this repository.
-
-`offline_access` is accepted and advertised — clients asking for it were previously rejected
-with `invalid_scope` — and authorization responses now carry `iss` per RFC 9207. Reconnection
-uses exponential backoff with jitter. Profile writes are serialised against a second window.
-
-`npm test` passes end to end again; the packaged smoke run was broken on 0.18.7 because it
-drove its remove/re-add round trip through a retired host.
-
-The public gateway described in the planning contract is **not** part of this release. Cloud
-connections work exactly as they did in 0.18.7, over the existing device relay.
+[claudian.app](https://claudian.app) · [Supported tools](COMPATIBILITY.md)
