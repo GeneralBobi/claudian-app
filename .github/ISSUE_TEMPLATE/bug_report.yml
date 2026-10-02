@@ -1,0 +1,41 @@
+name: Bug report
+description: Report a reproducible problem with Claudian.app.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: "Use fictional examples. Do not attach your vault, recordings, credentials, device connection URLs or unreviewed logs. Report security vulnerabilities privately using SECURITY.md."
+  - type: input
+    id: version
+    attributes:
+      label: Claudian version
+      placeholder: "For example: 1.8.3"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Windows version and AI tool
+      placeholder: "For example: Windows 11, Codex"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Describe the smallest fictional example that shows the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+      description: Review screenshots or short excerpts for private information before including them.
+    validations:
+      required: true

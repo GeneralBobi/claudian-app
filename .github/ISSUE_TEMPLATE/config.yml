@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Installation and documentation
+    url: https://claudian.app/docs
+    about: Check the current setup guide and product boundaries.
+  - name: Report a security vulnerability privately
+    url: https://github.com/GeneralBobi/claudian-app/security/advisories/new
+    about: Use private reporting instead of a public issue. See SECURITY.md for the fallback contact.

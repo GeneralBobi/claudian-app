@@ -1,0 +1,21 @@
+name: Suggest an improvement
+description: Explain a problem Claudian.app could help solve.
+title: "[Suggestion]: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: Describe the task and where the current experience gets in the way. Use fictional examples.
+    validations:
+      required: true
+  - type: textarea
+    id: change
+    attributes:
+      label: Suggested improvement
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What have you tried?
