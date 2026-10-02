@@ -1,3 +1,10 @@
 node_modules/
 release/
 smoke-output/
+
+# Depoya girmez: sürüm notları GitHub Releases sayfasında, test kanıtları ve raporlar yerelde kalır (02.10.2026)
+release-notes-*.md
+SMOKE-CHECKLIST-*.md
+REPORT-*.md
+acceptance/
+*.bak

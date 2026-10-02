@@ -19,4 +19,4 @@ Windows only for now.
 
 Claudian keeps running in the tray when you close the window.
 
-[claudian.app](https://claudian.app) · [Supported tools](COMPATIBILITY.md)
+[claudian.app](https://claudian.app) · [Release notes](https://github.com/GeneralBobi/claudian-app/releases)
